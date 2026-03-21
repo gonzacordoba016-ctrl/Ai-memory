@@ -1,0 +1,1351 @@
+<!DOCTYPE html>
+<html class="dark" lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>STRATUM — Hardware Memory Engine</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        colors: {
+          "on-tertiary-container": "#d5f3ff",
+          "surface-container": "#1f1f27",
+          "surface": "#13131b",
+          "surface-tint": "#c9beff",
+          "tertiary-container": "#00768f",
+          "surface-container-highest": "#34343d",
+          "outline-variant": "#484556",
+          "on-surface": "#e4e1ed",
+          "secondary-fixed-dim": "#00e479",
+          "on-surface-variant": "#c9c3d9",
+          "surface-bright": "#393841",
+          "on-error-container": "#ffdad6",
+          "secondary": "#f5fff3",
+          "surface-dim": "#13131b",
+          "tertiary": "#3cd7ff",
+          "outline": "#938ea2",
+          "surface-container-high": "#2a2932",
+          "secondary-container": "#34ff8d",
+          "inverse-primary": "#5e35f1",
+          "surface-container-lowest": "#0e0d15",
+          "background": "#13131b",
+          "inverse-surface": "#e4e1ed",
+          "on-background": "#e4e1ed",
+          "primary": "#c9beff",
+          "inverse-on-surface": "#302f38",
+          "surface-container-low": "#1b1b23",
+          "error": "#ffb4ab",
+          "on-tertiary": "#003642",
+          "on-primary": "#2f009b",
+          "primary-container": "#6c47ff",
+          "on-primary-container": "#f1ebff",
+          "surface-variant": "#34343d",
+          "error-container": "#93000a",
+        },
+        fontFamily: {
+          "headline": ["Syne", "sans-serif"],
+          "body": ["JetBrains Mono", "monospace"],
+          "label": ["JetBrains Mono", "monospace"]
+        },
+        borderRadius: {"DEFAULT": "0px", "lg": "0px", "xl": "0px", "full": "9999px"},
+      },
+    },
+  }
+</script>
+<style>
+  .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; vertical-align: middle; }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: #13131b; }
+  ::-webkit-scrollbar-thumb { background: #34343d; }
+  .blinking-cursor::after { content: '█'; animation: blink 1s step-start infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+  .nav-item.active { color: #34ff8d; background: rgba(52,255,141,0.05); border-right: 2px solid #34ff8d; }
+  .signal-bar { transition: height 0.15s ease; }
+</style>
+</head>
+<body class="bg-[#04040a] text-on-surface font-body selection:bg-primary-container selection:text-white antialiased overflow-hidden">
+
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 flex justify-between items-center px-6 h-16 bg-[#04040a] border-b border-[#34343d]/15">
+  <div class="flex items-center gap-8">
+    <span class="text-2xl font-black tracking-tighter text-[#6c47ff] uppercase font-headline">STRATUM</span>
+    <div class="hidden md:flex items-center gap-6">
+      <div class="flex items-center gap-2">
+        <span id="conn-dot" class="w-2 h-2 bg-gray-500"></span>
+        <span id="conn-label" class="text-[10px] tracking-widest text-gray-500">CONNECTING...</span>
+      </div>
+      <div class="flex gap-4 border-l border-outline-variant/30 pl-6">
+        <div class="flex flex-col">
+          <span class="text-[9px] text-outline">FACTS</span>
+          <span id="h-facts" class="text-xs font-bold">0</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-[9px] text-outline">MSGS</span>
+          <span id="h-msgs" class="text-xs font-bold">0</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-[9px] text-outline">NODES</span>
+          <span id="h-nodes" class="text-xs font-bold">0</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-[9px] text-outline text-secondary-container">DEVICES</span>
+          <span id="h-devices" class="text-xs font-bold text-secondary-container">0</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="flex items-center gap-4">
+    <button class="p-2 hover:bg-[#1f1f27] text-outline transition-colors"><span class="material-symbols-outlined text-sm">sensors</span></button>
+    <button class="p-2 hover:bg-[#1f1f27] text-outline transition-colors"><span class="material-symbols-outlined text-sm">memory</span></button>
+    <button class="p-2 hover:bg-[#1f1f27] text-outline transition-colors"><span class="material-symbols-outlined text-sm">hub</span></button>
+    <button class="p-2 hover:bg-[#1f1f27] text-[#6c47ff] transition-colors"><span class="material-symbols-outlined text-sm">developer_board</span></button>
+  </div>
+</header>
+
+<!-- SideNavBar -->
+<nav class="fixed left-0 top-16 bottom-0 w-20 flex flex-col items-center py-8 z-40 bg-[#13131b] border-r border-[#34343d]/15">
+  <div class="flex flex-col items-center gap-2 mb-8">
+    <div class="w-10 h-10 bg-surface-container-highest flex items-center justify-center border border-outline-variant/20">
+      <span class="material-symbols-outlined text-primary text-xl">schema</span>
+    </div>
+    <span class="text-[8px] font-bold text-outline text-center">v1.0.0</span>
+  </div>
+  <div class="flex flex-col w-full gap-2">
+    <button onclick="switchNav('memory')" id="nav-memory" class="nav-item active flex flex-col items-center py-4 w-full transition-all">
+      <span class="material-symbols-outlined mb-1">database</span>
+      <span class="text-[8px] tracking-widest font-bold">MEMORY</span>
+    </button>
+    <button onclick="switchNav('graph')" id="nav-graph" class="nav-item text-[#34343d] flex flex-col items-center py-4 w-full hover:text-[#c9beff] hover:bg-[#1f1f27] transition-all">
+      <span class="material-symbols-outlined mb-1">schema</span>
+      <span class="text-[8px] tracking-widest font-bold">GRAPH</span>
+    </button>
+    <button onclick="switchNav('hardware')" id="nav-hardware" class="nav-item text-[#34343d] flex flex-col items-center py-4 w-full hover:text-[#c9beff] hover:bg-[#1f1f27] transition-all">
+      <span class="material-symbols-outlined mb-1">memory</span>
+      <span class="text-[8px] tracking-widest font-bold">HARDWARE</span>
+    </button>
+    <button onclick="switchNav('search')" id="nav-search" class="nav-item text-[#34343d] flex flex-col items-center py-4 w-full hover:text-[#c9beff] hover:bg-[#1f1f27] transition-all">
+      <span class="material-symbols-outlined mb-1">search</span>
+      <span class="text-[8px] tracking-widest font-bold">SEARCH</span>
+    </button>
+    <button onclick="switchNav('metrics')" id="nav-metrics" class="nav-item text-[#34343d] flex flex-col items-center py-4 w-full hover:text-[#c9beff] hover:bg-[#1f1f27] transition-all">
+      <span class="material-symbols-outlined mb-1">analytics</span>
+      <span class="text-[8px] tracking-widest font-bold">METRICS</span>
+    </button>
+  </div>
+  <div class="mt-auto flex flex-col w-full gap-2">
+    <button onclick="switchNav('logs')" id="nav-logs" class="nav-item text-[#34343d] flex flex-col items-center py-4 w-full hover:text-[#c9beff] hover:bg-[#1f1f27]">
+      <span class="material-symbols-outlined mb-1">terminal</span>
+      <span class="text-[8px] font-bold">LOGS</span>
+    </button>
+  </div>
+</nav>
+
+<!-- Main Content -->
+<main class="ml-20 mt-16 h-[calc(100vh-64px)] grid grid-cols-10 overflow-hidden bg-[#04040a]">
+
+  <!-- Chat Area (70%) -->
+  <section class="col-span-10 md:col-span-7 flex flex-col border-r border-[#34343d]/15 relative overflow-hidden" style="height: calc(100vh - 64px);">
+    <div id="messages" class="flex-1 overflow-y-auto p-6 space-y-6 min-h-0">
+      <!-- Session init -->
+      <div class="flex items-center gap-4 text-outline-variant/50 text-[10px] uppercase tracking-widest">
+        <div class="h-[1px] flex-1 bg-outline-variant/20"></div>
+        <span id="session-time">Session Initialized</span>
+        <div class="h-[1px] flex-1 bg-outline-variant/20"></div>
+      </div>
+      <!-- Welcome -->
+      <div class="flex flex-col items-start space-y-2">
+        <div class="bg-primary-container/10 p-5 max-w-[90%] border-l-2 border-[#6c47ff]">
+          <div class="flex items-center gap-3 mb-3">
+            <span class="text-[10px] font-black text-[#6c47ff] tracking-tighter uppercase font-headline">STRATUM_ENGINE</span>
+            <span class="px-1.5 py-0.5 bg-[#6c47ff]/20 text-[#c9beff] text-[8px] font-bold uppercase">SYSTEM</span>
+          </div>
+          <p class="text-sm text-on-primary-container">Hardware Memory Engine online. Escribí un comando o consulta.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Input -->
+    <div class="p-6 bg-[#04040a] border-t border-[#34343d]/15">
+      <div class="relative flex items-center">
+        <div class="absolute left-4 text-[#6c47ff] flex items-center gap-2">
+          <span class="text-xs font-bold uppercase tracking-widest">CMD</span>
+          <span class="material-symbols-outlined text-sm">chevron_right</span>
+        </div>
+        <input id="prompt" class="w-full bg-surface-container-lowest border-b border-outline-variant py-4 pl-20 pr-24 focus:outline-none focus:border-tertiary text-sm font-body text-on-surface placeholder-outline-variant/50 transition-all" placeholder="Execute system command or query database..." type="text"/>
+        <div class="absolute right-4 flex items-center gap-3">
+          <button id="vision-btn" onclick="openVisionModal()" title="Analizar circuito con IA visual"
+            class="text-outline hover:text-[#3cd7ff] transition-colors">
+            <span class="material-symbols-outlined">photo_camera</span>
+          </button>
+          <button id="send-btn" onclick="sendMessage()" class="text-outline hover:text-primary transition-colors">
+            <span class="material-symbols-outlined">terminal</span>
+          </button>
+        </div>
+      </div>
+      <div class="flex gap-4 mt-3">
+        <span id="status-ready" class="text-[8px] text-outline-variant tracking-widest uppercase flex items-center gap-1">
+          <span class="w-1 h-1 bg-tertiary"></span> READY_FOR_INPUT
+        </span>
+        <span class="text-[8px] text-outline-variant tracking-widest uppercase flex items-center gap-1">
+          <span id="engine-dot" class="w-1 h-1 bg-outline-variant"></span>
+          <span id="engine-status">ENGINE_OFFLINE</span>
+        </span>
+        <span id="agents-label" class="text-[8px] text-outline-variant tracking-widest uppercase hidden"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Right Panel (30%) -->
+  <aside class="hidden md:flex md:col-span-3 flex-col bg-surface-dim">
+
+    <!-- MEMORY TAB -->
+    <div id="panel-memory" class="tab-content active flex-1 overflow-y-auto p-5 space-y-6">
+      <div>
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-[10px] font-bold tracking-[0.2em] text-outline uppercase">SYSTEM_STATS</h3>
+        </div>
+        <div class="grid grid-cols-2 gap-2 mb-4">
+          <div class="bg-surface-container p-3">
+            <span class="text-[8px] text-outline block">FACTS</span>
+            <span id="s-facts" class="text-lg font-bold text-primary">0</span>
+          </div>
+          <div class="bg-surface-container p-3">
+            <span class="text-[8px] text-outline block">MESSAGES</span>
+            <span id="s-msgs" class="text-lg font-bold text-tertiary">0</span>
+          </div>
+          <div class="bg-surface-container p-3">
+            <span class="text-[8px] text-outline block">GRAPH NODES</span>
+            <span id="s-nodes" class="text-lg font-bold text-secondary-container">0</span>
+          </div>
+          <div class="bg-surface-container p-3">
+            <span class="text-[8px] text-outline block">GRAPH EDGES</span>
+            <span id="s-edges" class="text-lg font-bold">0</span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-[10px] font-bold tracking-[0.2em] text-outline uppercase">KNOWN_FACTS</h3>
+          <span id="facts-count" class="text-[9px] text-[#6c47ff] font-bold">0 TOTAL</span>
+        </div>
+        <div id="facts-list" class="space-y-2">
+          <p class="text-[10px] text-outline-variant">Sin hechos registrados</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- GRAPH TAB -->
+    <div id="panel-graph" class="tab-content flex-1 overflow-y-auto p-5 space-y-4">
+      <div class="flex justify-between items-center">
+        <h3 class="text-[10px] font-bold tracking-[0.2em] text-outline uppercase">KNOWLEDGE_GRAPH</h3>
+        <a href="/static/graph3d.html" target="_blank" class="text-[8px] text-[#6c47ff] hover:text-primary font-bold uppercase">OPEN 3D →</a>
+      </div>
+      <div id="graph-list" class="space-y-2">
+        <p class="text-[10px] text-outline-variant">Sin relaciones aún</p>
+      </div>
+    </div>
+
+    <!-- HARDWARE TAB -->
+    <div id="panel-hardware" class="tab-content flex-1 overflow-y-auto p-5 space-y-6">
+      <div>
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-[10px] font-bold tracking-[0.2em] text-outline uppercase">CONNECTED_DEVICES</h3>
+          <button onclick="loadHardware()" class="text-[8px] text-[#6c47ff] font-bold uppercase">↻ SCAN</button>
+        </div>
+        <div id="devices-list" class="space-y-2">
+          <p class="text-[10px] text-outline-variant">Escaneando...</p>
+        </div>
+      </div>
+      <div>
+        <div class="flex justify-between items-center mb-3">
+          <h3 class="text-[10px] font-bold tracking-[0.2em] text-outline uppercase">HW_STATS</h3>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div class="bg-surface-container p-3">
+            <span class="text-[8px] text-outline block">REGISTERED</span>
+            <span id="hw-devices" class="text-lg font-bold text-secondary-container">0</span>
+          </div>
+          <div class="bg-surface-container p-3">
+            <span class="text-[8px] text-outline block">TOTAL FLASHES</span>
+            <span id="hw-flashes" class="text-lg font-bold text-[#6c47ff]">0</span>
+          </div>
+          <div class="bg-surface-container p-3">
+            <span class="text-[8px] text-outline block">SUCCESSFUL</span>
+            <span id="hw-success" class="text-lg font-bold text-secondary-container">0</span>
+          </div>
+          <div class="bg-surface-container p-3">
+            <span class="text-[8px] text-outline block">FAILED</span>
+            <span id="hw-failed" class="text-lg font-bold text-error">0</span>
+          </div>
+        </div>
+      </div>
+      <!-- Circuit Vision Results -->
+      <div id="vision-results-panel" class="hidden">
+        <div class="flex justify-between items-center mb-3">
+          <h3 class="text-[10px] font-bold tracking-[0.2em] text-[#3cd7ff] uppercase">LAST_CIRCUIT_ANALYSIS</h3>
+          <button onclick="openVisionModal()" class="text-[8px] text-[#3cd7ff] font-bold uppercase">+ NEW</button>
+        </div>
+        <div id="vision-results-content" class="space-y-2"></div>
+      </div>
+      <!-- Oscilloscope -->
+      <div class="border border-outline-variant/10 bg-[#0e0d15] p-4">
+        <div class="flex justify-between items-center mb-4">
+          <span class="text-[9px] font-bold text-outline tracking-tighter uppercase">REAL_TIME_OSCILLOSCOPE</span>
+          <span id="osc-status" class="text-[8px] text-outline">CH_01: IDLE</span>
+        </div>
+        <div id="osc-bars" class="h-24 flex items-end gap-[1px]">
+          <!-- filled by JS -->
+        </div>
+        <div class="mt-4 grid grid-cols-2 gap-2">
+          <div class="bg-surface-container-highest p-2">
+            <span class="text-[8px] block text-outline">PEAK_VOLT</span>
+            <span id="osc-volt" class="text-xs font-bold">—</span>
+          </div>
+          <div class="bg-surface-container-highest p-2">
+            <span class="text-[8px] block text-outline">A0_RAW</span>
+            <span id="osc-a0" class="text-xs font-bold">—</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SEARCH TAB -->
+    <div id="panel-search" class="tab-content flex-1 overflow-y-auto p-5 space-y-4">
+      <h3 class="text-[10px] font-bold tracking-[0.2em] text-outline uppercase">SEMANTIC_SEARCH</h3>
+      <div class="relative">
+        <input id="search-input" type="text" placeholder="Query memory vector store..."
+          class="w-full bg-surface-container-lowest border-b border-outline-variant py-3 px-4 focus:outline-none focus:border-tertiary text-xs font-body text-on-surface placeholder-outline-variant/50"/>
+        <button onclick="doSearch()" class="absolute right-3 top-3 text-outline hover:text-primary">
+          <span class="material-symbols-outlined text-sm">search</span>
+        </button>
+      </div>
+      <div id="search-results" class="space-y-2"></div>
+    </div>
+
+    <!-- METRICS TAB -->
+    <div id="panel-metrics" class="tab-content flex-1 overflow-y-auto p-5 space-y-6">
+      <div class="flex justify-between items-center">
+        <h3 class="text-[10px] font-bold tracking-[0.2em] text-outline uppercase">SYSTEM_METRICS</h3>
+        <button onclick="loadMetrics()" class="text-[8px] text-[#6c47ff] font-bold uppercase">↻ REFRESH</button>
+      </div>
+
+      <!-- Perfil del usuario -->
+      <div>
+        <h4 class="text-[9px] font-bold text-outline uppercase mb-3 flex items-center gap-2">
+          <span class="material-symbols-outlined text-sm text-[#6c47ff]">person</span>
+          USER_PROFILE
+        </h4>
+        <div id="metrics-profile" class="space-y-2">
+          <p class="text-[10px] text-outline-variant">Cargando perfil...</p>
+        </div>
+      </div>
+
+      <!-- Métricas de memoria -->
+      <div>
+        <h4 class="text-[9px] font-bold text-outline uppercase mb-3 flex items-center gap-2">
+          <span class="material-symbols-outlined text-sm text-tertiary">memory</span>
+          MEMORY_STATS
+        </h4>
+        <div class="grid grid-cols-2 gap-2">
+          <div class="bg-surface-container p-3">
+            <span class="text-[8px] text-outline block">HECHOS</span>
+            <span id="m-facts" class="text-xl font-bold text-primary">—</span>
+          </div>
+          <div class="bg-surface-container p-3">
+            <span class="text-[8px] text-outline block">MENSAJES</span>
+            <span id="m-msgs" class="text-xl font-bold text-tertiary">—</span>
+          </div>
+          <div class="bg-surface-container p-3">
+            <span class="text-[8px] text-outline block">NODOS GRAFO</span>
+            <span id="m-nodes" class="text-xl font-bold text-secondary-container">—</span>
+          </div>
+          <div class="bg-surface-container p-3">
+            <span class="text-[8px] text-outline block">ARISTAS</span>
+            <span id="m-edges" class="text-xl font-bold">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Métricas de hardware -->
+      <div>
+        <h4 class="text-[9px] font-bold text-outline uppercase mb-3 flex items-center gap-2">
+          <span class="material-symbols-outlined text-sm text-secondary-container">developer_board</span>
+          HARDWARE_STATS
+        </h4>
+        <div class="grid grid-cols-2 gap-2">
+          <div class="bg-surface-container p-3">
+            <span class="text-[8px] text-outline block">DISPOSITIVOS</span>
+            <span id="m-devices" class="text-xl font-bold text-secondary-container">—</span>
+          </div>
+          <div class="bg-surface-container p-3">
+            <span class="text-[8px] text-outline block">FLASHES</span>
+            <span id="m-flashes" class="text-xl font-bold text-[#6c47ff]">—</span>
+          </div>
+          <div class="bg-surface-container p-3">
+            <span class="text-[8px] text-outline block">EXITOSOS</span>
+            <span id="m-success" class="text-xl font-bold text-secondary-container">—</span>
+          </div>
+          <div class="bg-surface-container p-3">
+            <span class="text-[8px] text-outline block">FALLIDOS</span>
+            <span id="m-failed" class="text-xl font-bold text-error">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tasa de éxito -->
+      <div>
+        <h4 class="text-[9px] font-bold text-outline uppercase mb-2 flex items-center gap-2">
+          <span class="material-symbols-outlined text-sm text-[#ffaa00]">task_alt</span>
+          SUCCESS_RATE
+        </h4>
+        <div class="bg-surface-container p-3">
+          <div class="flex justify-between items-center mb-2">
+            <span class="text-[9px] text-outline-variant">Flash success rate</span>
+            <span id="m-rate" class="text-[10px] font-bold text-secondary-container">—%</span>
+          </div>
+          <div class="w-full bg-surface-container-highest h-1.5">
+            <div id="m-rate-bar" class="h-1.5 bg-secondary-container transition-all duration-500" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Plugins -->
+      <div>
+        <h4 class="text-[9px] font-bold text-outline uppercase mb-3 flex items-center gap-2">
+          <span class="material-symbols-outlined text-sm text-[#3cd7ff]">extension</span>
+          PLUGINS
+        </h4>
+        <div id="metrics-plugins" class="space-y-1">
+          <p class="text-[10px] text-outline-variant">Sin plugins cargados</p>
+        </div>
+      </div>
+
+      <!-- Proactive engine status -->
+      <div>
+        <h4 class="text-[9px] font-bold text-outline uppercase mb-3 flex items-center gap-2">
+          <span class="material-symbols-outlined text-sm text-[#6c47ff]">notifications_active</span>
+          PROACTIVE_ENGINE
+        </h4>
+        <div id="metrics-proactive" class="bg-surface-container p-3 space-y-1">
+          <p class="text-[10px] text-outline-variant">Cargando...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- LOGS TAB -->
+    <div id="panel-logs" class="tab-content flex-1 overflow-y-auto p-5">
+      <h3 class="text-[10px] font-bold tracking-[0.2em] text-outline uppercase mb-4">SYSTEM_LOGS</h3>
+      <div id="logs-list" class="space-y-1 font-body text-[10px]"></div>
+    </div>
+
+    <!-- Footer -->
+    <div class="p-4 bg-surface-container-low border-t border-[#34343d]/15 flex-shrink-0">
+      <button onclick="loadHardware()" class="w-full bg-primary-container text-on-primary-fixed py-3 text-[10px] font-bold tracking-[0.3em] uppercase hover:bg-primary transition-all active:scale-[0.98]">
+        CONNECT NEW DEVICE
+      </button>
+    </div>
+  </aside>
+</main>
+
+<!-- ── VISION MODAL ─────────────────────────────────────────── -->
+<div id="vision-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80">
+  <div class="bg-[#13131b] border border-outline-variant/30 w-full max-w-lg mx-4 flex flex-col">
+
+    <!-- Header -->
+    <div class="flex justify-between items-center px-6 py-4 border-b border-outline-variant/20">
+      <div class="flex items-center gap-3">
+        <span class="material-symbols-outlined text-[#3cd7ff]">photo_camera</span>
+        <span class="text-[10px] font-bold tracking-[0.2em] uppercase text-outline">CIRCUIT_VISION_ANALYZER</span>
+      </div>
+      <button onclick="closeVisionModal()" class="text-outline hover:text-error transition-colors">
+        <span class="material-symbols-outlined text-sm">close</span>
+      </button>
+    </div>
+
+    <!-- Body -->
+    <div class="p-6 space-y-4">
+
+      <!-- Drop zone / preview -->
+      <div id="vision-dropzone"
+        class="border-2 border-dashed border-outline-variant/40 hover:border-[#3cd7ff]/60 transition-colors flex flex-col items-center justify-center p-8 cursor-pointer relative"
+        onclick="document.getElementById('vision-file-input').click()"
+        ondragover="event.preventDefault()"
+        ondrop="handleVisionDrop(event)">
+        <input id="vision-file-input" type="file" accept="image/*" class="hidden" onchange="handleVisionFile(event)"/>
+        <img id="vision-preview" class="hidden max-h-48 object-contain mb-3"/>
+        <div id="vision-placeholder" class="flex flex-col items-center gap-2 text-outline-variant">
+          <span class="material-symbols-outlined text-4xl">image</span>
+          <span class="text-[10px] uppercase tracking-widest">Arrastrá una imagen o hacé click</span>
+          <span class="text-[9px]">JPG, PNG, WEBP — foto del circuito</span>
+        </div>
+      </div>
+
+      <!-- Device selector -->
+      <div>
+        <label class="text-[9px] text-outline uppercase tracking-widest block mb-1">Asociar a dispositivo (opcional)</label>
+        <div class="flex gap-2">
+          <input id="vision-device" type="text" placeholder="ej: Arduino Uno"
+            class="flex-1 bg-surface-container-lowest border-b border-outline-variant py-2 px-3 text-xs font-body text-on-surface placeholder-outline-variant/50 focus:outline-none focus:border-tertiary"/>
+          <button onclick="loadDevicesForVision()" class="text-[8px] text-[#6c47ff] hover:text-primary font-bold uppercase px-2">
+            SCAN
+          </button>
+        </div>
+        <div id="vision-devices-list" class="mt-2 space-y-1"></div>
+      </div>
+
+      <!-- Status -->
+      <div id="vision-status" class="hidden text-[10px] text-outline-variant space-y-1">
+        <div class="flex items-center gap-2">
+          <span id="vision-status-dot" class="w-2 h-2 bg-outline-variant animate-pulse"></span>
+          <span id="vision-status-text">Analizando circuito...</span>
+        </div>
+        <div class="w-full bg-surface-container-highest h-0.5">
+          <div id="vision-progress" class="h-0.5 bg-[#3cd7ff] transition-all duration-300" style="width:0%"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="px-6 pb-6 flex gap-3">
+      <button onclick="closeVisionModal()" class="flex-1 border border-outline-variant/30 py-3 text-[10px] font-bold tracking-widest uppercase text-outline hover:border-outline transition-colors">
+        CANCEL
+      </button>
+      <button id="vision-analyze-btn" onclick="analyzeCircuit()"
+        class="flex-1 bg-[#3cd7ff]/10 border border-[#3cd7ff]/40 text-[#3cd7ff] py-3 text-[10px] font-bold tracking-widest uppercase hover:bg-[#3cd7ff]/20 transition-all disabled:opacity-40 disabled:pointer-events-none">
+        ANALYZE_CIRCUIT
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Background Decoration -->
+<div class="fixed inset-0 pointer-events-none z-[-1] opacity-20">
+  <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-[#6c47ff] blur-[200px] rounded-full"></div>
+  <div class="absolute bottom-0 left-0 w-[400px] h-[400px] bg-[#3cd7ff] blur-[180px] rounded-full"></div>
+</div>
+
+<script>
+const API = `http://${location.hostname}:8000/api`;
+const WS_URL      = `ws://${location.hostname}:8000/ws/chat`;
+const WS_SIGNAL   = `ws://${location.hostname}:8000/ws/signal`;
+const WS_PROACTIVE = `ws://${location.hostname}:8000/ws/proactive`;
+
+let ws, wsSignal, wsProactive;
+let isStreaming = false;
+let currentAgentEl = null;
+let signalBuffer = [];
+
+// ── NAVIGATION ────────────────────────────────────────────
+function switchNav(tab) {
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.classList.remove('active');
+    el.classList.add('text-[#34343d]');
+  });
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+
+  const navEl = document.getElementById(`nav-${tab}`);
+  const panelEl = document.getElementById(`panel-${tab}`);
+  if (navEl) { navEl.classList.add('active'); navEl.classList.remove('text-[#34343d]'); }
+  if (panelEl) panelEl.classList.add('active');
+
+  if (tab === 'hardware') loadHardware();
+  if (tab === 'graph')    loadGraph();
+  if (tab === 'memory')   loadFacts();
+  if (tab === 'metrics')  loadMetrics();
+}
+
+// ── WEBSOCKET CHAT ────────────────────────────────────────
+function connectWS() {
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    setConnected(true);
+    addLog('WebSocket conectado', 'info');
+    loadStats();
+    loadFacts();
+  };
+
+  ws.onclose = () => {
+    setConnected(false);
+    addLog('WebSocket desconectado — reconectando...', 'warn');
+    setTimeout(connectWS, 2000);
+  };
+
+  ws.onerror = () => addLog('Error de WebSocket', 'error');
+
+  ws.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+
+    if (data.type === 'token') {
+      appendToken(data.content);
+
+    } else if (data.type === 'done') {
+      finishStreaming(data);
+      if (data.facts)  updateFacts(data.facts);
+      loadStats();
+      if (data.graph)  updateGraphStats(data.graph);
+
+    } else if (data.type === 'error') {
+      finishStreaming(null);
+      addLog(`Error: ${data.content}`, 'error');
+      addMessage('agent', `Error: ${data.content}`, []);
+    }
+  };
+}
+
+function setConnected(ok) {
+  const dot   = document.getElementById('conn-dot');
+  const label = document.getElementById('conn-label');
+  const edot  = document.getElementById('engine-dot');
+  const estat = document.getElementById('engine-status');
+  if (ok) {
+    dot.className   = 'w-2 h-2 bg-secondary-container animate-pulse';
+    label.className = 'text-[10px] tracking-widest text-secondary-container';
+    label.textContent = 'ACTIVE CONNECTION';
+    edot.className  = 'w-1 h-1 bg-secondary-container';
+    estat.textContent = 'ENGINE_STABLE';
+  } else {
+    dot.className   = 'w-2 h-2 bg-gray-500';
+    label.className = 'text-[10px] tracking-widest text-gray-500';
+    label.textContent = 'DISCONNECTED';
+    edot.className  = 'w-1 h-1 bg-outline-variant';
+    estat.textContent = 'ENGINE_OFFLINE';
+  }
+}
+
+// ── CHAT ─────────────────────────────────────────────────
+function sendMessage() {
+  const input = document.getElementById('prompt');
+  const text  = input.value.trim();
+  if (!text || isStreaming || !ws || ws.readyState !== 1) return;
+
+  addMessage('user', text, []);
+  input.value = '';
+  isStreaming = true;
+  document.getElementById('send-btn').classList.add('opacity-50', 'pointer-events-none');
+
+  currentAgentEl = addMessage('agent', '', [], true);
+  addLog(`CMD: ${text.slice(0, 50)}`, 'cmd');
+
+  ws.send(JSON.stringify({ message: text }));
+}
+
+function addMessage(role, content, agents = [], streaming = false) {
+  const msgs = document.getElementById('messages');
+  const ts   = new Date().toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+
+  const div = document.createElement('div');
+
+  if (role === 'user') {
+    div.className = 'flex flex-col items-end';
+    div.innerHTML = `
+      <div class="bg-surface-container-low p-4 max-w-[85%] border-r-2 border-primary/20">
+        <div class="flex justify-between items-center mb-2">
+          <span class="text-[9px] font-bold text-outline-variant uppercase">USR_INPUT</span>
+          <span class="text-[9px] text-outline-variant">${ts}</span>
+        </div>
+        <p class="text-sm leading-relaxed text-on-surface-variant">${escHtml(content)}</p>
+      </div>`;
+  } else {
+    const agentBadges = (agents || []).map(a => {
+      const colors = {
+        memory:   'bg-[#6c47ff]/20 text-[#c9beff]',
+        hardware: 'bg-[#3cd7ff]/20 text-[#3cd7ff]',
+        research: 'bg-surface-container-highest text-outline',
+        code:     'bg-[#34ff8d]/20 text-[#34ff8d]',
+        direct:   'bg-surface-container-highest text-outline',
+      };
+      const cls = colors[a] || 'bg-surface-container-highest text-outline';
+      return `<span class="px-1.5 py-0.5 ${cls} text-[8px] font-bold uppercase">AGNT_${a.toUpperCase()}</span>`;
+    }).join('');
+
+    div.className = 'flex flex-col items-start space-y-2';
+    div.innerHTML = `
+      <div class="bg-primary-container/10 p-5 max-w-[90%] border-l-2 border-[#6c47ff]">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="text-[10px] font-black text-[#6c47ff] tracking-tighter uppercase font-headline">STRATUM_ENGINE</span>
+          <div class="flex gap-1 flex-wrap">${agentBadges}</div>
+          <span class="text-[9px] text-outline-variant ml-auto">${ts}</span>
+        </div>
+        <div class="text-sm leading-relaxed text-on-primary-container agent-content${streaming ? ' blinking-cursor' : ''}">${escHtml(content)}</div>
+      </div>`;
+  }
+
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return role === 'agent' ? div.querySelector('.agent-content') : null;
+}
+
+function appendToken(token) {
+  if (!currentAgentEl) return;
+  currentAgentEl.classList.remove('blinking-cursor');
+  currentAgentEl.textContent += token;
+  currentAgentEl.classList.add('blinking-cursor');
+  document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+}
+
+function finishStreaming(data) {
+  if (currentAgentEl) {
+    currentAgentEl.classList.remove('blinking-cursor');
+    // Actualizar badges con agentes reales
+    if (data && data.agents_used && data.agents_used.length) {
+      const badgeContainer = currentAgentEl.closest('.bg-primary-container\\/10').querySelector('.flex.gap-1');
+      if (badgeContainer) {
+        const colors = { memory:'bg-[#6c47ff]/20 text-[#c9beff]', hardware:'bg-[#3cd7ff]/20 text-[#3cd7ff]', research:'bg-surface-container-highest text-outline', code:'bg-[#34ff8d]/20 text-[#34ff8d]', direct:'bg-surface-container-highest text-outline' };
+        badgeContainer.innerHTML = data.agents_used.map(a => {
+          const cls = colors[a] || 'bg-surface-container-highest text-outline';
+          return `<span class="px-1.5 py-0.5 ${cls} text-[8px] font-bold uppercase">AGNT_${a.toUpperCase()}</span>`;
+        }).join('');
+      }
+    }
+  }
+  isStreaming = false;
+  currentAgentEl = null;
+  document.getElementById('send-btn').classList.remove('opacity-50', 'pointer-events-none');
+  addLog('Response complete', 'info');
+}
+
+// ── METRICS ───────────────────────────────────────────────
+async function loadMetrics() {
+  try {
+    // Cargar stats generales, hardware, perfil y plugins en paralelo
+    const [statsR, hwR, profileR, pluginsR, proactiveR] = await Promise.all([
+      fetch(`${API}/stats`).then(r => r.json()),
+      fetch(`${API}/hardware/stats`).then(r => r.json()),
+      fetch(`${API}/profile`).then(r => r.json()),
+      fetch(`${API}/plugins`).then(r => r.json()),
+      fetch(`${API}/proactive/status`).then(r => r.json()),
+    ]);
+
+    // Memoria
+    document.getElementById('m-facts').textContent  = statsR.facts_count   ?? '—';
+    document.getElementById('m-msgs').textContent   = statsR.messages_count ?? '—';
+    document.getElementById('m-nodes').textContent  = statsR.graph_nodes    ?? '—';
+    document.getElementById('m-edges').textContent  = statsR.graph_edges    ?? '—';
+
+    // Hardware
+    const hw = hwR.stats || {};
+    document.getElementById('m-devices').textContent = hw.devices       ?? '—';
+    document.getElementById('m-flashes').textContent = hw.total_flashes ?? '—';
+    document.getElementById('m-success').textContent = hw.successful    ?? '—';
+    document.getElementById('m-failed').textContent  = hw.failed        ?? '—';
+
+    // Tasa de éxito
+    const total = hw.total_flashes || 0;
+    const succ  = hw.successful    || 0;
+    const rate  = total > 0 ? Math.round((succ / total) * 100) : 0;
+    document.getElementById('m-rate').textContent     = `${rate}%`;
+    document.getElementById('m-rate-bar').style.width = `${rate}%`;
+    document.getElementById('m-rate-bar').className   =
+      `h-1.5 transition-all duration-500 ${rate >= 80 ? 'bg-secondary-container' : rate >= 50 ? 'bg-[#ffaa00]' : 'bg-error'}`;
+
+    // Perfil del usuario
+    const profile = profileR.profile || {};
+    const profileEl = document.getElementById('metrics-profile');
+    if (profile.interaction_count > 0) {
+      const expertiseColors = {
+        avanzado:    'text-secondary-container',
+        intermedio:  'text-[#ffaa00]',
+        principiante:'text-tertiary',
+        desconocido: 'text-outline',
+      };
+      const ec = expertiseColors[profile.expertise] || 'text-outline';
+      profileEl.innerHTML = `
+        <div class="grid grid-cols-2 gap-2">
+          <div class="bg-surface-container p-2">
+            <span class="text-[8px] text-outline block">EXPERTISE</span>
+            <span class="text-[10px] font-bold ${ec}">${escHtml(profile.expertise || '—')}</span>
+          </div>
+          <div class="bg-surface-container p-2">
+            <span class="text-[8px] text-outline block">INTERACCIONES</span>
+            <span class="text-[10px] font-bold text-primary">${profile.interaction_count}</span>
+          </div>
+        </div>
+        ${profile.platforms?.length ? `
+        <div class="bg-surface-container p-2">
+          <span class="text-[8px] text-outline block mb-1">PLATAFORMAS</span>
+          <div class="flex flex-wrap gap-1">
+            ${profile.platforms.map(p => `<span class="text-[8px] px-1 bg-[#6c47ff]/20 text-[#c9beff]">${escHtml(p)}</span>`).join('')}
+          </div>
+        </div>` : ''}
+        ${profile.last_topics?.length ? `
+        <div class="bg-surface-container p-2">
+          <span class="text-[8px] text-outline block mb-1">TEMAS RECIENTES</span>
+          <div class="flex flex-wrap gap-1">
+            ${profile.last_topics.map(t => `<span class="text-[8px] px-1 bg-surface-container-highest text-outline-variant">${escHtml(t)}</span>`).join('')}
+          </div>
+        </div>` : ''}
+        ${profile.response_style ? `
+        <div class="bg-surface-container p-2">
+          <span class="text-[8px] text-outline block">ESTILO PREFERIDO</span>
+          <span class="text-[9px] text-on-surface-variant">${escHtml(profile.response_style)}</span>
+        </div>` : ''}`;
+    } else {
+      profileEl.innerHTML = '<p class="text-[10px] text-outline-variant">Perfil en construcción — seguí usando Stratum para que aprenda tu estilo.</p>';
+    }
+
+    // Plugins
+    const pluginsEl = document.getElementById('metrics-plugins');
+    const plugins   = pluginsR.plugins || [];
+    if (plugins.length) {
+      pluginsEl.innerHTML = plugins.map(p => `
+        <div class="bg-surface-container p-2 border-l-2 border-[#3cd7ff]/40">
+          <div class="flex justify-between items-center">
+            <span class="text-[9px] font-bold text-[#3cd7ff]">${escHtml(p.name)}</span>
+            <span class="text-[8px] text-outline">v${escHtml(p.version)}</span>
+          </div>
+          <p class="text-[8px] text-outline-variant mt-0.5">${escHtml(p.description)}</p>
+          <div class="flex gap-1 mt-1 flex-wrap">
+            ${p.tools.map(t => `<span class="text-[8px] px-1 bg-surface-container-highest text-outline">${escHtml(t)}</span>`).join('')}
+          </div>
+        </div>`).join('');
+    } else {
+      pluginsEl.innerHTML = '<p class="text-[10px] text-outline-variant">Sin plugins. Agregá archivos en <code class="text-[#6c47ff]">tools/plugins/</code></p>';
+    }
+
+    // Proactive engine
+    const proactEl = document.getElementById('metrics-proactive');
+    proactEl.innerHTML = `
+      <div class="flex items-center gap-2 mb-2">
+        <span class="w-2 h-2 ${proactiveR.running ? 'bg-secondary-container animate-pulse' : 'bg-error'}"></span>
+        <span class="text-[9px] font-bold ${proactiveR.running ? 'text-secondary-container' : 'text-error'}">
+          ${proactiveR.running ? 'ACTIVO' : 'INACTIVO'}
+        </span>
+        <span class="text-[8px] text-outline ml-auto">${proactiveR.clients} cliente(s) conectado(s)</span>
+      </div>
+      <div class="grid grid-cols-2 gap-1 text-[8px] text-outline-variant">
+        <span>Device check: ${proactiveR.intervals?.device_check_seconds}s</span>
+        <span>Inactivity: ${proactiveR.intervals?.inactive_check_seconds}s</span>
+        <span>Errors: ${proactiveR.intervals?.error_check_seconds}s</span>
+        <span>Nightly: 00:00hs</span>
+      </div>`;
+
+  } catch(e) {
+    console.error('Error cargando métricas:', e);
+  }
+}
+
+// ── API CALLS ─────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const r = await fetch(`${API}/stats`);
+    const d = await r.json();
+    document.getElementById('h-facts').textContent  = d.facts_count;
+    document.getElementById('h-msgs').textContent   = d.messages_count;
+    document.getElementById('h-nodes').textContent  = d.graph_nodes;
+    document.getElementById('h-devices').textContent = (d.hw_devices || 0) + ' ACTIVE';
+    document.getElementById('s-facts').textContent  = d.facts_count;
+    document.getElementById('s-msgs').textContent   = d.messages_count;
+    document.getElementById('s-nodes').textContent  = d.graph_nodes;
+    document.getElementById('s-edges').textContent  = d.graph_edges;
+    document.getElementById('hw-devices').textContent = d.hw_devices || 0;
+    document.getElementById('hw-flashes').textContent = d.hw_flashes || 0;
+  } catch(e) {}
+}
+
+async function loadFacts() {
+  try {
+    const r = await fetch(`${API}/facts`);
+    const d = await r.json();
+    updateFacts(d.facts);
+  } catch(e) {}
+}
+
+function updateFacts(facts) {
+  const el      = document.getElementById('facts-list');
+  const countEl = document.getElementById('facts-count');
+  const entries = Object.entries(facts || {});
+  countEl.textContent = entries.length + ' TOTAL';
+
+  if (!entries.length) {
+    el.innerHTML = '<p class="text-[10px] text-outline-variant">Sin hechos registrados</p>';
+    return;
+  }
+
+  el.innerHTML = entries.map(([k, v]) => `
+    <div class="bg-surface-container p-3 border-l-4 border-tertiary">
+      <span class="text-[8px] font-bold text-tertiary block mb-1">${escHtml(k.toUpperCase())}</span>
+      <span class="text-xs text-on-surface-variant">${escHtml(v)}</span>
+    </div>
+  `).join('');
+}
+
+async function loadGraph() {
+  try {
+    const r = await fetch(`${API}/graph`);
+    const d = await r.json();
+    updateGraphStats(d.stats);
+    const el = document.getElementById('graph-list');
+    if (!d.relations.length) {
+      el.innerHTML = '<p class="text-[10px] text-outline-variant">Sin relaciones aún</p>';
+      return;
+    }
+    el.innerHTML = d.relations.slice(0, 30).map(rel => `
+      <div class="bg-surface-container p-2 text-[10px]">
+        <span class="text-primary">${escHtml(rel.subject)}</span>
+        <span class="text-outline mx-1">→${escHtml(rel.predicate)}→</span>
+        <span class="text-secondary-container">${escHtml(rel.object)}</span>
+      </div>
+    `).join('');
+  } catch(e) {}
+}
+
+function updateGraphStats(stats) {
+  if (!stats) return;
+  document.getElementById('h-nodes').textContent = stats.nodes;
+  document.getElementById('s-nodes').textContent = stats.nodes;
+  document.getElementById('s-edges').textContent = stats.edges;
+}
+
+async function loadHardware() {
+  try {
+    const r = await fetch(`${API}/hardware/devices`);
+    const d = await r.json();
+
+    document.getElementById('hw-devices').textContent  = d.stats.devices;
+    document.getElementById('hw-flashes').textContent  = d.stats.total_flashes;
+    document.getElementById('hw-success').textContent  = d.stats.successful;
+    document.getElementById('hw-failed').textContent   = d.stats.failed;
+
+    const el = document.getElementById('devices-list');
+
+    const connected  = d.connected  || [];
+    const registered = d.registered || [];
+    const connNames  = new Set(connected.map(x => x.name));
+
+    // Combinar conectados + registrados
+    const allDevices = [...connected];
+    registered.forEach(reg => {
+      if (!connNames.has(reg.name)) allDevices.push({...reg, _offline: true});
+    });
+
+    if (!allDevices.length) {
+      el.innerHTML = '<p class="text-[10px] text-outline-variant">Sin dispositivos detectados</p>';
+      return;
+    }
+
+    el.innerHTML = allDevices.map(d => {
+      const online  = !d._offline;
+      const opacity = online ? '' : 'opacity-50';
+      const status  = online
+        ? '<span class="text-[8px] text-secondary-container font-black">ONLINE</span>'
+        : '<span class="text-[8px] text-error font-black uppercase">OFFLINE</span>';
+      const platform = d.platform || 'UNKNOWN';
+      const port     = d.port || '—';
+
+      return `
+        <div class="flex items-center gap-4 p-3 bg-surface-container-low border border-outline-variant/10 ${opacity} cursor-pointer hover:bg-surface-container transition-colors"
+             onclick="loadDeviceHistory('${escHtml(d.name)}')">
+          <div class="w-10 h-10 bg-${online ? 'secondary-container' : 'outline-variant'}/10 flex items-center justify-center">
+            <span class="material-symbols-outlined text-${online ? 'secondary-container' : 'outline'}">developer_board</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex justify-between items-center">
+              <span class="text-xs font-bold truncate">${escHtml(d.name)}</span>
+              ${status}
+            </div>
+            <div class="flex gap-2 mt-1 flex-wrap">
+              <span class="text-[8px] px-1 bg-surface-container-highest text-outline uppercase">${escHtml(port)}</span>
+              <span class="text-[8px] px-1 bg-surface-container-highest text-outline uppercase">${escHtml(platform.split(':')[0])}</span>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+
+  } catch(e) {
+    document.getElementById('devices-list').innerHTML = '<p class="text-[10px] text-error">Error conectando con el servidor</p>';
+  }
+}
+
+async function loadDeviceHistory(deviceName) {
+  try {
+    const r = await fetch(`${API}/hardware/firmware/${encodeURIComponent(deviceName)}`);
+    const d = await r.json();
+
+    const el = document.getElementById('devices-list');
+    const current = d.current;
+    const history = d.history || [];
+
+    let html = `
+      <button onclick="loadHardware()" class="text-[8px] text-[#6c47ff] mb-3 hover:underline">← BACK</button>
+      <div class="text-[10px] font-bold text-outline uppercase mb-2">${escHtml(deviceName)}</div>`;
+
+    if (current) {
+      html += `
+        <div class="bg-surface-container p-3 border-l-4 border-secondary-container mb-3">
+          <span class="text-[8px] text-secondary-container font-bold block mb-1">CURRENT FIRMWARE</span>
+          <p class="text-[10px] text-on-surface-variant mb-1">${escHtml(current.task)}</p>
+          <span class="text-[8px] text-outline">${current.timestamp}</span>
+          <pre class="mt-2 text-[9px] text-tertiary bg-[#0e0d15] p-2 overflow-x-auto">${escHtml(current.code.slice(0, 200))}</pre>
+        </div>`;
+    }
+
+    if (history.length) {
+      html += `<div class="text-[9px] text-outline uppercase mb-2">HISTORY (${history.length})</div>`;
+      html += history.map(h => `
+        <div class="bg-surface-container-low p-2 mb-1 border-l-2 ${h.success ? 'border-secondary-container' : 'border-error'}">
+          <p class="text-[9px] text-on-surface-variant">${escHtml(h.task.slice(0, 60))}</p>
+          <span class="text-[8px] text-outline">${h.timestamp}</span>
+        </div>`).join('');
+    }
+
+    el.innerHTML = html;
+  } catch(e) {}
+}
+
+// ── SEARCH ────────────────────────────────────────────────
+async function doSearch() {
+  const q  = document.getElementById('search-input').value.trim();
+  const el = document.getElementById('search-results');
+  if (!q) return;
+  el.innerHTML = '<p class="text-[10px] text-outline-variant">Buscando...</p>';
+  try {
+    const r = await fetch(`${API}/search?q=${encodeURIComponent(q)}&top_k=5`);
+    const d = await r.json();
+    if (!d.results.length) {
+      el.innerHTML = '<p class="text-[10px] text-outline-variant">Sin resultados</p>';
+      return;
+    }
+    el.innerHTML = d.results.map(res => `
+      <div class="bg-surface-container p-3 border-l-2 border-outline-variant/30 text-[10px] text-on-surface-variant leading-relaxed">
+        ${escHtml(res)}
+      </div>`).join('');
+  } catch(e) {
+    el.innerHTML = '<p class="text-[10px] text-error">Error en búsqueda</p>';
+  }
+}
+
+// ── SIGNAL (OSCILLOSCOPE) ─────────────────────────────────
+function connectSignalWS() {
+  wsSignal = new WebSocket(WS_SIGNAL);
+  wsSignal.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    if (data.type === 'signal' || data.a0 !== undefined) {
+      const point = data.data || data;
+      signalBuffer.push(point);
+      if (signalBuffer.length > 40) signalBuffer.shift();
+      renderOscilloscope(point);
+    }
+  };
+  wsSignal.onclose = () => setTimeout(connectSignalWS, 3000);
+}
+
+function renderOscilloscope(latest) {
+  const bars = signalBuffer.slice(-13);
+  const max  = Math.max(...bars.map(b => b.a0 || 0), 1);
+
+  document.getElementById('osc-bars').innerHTML = bars.map((b, i) => {
+    const pct = Math.round(((b.a0 || 0) / 1023) * 100);
+    const isLast = i === bars.length - 1;
+    const color = isLast ? 'bg-[#6c47ff]' : 'bg-tertiary';
+    const opacity = isLast ? '/80' : '/40';
+    return `<div class="flex-1 signal-bar ${color}${opacity}" style="height:${Math.max(pct,3)}%"></div>`;
+  }).join('');
+
+  if (latest) {
+    document.getElementById('osc-volt').textContent = (latest.v || 0).toFixed(2) + 'V';
+    document.getElementById('osc-a0').textContent   = latest.a0 || 0;
+    document.getElementById('osc-status').textContent = 'CH_01: ACTIVE';
+    document.getElementById('osc-status').className = 'text-[8px] text-secondary-container';
+  }
+}
+
+function renderIdleOscilloscope() {
+  const bars = Array.from({length: 13}, (_, i) => {
+    const heights = [40,60,85,45,30,50,90,70,40,20,65,95,50];
+    return heights[i];
+  });
+  document.getElementById('osc-bars').innerHTML = bars.map((h, i) => {
+    const color = i === 7 ? 'bg-[#6c47ff]' : 'bg-tertiary';
+    return `<div class="flex-1 ${color}/20" style="height:${h}%"></div>`;
+  }).join('');
+}
+
+// ── LOGS ─────────────────────────────────────────────────
+function addLog(msg, type = 'info') {
+  const el = document.getElementById('logs-list');
+  const ts = new Date().toLocaleTimeString('es', {hour12: false});
+  const colors = {
+    info:  'text-outline-variant',
+    warn:  'text-[#ffaa00]',
+    error: 'text-error',
+    cmd:   'text-[#6c47ff]',
+  };
+  const color = colors[type] || 'text-outline-variant';
+  const line  = document.createElement('div');
+  line.className = `${color} leading-relaxed`;
+  line.textContent = `[${ts}] ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+  if (el.children.length > 200) el.removeChild(el.firstChild);
+}
+
+// ── UTIL ─────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── VISION MODAL ─────────────────────────────────────────
+let visionImageB64 = null;
+
+function openVisionModal() {
+  document.getElementById('vision-modal').classList.remove('hidden');
+  document.getElementById('vision-modal').classList.add('flex');
+  loadDevicesForVision();
+}
+
+function closeVisionModal() {
+  document.getElementById('vision-modal').classList.add('hidden');
+  document.getElementById('vision-modal').classList.remove('flex');
+  // Reset
+  visionImageB64 = null;
+  document.getElementById('vision-preview').classList.add('hidden');
+  document.getElementById('vision-preview').src = '';
+  document.getElementById('vision-placeholder').classList.remove('hidden');
+  document.getElementById('vision-status').classList.add('hidden');
+  document.getElementById('vision-analyze-btn').disabled = true;
+}
+
+function handleVisionFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  loadVisionImage(file);
+}
+
+function handleVisionDrop(event) {
+  event.preventDefault();
+  const file = event.dataTransfer.files[0];
+  if (!file || !file.type.startsWith('image/')) return;
+  loadVisionImage(file);
+}
+
+function loadVisionImage(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const dataUrl = e.target.result;
+    // Extraer solo el base64 sin el prefijo data:image/...;base64,
+    visionImageB64 = dataUrl.split(',')[1];
+
+    // Mostrar preview
+    const preview = document.getElementById('vision-preview');
+    preview.src   = dataUrl;
+    preview.classList.remove('hidden');
+    document.getElementById('vision-placeholder').classList.add('hidden');
+    document.getElementById('vision-analyze-btn').disabled = false;
+    addLog(`Imagen cargada: ${file.name} (${(file.size/1024).toFixed(0)}KB)`, 'info');
+  };
+  reader.readAsDataURL(file);
+}
+
+async function loadDevicesForVision() {
+  try {
+    const r = await fetch(`${API}/hardware/devices`);
+    const d = await r.json();
+    const all = [...(d.connected || []), ...(d.registered || [])];
+    const el  = document.getElementById('vision-devices-list');
+    if (!all.length) { el.innerHTML = ''; return; }
+    el.innerHTML = all.slice(0, 5).map(dev => `
+      <button onclick="document.getElementById('vision-device').value='${escHtml(dev.name)}'"
+        class="text-[8px] px-2 py-1 bg-surface-container text-outline hover:text-primary-container hover:bg-surface-container-high transition-colors mr-1 mb-1">
+        ${escHtml(dev.name)}
+      </button>`).join('');
+  } catch(e) {}
+}
+
+async function analyzeCircuit() {
+  if (!visionImageB64) return;
+
+  const deviceName = document.getElementById('vision-device').value.trim();
+  const btn        = document.getElementById('vision-analyze-btn');
+  const statusEl   = document.getElementById('vision-status');
+  const progressEl = document.getElementById('vision-progress');
+  const statusText = document.getElementById('vision-status-text');
+  const statusDot  = document.getElementById('vision-status-dot');
+
+  btn.disabled = true;
+  statusEl.classList.remove('hidden');
+  statusDot.className = 'w-2 h-2 bg-[#3cd7ff] animate-pulse';
+
+  // Simular progreso visual mientras espera la respuesta del LLM
+  let progress = 0;
+  const progressInterval = setInterval(() => {
+    progress = Math.min(progress + 2, 85);
+    progressEl.style.width = progress + '%';
+    if (progress < 30)      statusText.textContent = 'Enviando imagen a LLaVA...';
+    else if (progress < 60) statusText.textContent = 'Identificando componentes...';
+    else                    statusText.textContent = 'Extrayendo conexiones...';
+  }, 400);
+
+  addLog('Analizando circuito con LLaVA...', 'cmd');
+
+  try {
+    const r = await fetch(`${API}/hardware/vision/analyze`, {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({ image: visionImageB64, device_name: deviceName }),
+    });
+    const result = await r.json();
+
+    clearInterval(progressInterval);
+    progressEl.style.width = '100%';
+
+    if (result.success) {
+      statusDot.className  = 'w-2 h-2 bg-secondary-container';
+      statusText.textContent = '✓ Análisis completado';
+      addLog('Circuito analizado correctamente', 'info');
+
+      // Mostrar resultado en el chat como mensaje del agente
+      addMessage('agent', result.message, ['hardware']);
+
+      // Mostrar en panel hardware
+      renderVisionResults(result.circuit);
+
+      // Cerrar modal después de un momento
+      setTimeout(closeVisionModal, 1500);
+
+      // Si está en la tab hardware, recargar
+      if (document.getElementById('panel-hardware').classList.contains('active')) {
+        loadHardware();
+      }
+    } else {
+      statusDot.className  = 'w-2 h-2 bg-error';
+      statusText.textContent = 'Error en el análisis';
+      addLog(`Error visión: ${result.message}`, 'error');
+      addMessage('agent', result.message, ['hardware']);
+      btn.disabled = false;
+    }
+
+  } catch(e) {
+    clearInterval(progressInterval);
+    statusDot.className  = 'w-2 h-2 bg-error';
+    statusText.textContent = 'Error de conexión';
+    addLog(`Error conectando con el servidor: ${e}`, 'error');
+    btn.disabled = false;
+  }
+}
+
+function renderVisionResults(circuit) {
+  if (!circuit || !circuit.project_name) return;
+
+  const panel   = document.getElementById('vision-results-panel');
+  const content = document.getElementById('vision-results-content');
+
+  panel.classList.remove('hidden');
+
+  const components = (circuit.components || []).slice(0, 6);
+  const compHtml   = components.map(c => `
+    <div class="flex items-start gap-2 py-1 border-b border-outline-variant/10">
+      <span class="text-[8px] px-1 bg-[#3cd7ff]/10 text-[#3cd7ff] uppercase flex-shrink-0">${escHtml(c.type || '?')}</span>
+      <div class="flex-1 min-w-0">
+        <span class="text-[9px] font-bold text-on-surface">${escHtml(c.name || '?')}</span>
+        ${c.pin ? `<span class="text-[8px] text-outline ml-1">pin ${escHtml(c.pin)}</span>` : ''}
+      </div>
+    </div>`).join('');
+
+  content.innerHTML = `
+    <div class="bg-surface-container p-3 border-l-2 border-[#3cd7ff]">
+      <div class="flex justify-between items-center mb-2">
+        <span class="text-[9px] font-bold text-[#3cd7ff]">${escHtml(circuit.project_name)}</span>
+        <span class="text-[8px] px-1 bg-[#3cd7ff]/10 text-[#3cd7ff] uppercase">${escHtml(circuit.confidence || '?')}</span>
+      </div>
+      ${circuit.description ? `<p class="text-[9px] text-outline-variant mb-2">${escHtml(circuit.description)}</p>` : ''}
+      ${circuit.power ? `<span class="text-[8px] text-outline">⚡ ${escHtml(circuit.power)}</span>` : ''}
+    </div>
+    ${compHtml ? `<div class="mt-2">${compHtml}</div>` : ''}
+    ${circuit.notes ? `<div class="text-[8px] text-outline-variant bg-surface-container-low p-2 mt-1">⚠ ${escHtml(circuit.notes)}</div>` : ''}
+  `;
+}
+
+// ── PROACTIVE NOTIFICATIONS ───────────────────────────────
+function connectProactiveWS() {
+  wsProactive = new WebSocket(WS_PROACTIVE);
+
+  wsProactive.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    if (data.type === 'ping') return;
+    showProactiveNotification(data);
+  };
+
+  wsProactive.onclose = () => setTimeout(connectProactiveWS, 5000);
+  wsProactive.onerror = () => addLog('WebSocket proactivo error', 'warn');
+}
+
+function showProactiveNotification(data) {
+  const type    = data.type || 'info';
+  const title   = data.title || 'Notificación';
+  const message = data.message || '';
+
+  // Colores por tipo
+  const colors = {
+    device_connected:      'border-secondary-container text-secondary-container',
+    device_inactive:       'border-[#ffaa00] text-[#ffaa00]',
+    recurring_error:       'border-error text-error',
+    daily_summary:         'border-[#6c47ff] text-[#6c47ff]',
+    nightly_consolidation: 'border-tertiary text-tertiary',
+  };
+  const colorCls = colors[type] || 'border-outline-variant text-outline-variant';
+  const icons = {
+    device_connected:      'developer_board',
+    device_inactive:       'schedule',
+    recurring_error:       'warning',
+    daily_summary:         'analytics',
+    nightly_consolidation: 'psychology',
+  };
+  const icon = icons[type] || 'notifications';
+
+  // Crear notificación flotante
+  const notif = document.createElement('div');
+  notif.className = `fixed bottom-6 right-6 z-50 max-w-sm bg-surface-container border-l-4 ${colorCls} p-4 shadow-lg animate-pulse`;
+  notif.style.animation = 'none';
+  notif.innerHTML = `
+    <div class="flex items-start gap-3">
+      <span class="material-symbols-outlined text-sm mt-0.5">${icon}</span>
+      <div class="flex-1 min-w-0">
+        <div class="text-[9px] font-bold uppercase tracking-widest mb-1">${escHtml(title)}</div>
+        <div class="text-[10px] text-on-surface-variant leading-relaxed">${escHtml(message.slice(0, 120))}${message.length > 120 ? '...' : ''}</div>
+      </div>
+      <button onclick="this.parentElement.parentElement.remove()" class="text-outline hover:text-error flex-shrink-0">
+        <span class="material-symbols-outlined text-xs">close</span>
+      </button>
+    </div>`;
+
+  document.body.appendChild(notif);
+
+  // Auto-cerrar en 8 segundos
+  setTimeout(() => notif.remove(), 8000);
+
+  // También agregar al chat como mensaje del sistema
+  addMessage('agent', `**${title}**\n${message}`, ['proactive']);
+  addLog(`[PROACTIVE] ${title}`, 'info');
+}
+
+// ── INIT ─────────────────────────────────────────────────
+document.getElementById('session-time').textContent =
+  'Session Initialized :: ' + new Date().toISOString().replace('T','_').slice(0,19);
+
+document.getElementById('prompt').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+document.getElementById('search-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doSearch();
+});
+
+renderIdleOscilloscope();
+connectWS();
+connectSignalWS();
+connectProactiveWS();
+setInterval(loadStats, 10000);
+</script>
+</body>
+</html>

@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stratum — Memory Graph</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;700;800&display=swap');
+
+*{margin:0;padding:0;box-sizing:border-box;}
+
+:root{
+  --bg:#04040a;
+  --bg2:#08080f;
+  --border:#12121f;
+  --border2:#1a1a2e;
+  --accent:#6c47ff;
+  --accent2:#9d7cff;
+  --green:#00ff88;
+  --green2:#00cc6a;
+  --amber:#ffaa00;
+  --red:#ff4466;
+  --cyan:#00d4ff;
+  --text:#e2e2f0;
+  --text2:#7777aa;
+  --text3:#333355;
+  --mono:'JetBrains Mono',monospace;
+  --sans:'Syne',sans-serif;
+}
+
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--mono);
+  font-size:12px;
+  overflow:hidden;
+  width:100vw;
+  height:100vh;
+  display:grid;
+  grid-template-rows:42px 1fr;
+  grid-template-columns:1fr 280px;
+}
+
+/* HEADER */
+header{
+  grid-column:1/-1;
+  background:var(--bg2);
+  border-bottom:1px solid var(--border);
+  display:flex;
+  align-items:center;
+  padding:0 16px;
+  gap:12px;
+}
+.logo{font-family:var(--sans);font-size:14px;font-weight:800;color:var(--accent2);letter-spacing:-0.5px;}
+.logo span{color:var(--green);}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+.hstats{margin-left:auto;display:flex;gap:16px;color:var(--text3);font-size:10px;letter-spacing:.5px;}
+.hstats b{color:var(--accent2);font-weight:500;}
+
+/* CANVAS */
+#canvas-wrap{position:relative;overflow:hidden;background:var(--bg);}
+#three-canvas{display:block;width:100%;height:100%;}
+
+/* TOOLTIP */
+#tooltip{
+  position:absolute;
+  pointer-events:none;
+  display:none;
+  background:rgba(8,8,15,.95);
+  border:1px solid var(--border2);
+  border-radius:6px;
+  padding:10px 14px;
+  font-size:11px;
+  max-width:220px;
+  z-index:100;
+  backdrop-filter:blur(8px);
+}
+#tooltip .t-name{color:var(--accent2);font-size:13px;font-weight:700;margin-bottom:6px;}
+#tooltip .t-row{color:var(--text2);margin:2px 0;}
+#tooltip .t-row b{color:var(--text);}
+
+/* CONTROLS OVERLAY */
+#controls{
+  position:absolute;
+  bottom:16px;
+  left:16px;
+  display:flex;
+  gap:8px;
+  flex-direction:column;
+}
+.ctrl-group{display:flex;gap:6px;}
+.ctrl-btn{
+  background:rgba(8,8,15,.85);
+  border:1px solid var(--border2);
+  border-radius:4px;
+  color:var(--text2);
+  font-family:var(--mono);
+  font-size:10px;
+  padding:5px 10px;
+  cursor:pointer;
+  transition:all .2s;
+  backdrop-filter:blur(4px);
+  letter-spacing:.5px;
+}
+.ctrl-btn:hover{border-color:var(--accent);color:var(--accent2);}
+.ctrl-btn.active{border-color:var(--green);color:var(--green);}
+
+/* SEARCH OVERLAY */
+#search-wrap{
+  position:absolute;
+  top:12px;
+  left:50%;
+  transform:translateX(-50%);
+  display:flex;
+  gap:6px;
+  z-index:50;
+}
+#search-input{
+  background:rgba(8,8,15,.9);
+  border:1px solid var(--border2);
+  border-radius:4px;
+  color:var(--text);
+  font-family:var(--mono);
+  font-size:11px;
+  padding:6px 12px;
+  outline:none;
+  width:240px;
+  backdrop-filter:blur(8px);
+  transition:border-color .2s;
+}
+#search-input:focus{border-color:var(--accent);}
+#search-input::placeholder{color:var(--text3);}
+#search-btn{
+  background:var(--accent);
+  border:none;
+  border-radius:4px;
+  color:#fff;
+  font-family:var(--mono);
+  font-size:10px;
+  font-weight:700;
+  padding:6px 12px;
+  cursor:pointer;
+  letter-spacing:.5px;
+}
+
+/* SIDEBAR */
+#sidebar{
+  background:var(--bg2);
+  border-left:1px solid var(--border);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+.side-title{
+  padding:12px 14px 8px;
+  font-size:9px;
+  font-weight:700;
+  letter-spacing:1.5px;
+  text-transform:uppercase;
+  color:var(--text3);
+  border-bottom:1px solid var(--border);
+}
+#node-list{
+  flex:1;
+  overflow-y:auto;
+  padding:8px;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  scrollbar-width:thin;
+  scrollbar-color:var(--border2) transparent;
+}
+.node-item{
+  background:rgba(255,255,255,.02);
+  border:1px solid var(--border);
+  border-radius:4px;
+  padding:7px 10px;
+  cursor:pointer;
+  transition:all .15s;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.node-item:hover{border-color:var(--accent);background:rgba(108,71,255,.06);}
+.node-item.selected{border-color:var(--green);background:rgba(0,255,136,.04);}
+.node-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.node-name{color:var(--text);font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.node-degree{color:var(--text3);font-size:10px;}
+
+/* RELATIONS PANEL */
+#rel-panel{
+  border-top:1px solid var(--border);
+  padding:8px;
+  max-height:200px;
+  overflow-y:auto;
+}
+.rel-title{font-size:9px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}
+.rel-item{
+  font-size:10px;
+  padding:4px 6px;
+  border-left:2px solid var(--border2);
+  margin-bottom:3px;
+  color:var(--text2);
+  line-height:1.5;
+}
+.rel-item .rs{color:var(--accent2);}
+.rel-item .rp{color:var(--text3);margin:0 3px;}
+.rel-item .ro{color:var(--green);}
+
+/* LEGEND */
+#legend{
+  border-top:1px solid var(--border);
+  padding:10px 12px;
+  display:flex;
+  flex-direction:column;
+  gap:5px;
+}
+.leg-row{display:flex;align-items:center;gap:7px;font-size:10px;color:var(--text3);}
+.leg-dot{width:8px;height:8px;border-radius:50%;}
+
+/* EMPTY STATE */
+.empty{color:var(--text3);font-size:11px;text-align:center;padding:20px 0;}
+
+/* TIMELINE */
+#timeline-wrap{
+  position:absolute;
+  bottom:16px;
+  right:16px;
+  background:rgba(8,8,15,.85);
+  border:1px solid var(--border2);
+  border-radius:6px;
+  padding:10px 14px;
+  backdrop-filter:blur(8px);
+  min-width:200px;
+}
+.tl-label{font-size:9px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}
+#tl-info{font-size:11px;color:var(--accent2);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="dot"></div>
+  <div class="logo">Stratum <span>/ memory</span></div>
+  <div class="hstats">
+    nodos: <b id="h-nodes">0</b> &nbsp;
+    aristas: <b id="h-edges">0</b> &nbsp;
+    fuente: <b id="h-source">graph_memory</b>
+  </div>
+</header>
+
+<div id="canvas-wrap">
+  <canvas id="three-canvas"></canvas>
+
+  <div id="search-wrap">
+    <input id="search-input" type="text" placeholder="buscar nodo...">
+    <button id="search-btn">BUSCAR</button>
+  </div>
+
+  <div id="tooltip">
+    <div class="t-name" id="tt-name"></div>
+    <div class="t-row" id="tt-created"></div>
+    <div class="t-row" id="tt-edges"></div>
+    <div class="t-row" id="tt-source"></div>
+  </div>
+
+  <div id="controls">
+    <div class="ctrl-group">
+      <button class="ctrl-btn active" id="btn-physics">FÍSICA ON</button>
+      <button class="ctrl-btn" id="btn-labels">ETIQUETAS</button>
+      <button class="ctrl-btn" id="btn-reset">RESET</button>
+    </div>
+    <div class="ctrl-group">
+      <button class="ctrl-btn" id="btn-refresh">↻ RECARGAR</button>
+    </div>
+  </div>
+
+  <div id="timeline-wrap">
+    <div class="tl-label">último update</div>
+    <div id="tl-info">—</div>
+  </div>
+</div>
+
+<div id="sidebar">
+  <div class="side-title">nodos del grafo</div>
+  <div id="node-list"><div class="empty">Cargando...</div></div>
+
+  <div id="rel-panel">
+    <div class="rel-title">relaciones</div>
+    <div id="rel-list"><div class="empty">Seleccioná un nodo</div></div>
+  </div>
+
+  <div id="legend">
+    <div class="leg-row"><div class="leg-dot" style="background:#6c47ff"></div>nodo central</div>
+    <div class="leg-row"><div class="leg-dot" style="background:#00ff88"></div>nodo seleccionado</div>
+    <div class="leg-row"><div class="leg-dot" style="background:#00d4ff"></div>hecho (sql_facts)</div>
+    <div class="leg-row"><div class="leg-dot" style="background:#ffaa00"></div>conversación</div>
+    <div class="leg-row"><div class="leg-dot" style="background:#ff4466"></div>eval / test</div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ── CONFIG ───────────────────────────────────────────────
+const API = `http://${location.hostname}:8000/api`;
+const NODE_RADIUS = 6;
+const LINK_COLOR  = 0x1a1a3e;
+const FONT_SIZE   = 48;
+
+// ── STATE ────────────────────────────────────────────────
+let graphData     = { nodes: [], links: [] };
+let nodeObjects   = {};   // id → {mesh, label, velocity, pos}
+let linkObjects   = [];
+let selectedNode  = null;
+let physicsOn     = true;
+let labelsOn      = false;
+let highlightSet  = null;
+let animFrame;
+
+// ── THREE SETUP ──────────────────────────────────────────
+const canvas = document.getElementById('three-canvas');
+const wrap   = document.getElementById('canvas-wrap');
+
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearColor(0x04040a, 1);
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 5000);
+camera.position.set(0, 0, 400);
+
+// Orbit-like controls (manual)
+let isDragging = false, lastMouse = {x:0,y:0};
+let spherical = {theta:0, phi:Math.PI/2, r:400};
+
+function updateCamera(){
+  camera.position.x = spherical.r * Math.sin(spherical.phi) * Math.sin(spherical.theta);
+  camera.position.y = spherical.r * Math.cos(spherical.phi);
+  camera.position.z = spherical.r * Math.sin(spherical.phi) * Math.cos(spherical.theta);
+  camera.lookAt(0,0,0);
+}
+
+canvas.addEventListener('mousedown', e => { isDragging=true; lastMouse={x:e.clientX,y:e.clientY}; });
+canvas.addEventListener('mouseup',   () => isDragging=false);
+canvas.addEventListener('mouseleave',() => isDragging=false);
+canvas.addEventListener('mousemove', e => {
+  if(!isDragging) return;
+  const dx = e.clientX - lastMouse.x;
+  const dy = e.clientY - lastMouse.y;
+  spherical.theta -= dx * 0.005;
+  spherical.phi   = Math.max(0.2, Math.min(Math.PI-0.2, spherical.phi + dy*0.005));
+  lastMouse = {x:e.clientX, y:e.clientY};
+  updateCamera();
+});
+canvas.addEventListener('wheel', e => {
+  spherical.r = Math.max(80, Math.min(1200, spherical.r + e.deltaY * 0.5));
+  updateCamera();
+  e.preventDefault();
+}, {passive:false});
+
+// Raycaster para hover
+const raycaster = new THREE.Raycaster();
+const mouse     = new THREE.Vector2();
+let hoveredNode = null;
+
+canvas.addEventListener('mousemove', e => {
+  if(isDragging) return;
+  const rect = canvas.getBoundingClientRect();
+  mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+  mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+  const meshes = Object.values(nodeObjects).map(n => n.mesh);
+  const hits   = raycaster.intersectObjects(meshes);
+
+  if(hits.length){
+    const id = hits[0].object.userData.id;
+    if(hoveredNode !== id){
+      hoveredNode = id;
+      showTooltip(id, e.clientX, e.clientY);
+    }
+    canvas.style.cursor = 'pointer';
+  } else {
+    hoveredNode = null;
+    hideTooltip();
+    canvas.style.cursor = 'default';
+  }
+});
+
+canvas.addEventListener('click', e => {
+  if(!hoveredNode) return;
+  selectNode(hoveredNode);
+});
+
+// ── RESIZE ───────────────────────────────────────────────
+function resize(){
+  const w = wrap.clientWidth;
+  const h = wrap.clientHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ── NODE COLORS ──────────────────────────────────────────
+function nodeColor(source, degree){
+  if(source === 'sql_facts')   return 0x00d4ff;
+  if(source === 'eval')        return 0xff4466;
+  if(degree > 3)               return 0x6c47ff;
+  return 0xffaa00;
+}
+
+function nodeEmissive(source){
+  if(source === 'sql_facts') return 0x003344;
+  if(source === 'eval')      return 0x330011;
+  if(source === 'high')      return 0x220044;
+  return 0x221100;
+}
+
+// ── BUILD GRAPH ──────────────────────────────────────────
+function clearScene(){
+  Object.values(nodeObjects).forEach(n => {
+    scene.remove(n.mesh);
+    if(n.label) scene.remove(n.label);
+  });
+  linkObjects.forEach(l => scene.remove(l));
+  nodeObjects  = {};
+  linkObjects  = [];
+}
+
+function buildGraph(data){
+  clearScene();
+  graphData = data;
+
+  const nodeCount = data.nodes.length;
+  const spread    = Math.max(150, nodeCount * 20);
+
+  // Calcular degree
+  const degree = {};
+  data.nodes.forEach(n => degree[n.id] = 0);
+  data.links.forEach(l => {
+    degree[l.source] = (degree[l.source]||0) + 1;
+    degree[l.target] = (degree[l.target]||0) + 1;
+  });
+
+  // Crear nodos
+  data.nodes.forEach(n => {
+    const deg   = degree[n.id] || 0;
+    const r     = NODE_RADIUS + deg * 1.5;
+    const color = nodeColor(n.source, deg);
+
+    const geo  = new THREE.SphereGeometry(r, 16, 16);
+    const mat  = new THREE.MeshPhongMaterial({
+      color,
+      emissive: nodeEmissive(n.source),
+      shininess: 80,
+      transparent: true,
+      opacity: 0.9,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+
+    // Posición inicial aleatoria en esfera
+    const theta = Math.random() * Math.PI * 2;
+    const phi   = Math.acos(2 * Math.random() - 1);
+    mesh.position.set(
+      spread * Math.sin(phi) * Math.cos(theta),
+      spread * Math.cos(phi),
+      spread * Math.sin(phi) * Math.sin(theta)
+    );
+    mesh.userData = {id: n.id, source: n.source, degree: deg};
+    scene.add(mesh);
+
+    // Glow sprite
+    const glowMat = new THREE.SpriteMaterial({
+      color,
+      transparent: true,
+      opacity: 0.15,
+    });
+    const glow = new THREE.Sprite(glowMat);
+    glow.scale.set(r*4, r*4, 1);
+    mesh.add(glow);
+
+    nodeObjects[n.id] = {
+      mesh,
+      velocity: new THREE.Vector3(
+        (Math.random()-.5)*.1,
+        (Math.random()-.5)*.1,
+        (Math.random()-.5)*.1
+      ),
+      source: n.source,
+      degree: deg,
+      created_at: n.created_at,
+    };
+  });
+
+  // Crear aristas
+  data.links.forEach(l => {
+    const src = nodeObjects[l.source];
+    const tgt = nodeObjects[l.target];
+    if(!src || !tgt) return;
+
+    const mat = new THREE.LineBasicMaterial({
+      color: 0x1a1a3e,
+      transparent: true,
+      opacity: 0.6,
+    });
+    const geo  = new THREE.BufferGeometry();
+    const pts  = new Float32Array(6);
+    geo.setAttribute('position', new THREE.BufferAttribute(pts, 3));
+    const line = new THREE.Line(geo, mat);
+    line.userData = {src: l.source, tgt: l.target, predicate: l.predicate};
+    scene.add(line);
+    linkObjects.push(line);
+  });
+
+  updateStats();
+  updateSidebar();
+  updateTimeline();
+}
+
+// ── PHYSICS ──────────────────────────────────────────────
+const REPULSION  = 8000;
+const ATTRACTION = 0.03;
+const DAMPING    = 0.88;
+const CENTER     = 0.002;
+
+function stepPhysics(){
+  if(!physicsOn) return;
+  const ids  = Object.keys(nodeObjects);
+  const tmp  = new THREE.Vector3();
+
+  ids.forEach(id => {
+    const n = nodeObjects[id];
+    const f = new THREE.Vector3();
+
+    // Repulsión entre todos los nodos
+    ids.forEach(id2 => {
+      if(id === id2) return;
+      const n2   = nodeObjects[id2];
+      tmp.copy(n.mesh.position).sub(n2.mesh.position);
+      const dist = Math.max(tmp.length(), 1);
+      tmp.normalize().multiplyScalar(REPULSION / (dist * dist));
+      f.add(tmp);
+    });
+
+    // Atracción por aristas
+    linkObjects.forEach(l => {
+      const {src, tgt} = l.userData;
+      let other = null;
+      if(src === id) other = nodeObjects[tgt];
+      if(tgt === id) other = nodeObjects[src];
+      if(!other) return;
+      tmp.copy(other.mesh.position).sub(n.mesh.position);
+      tmp.multiplyScalar(ATTRACTION * tmp.length());
+      f.add(tmp);
+    });
+
+    // Fuerza hacia el centro
+    tmp.copy(n.mesh.position).negate().multiplyScalar(CENTER);
+    f.add(tmp);
+
+    n.velocity.add(f.multiplyScalar(0.016));
+    n.velocity.multiplyScalar(DAMPING);
+    n.mesh.position.add(n.velocity);
+  });
+}
+
+// ── UPDATE LINKS ─────────────────────────────────────────
+function updateLinks(){
+  linkObjects.forEach(l => {
+    const src = nodeObjects[l.userData.src];
+    const tgt = nodeObjects[l.userData.tgt];
+    if(!src || !tgt) return;
+    const pos = l.geometry.attributes.position;
+    pos.setXYZ(0, src.mesh.position.x, src.mesh.position.y, src.mesh.position.z);
+    pos.setXYZ(1, tgt.mesh.position.x, tgt.mesh.position.y, tgt.mesh.position.z);
+    pos.needsUpdate = true;
+  });
+}
+
+// ── LIGHTING ─────────────────────────────────────────────
+const ambient = new THREE.AmbientLight(0x222244, 2);
+scene.add(ambient);
+const pt1 = new THREE.PointLight(0x6c47ff, 3, 800);
+pt1.position.set(200, 200, 200);
+scene.add(pt1);
+const pt2 = new THREE.PointLight(0x00ff88, 2, 600);
+pt2.position.set(-200, -100, -200);
+scene.add(pt2);
+
+// Partículas de fondo
+const starGeo = new THREE.BufferGeometry();
+const starPos = new Float32Array(3000);
+for(let i=0;i<3000;i++) starPos[i] = (Math.random()-.5)*2000;
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos,3));
+const starMat = new THREE.PointsMaterial({color:0x222244,size:1.2,transparent:true,opacity:.6});
+scene.add(new THREE.Points(starGeo, starMat));
+
+// ── ANIMATE ──────────────────────────────────────────────
+let t = 0;
+function animate(){
+  animFrame = requestAnimationFrame(animate);
+  t += 0.005;
+
+  stepPhysics();
+  updateLinks();
+
+  // Pulso suave en los nodos
+  Object.values(nodeObjects).forEach(n => {
+    const base = NODE_RADIUS + n.degree * 1.5;
+    const pulse = 1 + Math.sin(t * 2 + n.mesh.position.x * 0.01) * 0.04;
+    n.mesh.scale.setScalar(pulse);
+  });
+
+  // Rotar luz
+  pt1.position.x = Math.cos(t*0.3) * 300;
+  pt1.position.z = Math.sin(t*0.3) * 300;
+
+  renderer.render(scene, camera);
+}
+animate();
+
+// ── TOOLTIP ──────────────────────────────────────────────
+const tooltip = document.getElementById('tooltip');
+
+function showTooltip(id, mx, my){
+  const n    = nodeObjects[id];
+  if(!n) return;
+  const node = graphData.nodes.find(x => x.id === id);
+
+  document.getElementById('tt-name').textContent    = id;
+  document.getElementById('tt-created').innerHTML   = `<b>creado:</b> ${node?.created_at ? new Date(node.created_at).toLocaleDateString('es') : '—'}`;
+  document.getElementById('tt-edges').innerHTML     = `<b>conexiones:</b> ${n.degree}`;
+  document.getElementById('tt-source').innerHTML    = `<b>fuente:</b> ${n.source || '—'}`;
+
+  const rect = wrap.getBoundingClientRect();
+  tooltip.style.left    = (mx - rect.left + 14) + 'px';
+  tooltip.style.top     = (my - rect.top  - 10) + 'px';
+  tooltip.style.display = 'block';
+}
+
+function hideTooltip(){
+  tooltip.style.display = 'none';
+}
+
+// ── SELECT NODE ──────────────────────────────────────────
+function selectNode(id){
+  // Deselect previous
+  if(selectedNode && nodeObjects[selectedNode]){
+    const prev = nodeObjects[selectedNode];
+    prev.mesh.material.color.setHex(nodeColor(prev.source, prev.degree));
+    prev.mesh.material.emissive.setHex(0x000000);
+  }
+
+  selectedNode = id;
+  const n = nodeObjects[id];
+  if(!n) return;
+
+  n.mesh.material.color.setHex(0x00ff88);
+  n.mesh.material.emissive.setHex(0x003311);
+
+  // Focus camera
+  const target = n.mesh.position.clone();
+  const offset = camera.position.clone().sub(target).normalize().multiplyScalar(120);
+  camera.position.copy(target.clone().add(offset));
+  camera.lookAt(target);
+
+  // Update sidebar
+  document.querySelectorAll('.node-item').forEach(el => {
+    el.classList.toggle('selected', el.dataset.id === id);
+  });
+
+  // Show relations
+  const rels = graphData.links.filter(l => l.source === id || l.target === id);
+  const relList = document.getElementById('rel-list');
+  if(!rels.length){
+    relList.innerHTML = '<div class="empty">Sin relaciones</div>';
+    return;
+  }
+  relList.innerHTML = rels.map(l => `
+    <div class="rel-item">
+      <span class="rs">${l.source}</span>
+      <span class="rp">→${l.predicate}→</span>
+      <span class="ro">${l.target}</span>
+    </div>
+  `).join('');
+}
+
+// ── SEARCH ───────────────────────────────────────────────
+function searchNode(q){
+  if(!q) return resetHighlight();
+  q = q.toLowerCase();
+
+  Object.entries(nodeObjects).forEach(([id, n]) => {
+    const match = id.includes(q);
+    n.mesh.material.opacity = match ? 1.0 : 0.15;
+    if(match){
+      n.mesh.material.color.setHex(0x00ff88);
+    } else {
+      n.mesh.material.color.setHex(nodeColor(n.source, n.degree));
+    }
+  });
+
+  linkObjects.forEach(l => {
+    const match = l.userData.src.includes(q) || l.userData.tgt.includes(q);
+    l.material.opacity = match ? 0.8 : 0.05;
+  });
+}
+
+function resetHighlight(){
+  Object.entries(nodeObjects).forEach(([id, n]) => {
+    n.mesh.material.opacity = 0.9;
+    n.mesh.material.color.setHex(id === selectedNode ? 0x00ff88 : nodeColor(n.source, n.degree));
+  });
+  linkObjects.forEach(l => { l.material.opacity = 0.6; });
+}
+
+// ── SIDEBAR ──────────────────────────────────────────────
+function updateSidebar(){
+  const list = document.getElementById('node-list');
+  if(!graphData.nodes.length){
+    list.innerHTML = '<div class="empty">Sin nodos aún</div>';
+    return;
+  }
+
+  const sorted = [...graphData.nodes].sort((a,b) => {
+    const da = nodeObjects[a.id]?.degree || 0;
+    const db = nodeObjects[b.id]?.degree || 0;
+    return db - da;
+  });
+
+  list.innerHTML = sorted.map(n => {
+    const deg   = nodeObjects[n.id]?.degree || 0;
+    const color = '#' + nodeColor(n.source, deg).toString(16).padStart(6,'0');
+    return `
+      <div class="node-item" data-id="${n.id}" onclick="selectNode('${n.id}')">
+        <div class="node-dot" style="background:${color}"></div>
+        <div class="node-name">${n.id}</div>
+        <div class="node-degree">${deg}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ── STATS ────────────────────────────────────────────────
+function updateStats(){
+  document.getElementById('h-nodes').textContent = graphData.nodes.length;
+  document.getElementById('h-edges').textContent = graphData.links.length;
+}
+
+function updateTimeline(){
+  const dates = graphData.nodes
+    .map(n => n.created_at)
+    .filter(Boolean)
+    .sort();
+  if(dates.length){
+    const last = new Date(dates[dates.length-1]);
+    document.getElementById('tl-info').textContent =
+      last.toLocaleDateString('es') + ' ' + last.toLocaleTimeString('es', {hour:'2-digit',minute:'2-digit'});
+  }
+}
+
+// ── LOAD DATA ────────────────────────────────────────────
+async function loadGraph(){
+  try {
+    const r    = await fetch(`${API}/graph`);
+    const data = await r.json();
+
+    // Construir nodos únicos
+    const nodeMap = {};
+    data.relations.forEach(rel => {
+      if(!nodeMap[rel.subject]) nodeMap[rel.subject] = {id: rel.subject, source: rel.source, created_at: null};
+      if(!nodeMap[rel.object])  nodeMap[rel.object]  = {id: rel.object,  source: rel.source, created_at: null};
+    });
+
+    const nodes = Object.values(nodeMap);
+    const links = data.relations.map(r => ({
+      source:    r.subject,
+      target:    r.object,
+      predicate: r.predicate,
+    }));
+
+    buildGraph({nodes, links});
+
+  } catch(e){
+    console.error('Error cargando grafo:', e);
+    document.getElementById('node-list').innerHTML =
+      '<div class="empty">Error conectando con el servidor</div>';
+  }
+}
+
+// ── CONTROLS ─────────────────────────────────────────────
+document.getElementById('btn-physics').addEventListener('click', function(){
+  physicsOn = !physicsOn;
+  this.textContent = physicsOn ? 'FÍSICA ON' : 'FÍSICA OFF';
+  this.classList.toggle('active', physicsOn);
+});
+
+document.getElementById('btn-labels').addEventListener('click', function(){
+  labelsOn = !labelsOn;
+  this.classList.toggle('active', labelsOn);
+});
+
+document.getElementById('btn-reset').addEventListener('click', () => {
+  spherical = {theta:0, phi:Math.PI/2, r:400};
+  updateCamera();
+  resetHighlight();
+  selectedNode = null;
+  document.querySelectorAll('.node-item').forEach(el => el.classList.remove('selected'));
+  document.getElementById('rel-list').innerHTML = '<div class="empty">Seleccioná un nodo</div>';
+});
+
+document.getElementById('btn-refresh').addEventListener('click', loadGraph);
+
+document.getElementById('search-btn').addEventListener('click', () => {
+  searchNode(document.getElementById('search-input').value.trim());
+});
+document.getElementById('search-input').addEventListener('keydown', e => {
+  if(e.key === 'Enter') searchNode(e.target.value.trim());
+  if(e.key === 'Escape'){ e.target.value=''; resetHighlight(); }
+});
+
+// ── AUTO REFRESH ─────────────────────────────────────────
+loadGraph();
+setInterval(loadGraph, 15000);
+updateCamera();
+</script>
+</body>
+</html>
