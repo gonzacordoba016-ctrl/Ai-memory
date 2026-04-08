@@ -11,7 +11,10 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-
+venv/
+.venv/
+stratum-mobile/
+Imagen/
 # Datos locales (se montan como volúmenes en producción)
 database/*.db
 database/graph_memory.json
