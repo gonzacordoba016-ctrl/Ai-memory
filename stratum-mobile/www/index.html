@@ -397,9 +397,7 @@
 const isNative = () => window.Capacitor?.isNativePlatform?.() ?? false;
 
 // ── CONFIG (dynamic — reads localStorage first) ───────────────────────────
-const DEFAULT_BACKEND = isNative()
-  ? 'http://192.168.1.15:8000'
-  : `http://${location.hostname}:${location.port || 8000}`;
+const DEFAULT_BACKEND = 'https://ai-memory-production-d6b1.up.railway.app';
 
 function getBackend() {
   return localStorage.getItem('stratum_backend_url') || DEFAULT_BACKEND;
