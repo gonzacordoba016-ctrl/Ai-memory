@@ -7,7 +7,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc g++ curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Instalar dependencias Python primero (layer cache)
+# Pre-instalar PyTorch versión CPU para evitar descargar 2.5GB de binarios CUDA (que causa timeouts en la nube)
+RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+# Instalar dependencias Python (layer cache)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
