@@ -1153,10 +1153,13 @@ import inspect
 import ast
 from pathlib import Path
 
-def count_typed_functions(filepath: str) -> tuple[int, int]:
+# Determinar el root del proyecto de forma robusta
+ROOT_DIR = Path(__file__).parent.parent
+
+def count_typed_functions(filepath: Path) -> tuple[int, int]:
     """Retorna (funciones_con_tipos, total_funciones)."""
     try:
-        source = Path(filepath).read_text(encoding="utf-8")
+        source = filepath.read_text(encoding="utf-8")
         tree   = ast.parse(source)
         total  = typed = 0
         for node in ast.walk(tree):
@@ -1182,24 +1185,25 @@ modules_to_check = [
     ("tools/plugin_loader.py",    50),
 ]
 
-for module_path, min_pct in modules_to_check:
-    typed, total = count_typed_functions(module_path)
+for rel_path, min_pct in modules_to_check:
+    full_path = ROOT_DIR / rel_path
+    typed, total = count_typed_functions(full_path)
     if total == 0:
-        check(f"{module_path} — type hints", False, "archivo no encontrado o sin funciones")
+        check(f"{rel_path} — type hints", False, f"archivo no encontrado en {full_path} o sin funciones")
         continue
     pct = (typed / total) * 100
-    check(f"{module_path} — {typed}/{total} funciones tipadas ({pct:.0f}%)",
+    check(f"{rel_path} — {typed}/{total} funciones tipadas ({pct:.0f}%)",
           pct >= min_pct,
           f"mínimo esperado: {min_pct}%")
 
 # Verificar que mypy.ini existe y tiene configuración válida
-mypy_ini = Path("mypy.ini")
+mypy_ini = ROOT_DIR / "mypy.ini"
 check("mypy.ini existe en el root del proyecto",
       mypy_ini.exists(),
       f"path={mypy_ini.absolute()}")
 
 if mypy_ini.exists():
-    content = mypy_ini.read_text()
+    content = mypy_ini.read_text(encoding="utf-8")
     check("mypy.ini tiene python_version configurado",
           "python_version" in content,
           f"contenido parcial: {content[:50]}")
@@ -1211,13 +1215,15 @@ if mypy_ini.exists():
           f"ignore_missing_imports configurado")
 
 # Verificar que async_client tiene tipo de retorno en funciones principales
-async_client_src = Path("llm/async_client.py").read_text(encoding="utf-8") if Path("llm/async_client.py").exists() else ""
+async_client_file = ROOT_DIR / "llm/async_client.py"
+async_client_src = async_client_file.read_text(encoding="utf-8") if async_client_file.exists() else ""
 check("call_llm_async tiene return type dict[str, Any]",
       "dict[str, Any]" in async_client_src,
       f"typed: {'dict[str, Any]' in async_client_src}")
 check("stream_llm_async tiene Callable en signature",
       "Callable" in async_client_src,
       f"typed: {'Callable' in async_client_src}")
+
 
 
 # ── Cleanup final ───────────────────────────────────────────
@@ -1234,3 +1240,34 @@ if passed == total:
 else:
     print(f"✗ {total - passed} tests fallaron\n")
     sys.exit(1)
+
+# ── Test 21: Integración de circuitos (nuevo) ─────────────────────────
+print("\n21. Integración de circuitos — flujo completo")
+
+async def _test_circuit_integration():
+    """Test de integración completo: lenguaje natural → circuito → firmware → PCB"""
+    from agent.agents.circuit_agent import CircuitAgent
+    from database.hardware_memory import hardware_memory
+    from tools.schematic_renderer import SchematicRenderer
+    from tools.pcb_renderer import PCBRenderer
+    
+    # 1. Parsear circuito
+    agent = CircuitAgent()
+    circuit_desc = "Un LED conectado al pin 13 de Arduino con resistencia de 220 ohms"
+    circuit = agent.parse_circuit(circuit_desc)
+    
+    check("Parseo de circuito básico", 
+          circuit is not None and "components" in circuit,
+          f"componentes={len(circuit.get('components', [])) if circuit else 0}")
+    
+    if not circuit:
+        return
+        
+    # 2. Guardar en hardware memory
+    TEST_DEVICE = "EVAL_Circuit_Integration_Test"
+    hardware_memory.register_device({
+        "name": TEST_DEVICE,
+        "port": "COM_EVAL",
+        "fqbn": "arduino:avr:uno",
+        "platform": "arduino:avr"
+    })

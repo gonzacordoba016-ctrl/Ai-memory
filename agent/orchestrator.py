@@ -44,6 +44,8 @@ KEYWORD_ROUTES = {
         "servo", "motor", "buzzer", "pantalla", "lcd", "i2c",
         "pwm", "analogico", "digital", "interrupt", "timer",
         "wifi esp", "bluetooth", "mqtt", "firmware", "microcontrolador",
+        "guardá el circuito", "guarda el circuito", "guardá este circuito",
+        "asociá el circuito", "registrá el circuito",
         "conecté", "conecte el arduino", "conecte el esp",
         "dispositivos registrados", "qué dispositivos", "que dispositivos",
         "historial de hardware", "último firmware", "ultimo firmware",
@@ -101,11 +103,13 @@ class Orchestrator:
 
         # Paso 2: LLM async para casos ambiguos
         try:
+            from core.config import LLM_MODEL_FAST
             content = await call_llm_text(
                 messages=[{
                     "role":    "user",
                     "content": ROUTING_PROMPT.format(query=query),
                 }],
+                model=LLM_MODEL_FAST,
                 temperature=0,
                 timeout=30,
                 agent_id="orchestrator",

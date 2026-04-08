@@ -18,17 +18,27 @@ from datetime import datetime, timezone
 
 INTENT_PROMPT = """Clasificá esta consulta de hardware en UNA sola palabra:
 
-- query:   consultar información sobre dispositivos registrados, firmware actual, historial de flashes, qué tiene programado
-- program: programar, flashear, cargar código, hacer parpadear, encender, controlar, subir firmware
-- signal:  leer señal analógica, voltaje, osciloscopio, monitorear pin
-- debug:   corregir error, algo no funciona, falla, arreglar, diagnosticar, el código da error
+- save_circuit: guardar, asociar o registrar un circuito/foto para un dispositivo
+- query:        consultar información sobre dispositivos registrados, firmware actual, historial de flashes, qué tiene programado, qué componentes tiene
+- program:      programar, flashear, cargar código, hacer parpadear, encender, controlar, subir firmware
+- signal:       leer señal analógica, voltaje, osciloscopio, monitorear pin
+- debug:        corregir error, algo no funciona, falla, arreglar, diagnosticar, el código da error
 
 Consulta: "{task}"
 
-Respondé SOLO con una de estas 4 palabras: query, program, signal, debug"""
+Respondé SOLO con una de estas 5 palabras: save_circuit, query, program, signal, debug"""
 
 
 # ── KEYWORDS exhaustivas por categoría ───────────────────────────────────────
+
+SAVE_CIRCUIT_KEYWORDS = [
+    "guardá el circuito", "guarda el circuito",
+    "guardá este circuito", "guarda este circuito",
+    "asociá el circuito", "asocia el circuito",
+    "guardá la foto", "guarda la foto",
+    "registrá el circuito", "registra el circuito",
+    "guardá el esquema", "guarda el esquema",
+]
 
 QUERY_KEYWORDS = [
     # Consultas directas de memoria
@@ -122,9 +132,10 @@ class HardwareAgent:
         intent = self._classify_intent(task)
         logger.info(f"[HardwareAgent] Intent: {intent} | Tarea: {task[:60]}")
 
-        if intent == "query":   return self._query_memory(task)
-        if intent == "signal":  return self._start_signal_mode(task)
-        if intent == "debug":   return self._debug_mode(task)
+        if intent == "save_circuit": return self._save_circuit(task)
+        if intent == "query":        return self._query_memory(task)
+        if intent == "signal":       return self._start_signal_mode(task)
+        if intent == "debug":        return self._debug_mode(task)
         return self._program_device(task, context)
 
     # ======================
@@ -158,6 +169,9 @@ class HardwareAgent:
         """Fallback exhaustivo por keywords cuando el LLM no responde."""
         t = task.lower()
 
+        if any(kw in t for kw in SAVE_CIRCUIT_KEYWORDS):
+            return "save_circuit"
+
         # Debug tiene prioridad sobre program (errores antes que programar)
         if any(kw in t for kw in DEBUG_KEYWORDS):
             return "debug"
@@ -175,11 +189,83 @@ class HardwareAgent:
         return "program"
 
     # ======================
+    # GUARDAR CIRCUITO
+    # ======================
+
+    def _save_circuit(self, task: str) -> str:
+        """Asocia el último circuito analizado por VisionAgent a un dispositivo."""
+        from agent.agents.vision_agent import vision_agent
+
+        circuit = getattr(vision_agent, "_last_circuit", {})
+        if not circuit:
+            # Intentar recuperar desde DB (sobrevive reloads del servidor)
+            try:
+                from database.sql_memory import _default as _sql
+                import json as _j
+                raw = _sql.get_all_facts().get("__last_vision_circuit", "")
+                if raw:
+                    circuit = _j.loads(raw)
+                    vision_agent._last_circuit = circuit
+            except Exception:
+                pass
+        if not circuit:
+            return (
+                "No tengo ningún circuito reciente para guardar. "
+                "Primero sacale una foto al componente con el botón de cámara."
+            )
+
+        # Extraer el nombre del dispositivo del texto (ej: "guardá el circuito para Arduino")
+        device_name = self._extract_device_name(task)
+        if not device_name:
+            return (
+                "¿Para qué dispositivo querés guardar el circuito? "
+                "Decime por ejemplo: *\"guardá el circuito para Arduino UNO\"*"
+            )
+
+        saved = hardware_memory.save_circuit_context(device_name, circuit)
+        if not saved:
+            return f"No pude guardar el circuito para {device_name}."
+
+        components = circuit.get("components", [])
+        comp_names = ", ".join(c.get("name", "?") for c in components[:5])
+        logger.info(f"[HardwareAgent] Circuito guardado para {device_name} | {len(components)} componentes")
+
+        return (
+            f"✓ Circuito guardado para **{device_name}**\n\n"
+            f"Componentes registrados ({len(components)}): {comp_names}\n"
+            f"La próxima vez que programes {device_name} voy a usar esta información automáticamente."
+        )
+
+    def _extract_device_name(self, task: str) -> str:
+        """Extrae el nombre del dispositivo de frases como 'guardá el circuito para Arduino'."""
+        import re
+        t = task.lower()
+        # Buscar "para X" al final
+        match = re.search(r'\bpara\s+(.+?)(?:\s*$)', t)
+        if match:
+            name = match.group(1).strip().rstrip(".,!?")
+            return name.title() if name else ""
+        # Buscar nombre de dispositivo conocido
+        for keyword in ["arduino", "esp32", "esp8266", "pico", "nano", "mega", "uno"]:
+            if keyword in t:
+                return keyword.title()
+        return ""
+
+    # ======================
     # PASO 1 — PROGRAMAR
     # ======================
 
     def _program_device(self, task: str, context: str = "") -> str:
         logger.info(f"[HardwareAgent] Programando: {task[:80]}...")
+
+        # ── Hardware Bridge (programación remota) ─────────────────────────────
+        try:
+            from api.routers.hardware_bridge import is_bridge_connected, call_bridge_sync
+            if is_bridge_connected():
+                logger.info("[HardwareAgent] Bridge conectado — ejecutando remotamente")
+                return self._program_via_bridge(task, context, call_bridge_sync)
+        except ImportError:
+            pass  # No disponible en entornos sin el router cargado
 
         devices = detect_devices()
         if not devices:
@@ -203,6 +289,12 @@ class HardwareAgent:
         if circuit_context:
             logger.info("[HardwareAgent] Inyectando contexto de circuito en prompt")
 
+        # Verificar si hay un circuito guardado para este dispositivo
+        saved_circuit = hardware_memory.get_circuit_context(device["name"])
+        if saved_circuit and not circuit_context:
+            # Si hay circuito pero no contexto formateado, crearlo
+            circuit_context = hardware_memory.format_circuit_for_prompt(device["name"])
+            
         similar = hardware_memory.get_similar_firmware(task[:30])
         memory_context = ""
         if similar:
@@ -215,6 +307,11 @@ class HardwareAgent:
             full_context += f"\n\n--- CIRCUITO DEL DISPOSITIVO ---\n{circuit_context}"
         if memory_context:
             full_context += memory_context
+
+        # Si el usuario dice algo como "programá el Arduino con el circuito guardado"
+        if "circuito" in task.lower() and saved_circuit:
+            full_context += f"\n\nGENERAR FIRMWARE PARA ESTE CIRCUITO EXACTO:\n{self._format_circuit_for_firmware(saved_circuit)}"
+
 
         firmware = generate_firmware(
             description = full_context,
@@ -297,6 +394,44 @@ class HardwareAgent:
             f"✓ Firmware subido a {device['name']} en {device['port']}\n\n"
             f"```cpp\n{firmware['code'][:600]}\n```\n\n"
             f"Monitor serial:\n{serial_output}"
+        )
+
+    def _program_via_bridge(self, task: str, context: str, call_bridge_sync) -> str:
+        """Delega la programación al Hardware Bridge Client en la PC del usuario."""
+        logger.info("[HardwareAgent] Enviando job 'program' al bridge client")
+
+        # Obtener contexto del circuito si lo hay (el bridge lo necesita para generate_firmware)
+        circuit_context = {}
+        try:
+            from database.hardware_memory import hardware_memory as _hw
+            # Buscar dispositivo por contexto o nombre en el task
+            device_name = self._extract_device_name(task) or ""
+            if device_name:
+                saved = _hw.get_circuit_context(device_name)
+                if saved:
+                    circuit_context = saved
+        except Exception:
+            pass
+
+        result = call_bridge_sync("program", {
+            "task":            task,
+            "device_name":     device_name if "device_name" in dir() else "",
+            "circuit_context": circuit_context,
+        }, timeout=180)
+
+        if not result.get("success"):
+            err = result.get("error", "Error desconocido")
+            return f"Error en programación remota: {err}"
+
+        code       = result.get("code", "")
+        port       = result.get("port", "?")
+        device_out = result.get("device_name", "dispositivo remoto")
+        serial_out = result.get("serial_output", result.get("output", ""))
+
+        return (
+            f"✓ Firmware subido remotamente a {device_out} en {port}\n\n"
+            f"```cpp\n{code[:600]}\n```\n\n"
+            + (f"Monitor serial:\n{serial_out}" if serial_out else "")
         )
 
     # ======================
@@ -531,6 +666,34 @@ class HardwareAgent:
         except Exception as e:
             logger.error(f"[HardwareAgent] Error en grafo: {e}")
 
+    def _format_circuit_for_firmware(self, circuit: dict) -> str:
+        """Formatea un circuito para generar firmware específico."""
+        if not circuit:
+            return ""
+            
+        lines = [f"PROYECTO: {circuit.get('project_name', 'Sin nombre')}"]
+        
+        if circuit.get('description'):
+            lines.append(f"DESCRIPCIÓN: {circuit['description']}")
+            
+        if circuit.get('components'):
+            lines.append("COMPONENTES:")
+            for comp in circuit['components']:
+                line = f"  - {comp.get('name', '?')} ({comp.get('type', '?')})"
+                if comp.get('pin'):
+                    line += f" en pin {comp['pin']}"
+                if comp.get('value'):
+                    line += f" valor {comp['value']}{comp.get('unit', '')}"
+                lines.append(line)
+                
+        if circuit.get('connections'):
+            lines.append("CONEXIONES:")
+            for conn in circuit['connections']:
+                lines.append(f"  - {conn.get('from', '?')} → {conn.get('to', '?')}")
+                
+        return "\n".join(lines)
+
+
 # ── Singleton ─────────────────────────────────────────────────────────────────
 # Una sola instancia compartida para todo el proceso.
 # El Orchestrator importa esta instancia en lugar de crear HardwareAgent() por request.
@@ -542,3 +705,4 @@ def get_hardware_agent() -> HardwareAgent:
     if _hardware_agent_instance is None:
         _hardware_agent_instance = HardwareAgent()
     return _hardware_agent_instance
+

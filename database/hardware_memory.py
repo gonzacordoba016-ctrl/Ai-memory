@@ -10,7 +10,10 @@ import os
 from datetime import datetime, timezone
 from core.logger import logger
 
-DB_PATH = os.getenv("MEMORY_DB_PATH", "./database/memory.db")
+from core.config import SQL_DB_PATH
+
+DB_PATH = SQL_DB_PATH
+
 
 
 class HardwareMemory:
@@ -27,17 +30,30 @@ class HardwareMemory:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS hardware_devices (
                     id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id     TEXT NOT NULL DEFAULT 'default',
                     device_name TEXT NOT NULL,
                     port        TEXT,
                     fqbn        TEXT,
                     platform    TEXT,
+                    micropython INTEGER DEFAULT 0,
                     first_seen  DATETIME DEFAULT CURRENT_TIMESTAMP,
                     last_seen   DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            # Migraciones
+            for col, definition in [
+                ("micropython", "INTEGER DEFAULT 0"),
+                ("user_id",     "TEXT NOT NULL DEFAULT 'default'"),
+            ]:
+                try:
+                    conn.execute(f"ALTER TABLE hardware_devices ADD COLUMN {col} {definition}")
+                except Exception:
+                    pass
+
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS firmware_history (
                     id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id     TEXT NOT NULL DEFAULT 'default',
                     device_name TEXT NOT NULL,
                     task        TEXT NOT NULL,
                     code        TEXT NOT NULL,
@@ -48,9 +64,15 @@ class HardwareMemory:
                     notes       TEXT
                 )
             """)
+            try:
+                conn.execute("ALTER TABLE firmware_history ADD COLUMN user_id TEXT NOT NULL DEFAULT 'default'")
+            except Exception:
+                pass
+
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS project_library (
                     id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id     TEXT NOT NULL DEFAULT 'default',
                     name        TEXT NOT NULL,
                     description TEXT NOT NULL,
                     code        TEXT NOT NULL,
@@ -61,11 +83,17 @@ class HardwareMemory:
                     updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            try:
+                conn.execute("ALTER TABLE project_library ADD COLUMN user_id TEXT NOT NULL DEFAULT 'default'")
+            except Exception:
+                pass
+
             # ── NUEVA TABLA: contexto del circuito ──────────────────
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS circuit_context (
                     id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                    device_name  TEXT NOT NULL UNIQUE,
+                    user_id      TEXT NOT NULL DEFAULT 'default',
+                    device_name  TEXT NOT NULL,
                     project_name TEXT,
                     description  TEXT,
                     components   TEXT,   -- JSON: [{name, type, pin, notes}]
@@ -73,9 +101,17 @@ class HardwareMemory:
                     power        TEXT,   -- "5V USB" / "3.3V" / "12V external"
                     notes        TEXT,   -- notas libres del usuario
                     version      INTEGER DEFAULT 1,
-                    updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+                    updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, device_name)
                 )
             """)
+            try:
+                conn.execute("ALTER TABLE circuit_context ADD COLUMN user_id TEXT NOT NULL DEFAULT 'default'")
+                # Reconstruir el índice UNIQUE si la tabla ya existía sin user_id
+                conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_cc_user_device ON circuit_context(user_id, device_name)")
+            except Exception:
+                pass
+
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS circuit_history (
                     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,21 +128,23 @@ class HardwareMemory:
     # DISPOSITIVOS
     # ======================
 
-    def register_device(self, device: dict):
+    def register_device(self, device: dict, user_id: str = "default"):
+        micropython = int(bool(device.get("micropython", False)))
         with self._get_conn() as conn:
             existing = conn.execute(
-                "SELECT id FROM hardware_devices WHERE device_name = ?",
-                (device["name"],)
+                "SELECT id FROM hardware_devices WHERE device_name = ? AND user_id = ?",
+                (device["name"], user_id)
             ).fetchone()
             if existing:
                 conn.execute(
-                    "UPDATE hardware_devices SET port=?, last_seen=CURRENT_TIMESTAMP WHERE device_name=?",
-                    (device.get("port"), device["name"])
+                    "UPDATE hardware_devices SET port=?, micropython=?, last_seen=CURRENT_TIMESTAMP "
+                    "WHERE device_name=? AND user_id=?",
+                    (device.get("port"), micropython, device["name"], user_id)
                 )
             else:
                 conn.execute(
-                    "INSERT INTO hardware_devices (device_name, port, fqbn, platform) VALUES (?,?,?,?)",
-                    (device["name"], device.get("port"), device.get("fqbn"), device.get("platform"))
+                    "INSERT INTO hardware_devices (user_id, device_name, port, fqbn, platform, micropython) VALUES (?,?,?,?,?,?)",
+                    (user_id, device["name"], device.get("port"), device.get("fqbn"), device.get("platform"), micropython)
                 )
             conn.commit()
         logger.info(f"[HardwareMemory] Dispositivo registrado: {device['name']}")
@@ -146,22 +184,59 @@ class HardwareMemory:
             return None
         return {"task": row[0], "code": row[1], "filename": row[2], "timestamp": row[3]}
 
-    def get_all_devices(self) -> list[dict]:
+    def get_recent_failures(self, device_name: str, limit: int = 3) -> list[str]:
+        """
+        Retorna los errores de compilación más recientes para el dispositivo.
+        Usado por generate_firmware para inyectarlos como contexto al LLM.
+        """
         with self._get_conn() as conn:
             rows = conn.execute(
-                "SELECT device_name, port, fqbn, platform, first_seen, last_seen FROM hardware_devices"
+                """SELECT serial_out FROM firmware_history
+                   WHERE device_name = ? AND success = 0
+                     AND serial_out IS NOT NULL AND serial_out != ''
+                   ORDER BY id DESC LIMIT ?""",
+                (device_name, limit)
+            ).fetchall()
+        return [r[0].strip() for r in rows if r[0] and r[0].strip()]
+
+    def get_all_devices(self, user_id: str = "default") -> list[dict]:
+        with self._get_conn() as conn:
+            rows = conn.execute(
+                "SELECT device_name, port, fqbn, platform, micropython, first_seen, last_seen "
+                "FROM hardware_devices WHERE user_id = ?", (user_id,)
             ).fetchall()
         return [
             {
-                "name":       r[0],
-                "port":       r[1],
-                "fqbn":       r[2],
-                "platform":   r[3],
-                "first_seen": r[4],
-                "last_seen":  r[5],
+                "name":        r[0],
+                "port":        r[1],
+                "fqbn":        r[2],
+                "platform":    r[3],
+                "micropython": bool(r[4]),
+                "first_seen":  r[5],
+                "last_seen":   r[6],
             }
             for r in rows
         ]
+
+    def get_device_info(self, device_name: str, user_id: str = "default") -> dict | None:
+        """Retorna información de un dispositivo registrado por nombre."""
+        with self._get_conn() as conn:
+            row = conn.execute(
+                "SELECT device_name, port, fqbn, platform, micropython, first_seen, last_seen "
+                "FROM hardware_devices WHERE device_name = ? AND user_id = ?",
+                (device_name, user_id)
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "name":        row[0],
+            "port":        row[1],
+            "fqbn":        row[2],
+            "platform":    row[3],
+            "micropython": bool(row[4]),
+            "first_seen":  row[5],
+            "last_seen":   row[6],
+        }
 
     # ======================
     # FIRMWARE
@@ -169,13 +244,13 @@ class HardwareMemory:
 
     def save_firmware(self, device_name: str, task: str, code: str,
                       filename: str = "", success: bool = True,
-                      serial_out: str = "", notes: str = ""):
+                      serial_out: str = "", notes: str = "", user_id: str = "default"):
         with self._get_conn() as conn:
             conn.execute(
                 """INSERT INTO firmware_history
-                   (device_name, task, code, filename, success, serial_out, notes)
-                   VALUES (?,?,?,?,?,?,?)""",
-                (device_name, task, code, filename, int(success), serial_out, notes)
+                   (user_id, device_name, task, code, filename, success, serial_out, notes)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (user_id, device_name, task, code, filename, int(success), serial_out, notes)
             )
             conn.commit()
 
@@ -218,7 +293,7 @@ class HardwareMemory:
     # CONTEXTO DEL CIRCUITO
     # ======================
 
-    def save_circuit_context(self, device_name: str, context: dict) -> bool:
+    def save_circuit_context(self, device_name: str, context: dict, user_id: str = "default") -> bool:
         """
         Guarda el contexto completo del circuito para un dispositivo.
 
@@ -241,7 +316,7 @@ class HardwareMemory:
         """
         try:
             # Guardar snapshot en historial antes de actualizar
-            existing = self.get_circuit_context(device_name)
+            existing = self.get_circuit_context(device_name, user_id=user_id)
             if existing:
                 version = existing.get("version", 1)
                 self._snapshot_circuit(device_name, existing, version)
@@ -254,9 +329,9 @@ class HardwareMemory:
             with self._get_conn() as conn:
                 conn.execute("""
                     INSERT INTO circuit_context
-                        (device_name, project_name, description, components, connections, power, notes, version)
-                    VALUES (?,?,?,?,?,?,?,?)
-                    ON CONFLICT(device_name) DO UPDATE SET
+                        (user_id, device_name, project_name, description, components, connections, power, notes, version)
+                    VALUES (?,?,?,?,?,?,?,?,?)
+                    ON CONFLICT(user_id, device_name) DO UPDATE SET
                         project_name = excluded.project_name,
                         description  = excluded.description,
                         components   = excluded.components,
@@ -266,6 +341,7 @@ class HardwareMemory:
                         version      = version + 1,
                         updated_at   = CURRENT_TIMESTAMP
                 """, (
+                    user_id,
                     device_name,
                     context.get("project_name", ""),
                     context.get("description", ""),
@@ -284,14 +360,14 @@ class HardwareMemory:
             logger.error(f"[HardwareMemory] Error guardando circuito: {e}")
             return False
 
-    def get_circuit_context(self, device_name: str) -> dict | None:
+    def get_circuit_context(self, device_name: str, user_id: str = "default") -> dict | None:
         """Retorna el contexto del circuito de un dispositivo."""
         with self._get_conn() as conn:
             row = conn.execute(
                 """SELECT project_name, description, components, connections,
                           power, notes, version, updated_at
-                   FROM circuit_context WHERE device_name = ?""",
-                (device_name,)
+                   FROM circuit_context WHERE device_name = ? AND user_id = ?""",
+                (device_name, user_id)
             ).fetchone()
 
         if not row:
@@ -316,12 +392,13 @@ class HardwareMemory:
             "updated_at":   row[7] or "",
         }
 
-    def get_all_circuits(self) -> list[dict]:
+    def get_all_circuits(self, user_id: str = "default") -> list[dict]:
         """Retorna todos los circuitos registrados (sin código completo)."""
         with self._get_conn() as conn:
             rows = conn.execute(
                 """SELECT device_name, project_name, description, version, updated_at
-                   FROM circuit_context ORDER BY updated_at DESC"""
+                   FROM circuit_context WHERE user_id = ? ORDER BY updated_at DESC""",
+                (user_id,)
             ).fetchall()
         return [
             {

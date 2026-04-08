@@ -77,7 +77,34 @@ class AgentController:
         sub_context = orch_result["combined_context"]
         logger.info(f"Agentes usados: {agents_used}")
 
-        # 4. Construir prompt final con perfil del usuario
+        # Si el hardware agent manejó el comando completamente, devolver directo
+        # (evita que el LLM principal reescriba o contradiga la respuesta del agente)
+        hw_result = orch_result["results"].get("hardware", "")
+        if hw_result and agents_used == ["hardware"]:
+            self.state.add_message("assistant", hw_result)
+            self._store_episode(user_input, hw_result)
+            self.profiler.update_from_interaction(user_input, hw_result)
+            if on_token:
+                for char in hw_result:
+                    await on_token(char)
+            return hw_result
+
+        # 4. Obtener perfil activo de IA + contexto de fuentes
+        ai_system_prompt = None
+        source_context   = ""
+        try:
+            from database.intelligence import intelligence_db
+            from memory.vector_memory import search_in_sources
+            profile = intelligence_db.get_active_profile()
+            if profile:
+                ai_system_prompt = profile.get("system_prompt")
+                active_sources   = profile.get("active_sources", [])
+                if active_sources:
+                    source_context = search_in_sources(user_input, active_sources)
+        except Exception as e:
+            logger.warning(f"[AgentController] No se pudo cargar perfil de IA: {e}")
+
+        # 5. Construir prompt final con perfil del usuario
         prompt = build_prompt(
             user_input           = user_input,
             history              = self.state.get_history(),
@@ -85,9 +112,11 @@ class AgentController:
             facts                = self.state.get_all_facts(),
             graph_context        = sub_context,
             user_profile_context = self.profiler.format_for_prompt(),
+            system_prompt        = ai_system_prompt,
+            source_context       = source_context,
         )
 
-        # 5. Generar respuesta — streaming async o llamada directa
+        # 6. Generar respuesta — streaming async o llamada directa
         messages = [{"role": "user", "content": prompt}]
 
         if on_token:
@@ -111,7 +140,7 @@ class AgentController:
         if not response:
             response = "No pude generar una respuesta."
 
-        # 6. Persistir y actualizar perfil del usuario
+        # 7. Persistir y actualizar perfil del usuario
         self.state.add_message("assistant", response)
         self._store_episode(user_input, response)
         self.profiler.update_from_interaction(user_input, response)

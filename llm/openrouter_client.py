@@ -5,16 +5,16 @@ import json
 import asyncio
 import requests
 from core.logger import logger
-from core.config import LLM_API, LLM_MODEL, get_llm_headers
+from core.config import get_llm_headers
+from llm.async_client import stream_llm_async, _get_llm_api, _get_llm_model
 from agent.agent_runner import run_agent_loop
 from tools.tool_registry import TOOL_DEFINITIONS
-from llm.async_client import stream_llm_async
 
 
-def _call_llm(messages: list, tools: list = []) -> dict:
+def _call_llm(messages: list, tools: list = [], model: str = None) -> dict:
     """Llamada estándar síncrona al LLM. Usada internamente como fallback."""
     payload = {
-        "model":       LLM_MODEL,
+        "model":       model or _get_llm_model(),
         "messages":    messages,
         "temperature": 0.7,
     }
@@ -23,7 +23,7 @@ def _call_llm(messages: list, tools: list = []) -> dict:
         payload["tool_choice"] = "auto"
 
     response = requests.post(
-        LLM_API,
+        _get_llm_api(),
         headers=get_llm_headers(agent_id="memory-agent", agent_name="AIMemoryEngine"),
         json=payload,
         timeout=120

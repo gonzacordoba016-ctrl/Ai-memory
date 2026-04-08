@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(python:*)",
+      "Bash(source venv/Scripts/activate)",
+      "Bash(mkdir -p /c/Users/gonza/.claude/projects/C--wamp64-www-ai-memory-engine/memory)",
+      "Read(//c/Users/gonza/.claude/projects/C--wamp64-www-ai-memory-engine/**)",
+      "WebFetch(domain:github.com)",
+      "Bash(ipconfig)",
+      "Bash(findstr \"IPv4\")",
+      "Bash(./venv/Scripts/pip install:*)",
+      "Bash(./venv/Scripts/python -c ':*)"
+    ]
+  }
+}

@@ -20,7 +20,7 @@ from tools.hardware_detector import detect_devices
 
 # ── Intervalos de chequeo (en segundos) ──────────────────────────────────────
 
-CHECK_CONNECTED_INTERVAL  = 30     # Detectar nuevos dispositivos USB
+CHECK_CONNECTED_INTERVAL  = 60     # Detectar nuevos dispositivos USB
 CHECK_INACTIVE_INTERVAL   = 3600   # Chequear dispositivos inactivos (1h)
 CHECK_ERRORS_INTERVAL     = 1800   # Chequear errores recurrentes (30min)
 DAILY_SUMMARY_INTERVAL    = 86400  # Resumen diario (24h)
@@ -351,15 +351,39 @@ class ProactiveEngine:
     # Broadcast a todos los clientes conectados
     # =========================================================================
 
-    async def _broadcast(self, payload: dict):
-        """Envía una notificación a todos los clientes WebSocket suscriptos."""
+    async def broadcast(self, message: str):
+        """Envía un string JSON ya serializado a todos los clientes."""
         if not self._clients:
-            # Guardar en log aunque no haya clientes conectados
-            logger.info(f"[Proactive] Notificación (sin clientes): {payload['title']}")
+            return
+        dead_clients = set()
+        for q in self._clients:
+            try:
+                q.put_nowait(message)
+            except asyncio.QueueFull:
+                dead_clients.add(q)
+        for q in dead_clients:
+            self._clients.discard(q)
+
+    async def _broadcast(self, payload: dict):
+        """Envía una notificación a todos los clientes WebSocket y push (si hay tokens)."""
+        payload["timestamp"] = datetime.now(timezone.utc).isoformat()
+
+        # Push notification a dispositivos móviles registrados
+        try:
+            from tools.push_notifier import send_push_to_all
+            asyncio.create_task(send_push_to_all(
+                title = payload.get("title", "Stratum"),
+                body  = payload.get("message", ""),
+                data  = {"type": payload.get("type", "")},
+            ))
+        except Exception:
+            pass
+
+        if not self._clients:
+            logger.info(f"[Proactive] Notificación (sin clientes WS): {payload['title']}")
             return
 
-        payload["timestamp"] = datetime.now(timezone.utc).isoformat()
-        message              = json.dumps(payload)
+        message = json.dumps(payload)
 
         dead_clients = set()
         for q in self._clients:

@@ -1,0 +1,155 @@
+# api/routers/hardware.py
+# Endpoints de hardware: dispositivos, firmware, circuitos, biblioteca, visión, señal
+
+import asyncio
+from fastapi import APIRouter, Request
+from core.logger import logger
+from api.limiter import limiter
+
+from database.hardware_memory import hardware_memory
+from tools.hardware_detector import detect_devices
+from tools.signal_reader import signal_reader
+from agent.agents.vision_agent import vision_agent
+
+router = APIRouter(prefix="/api/hardware", tags=["hardware"])
+
+
+# ── Dispositivos ────────────────────────────────────────────────────
+
+@router.get("/devices")
+async def get_hardware_devices():
+    connected  = detect_devices()
+    registered = hardware_memory.get_all_devices()
+    conn_names = {d["name"] for d in connected}
+    for d in registered:
+        d["connected"] = d["name"] in conn_names
+        circuit = hardware_memory.get_circuit_context(d["name"])
+        d["has_circuit"]  = circuit is not None
+        d["project_name"] = circuit["project_name"] if circuit else ""
+    return {
+        "connected":  connected,
+        "registered": registered,
+        "stats":      hardware_memory.get_stats(),
+    }
+
+
+@router.get("/firmware/{device_name}")
+async def get_device_firmware(device_name: str):
+    history = hardware_memory.get_device_history(device_name, limit=10)
+    current = hardware_memory.get_current_firmware(device_name)
+    return {"device": device_name, "current": current, "history": history}
+
+
+@router.get("/stats")
+async def get_hardware_stats():
+    return {"stats": hardware_memory.get_stats()}
+
+
+# ── Circuitos de dispositivos ───────────────────────────────────────
+
+@router.get("/circuit/{device_name}")
+async def get_circuit(device_name: str):
+    circuit = hardware_memory.get_circuit_context(device_name)
+    if not circuit:
+        return {"device": device_name, "circuit": None}
+    history = hardware_memory.get_circuit_history(device_name)
+    return {"device": device_name, "circuit": circuit, "history": history}
+
+
+@router.get("/circuits")
+async def get_all_circuits():
+    circuits = hardware_memory.get_all_circuits()
+    return {"circuits": circuits, "total": len(circuits)}
+
+
+@router.post("/circuit/{device_name}")
+async def save_circuit(device_name: str, request: Request):
+    circuit = await request.json()
+    success = hardware_memory.save_circuit_context(device_name, circuit)
+    return {"status": "ok" if success else "error", "device": device_name}
+
+
+@router.post("/circuit/{device_name}/note")
+async def add_circuit_note(device_name: str, request: Request):
+    body    = await request.json()
+    success = hardware_memory.update_circuit_note(device_name, body.get("text", ""))
+    return {"status": "ok" if success else "error"}
+
+
+# ── Biblioteca de proyectos ─────────────────────────────────────────
+
+@router.get("/library")
+async def get_library(platform: str = None):
+    projects = hardware_memory.get_library(platform=platform)
+    return {"projects": projects, "total": len(projects)}
+
+
+@router.get("/library/search")
+async def search_library(q: str, platform: str = None):
+    results = hardware_memory.search_library(q, platform=platform)
+    return {"query": q, "results": results}
+
+
+# ── Visión (LLaVA) ──────────────────────────────────────────────────
+
+@router.post("/vision/analyze")
+@limiter.limit("3/minute")
+async def analyze_circuit_image(request: Request):
+    body        = await request.json()
+    image_b64   = body.get("image", "")
+    device_name = body.get("device_name", "")
+
+    if not image_b64:
+        return {"success": False, "message": "No se recibió imagen"}
+
+    result = await asyncio.to_thread(vision_agent.analyze_circuit, image_b64, device_name)
+    logger.info(
+        f"[Vision] Análisis completado | success={result['success']} | "
+        f"components={len(result.get('circuit', {}).get('components', []))}"
+    )
+    return result
+
+
+@router.get("/vision/status")
+async def vision_status():
+    import os
+    provider = os.getenv("LLM_PROVIDER", "ollama")
+    if provider == "openrouter":
+        from agent.agents.vision_agent import VISION_MODEL_OPENROUTER
+        return {
+            "available": True,
+            "provider":  "openrouter",
+            "model":     VISION_MODEL_OPENROUTER,
+        }
+    available = await asyncio.to_thread(vision_agent._check_ollama_model)
+    return {
+        "available":   available,
+        "provider":    "ollama",
+        "model":       os.getenv("VISION_MODEL", "llava:7b"),
+        "install_cmd": "ollama pull llava:7b",
+    }
+
+
+# ── Señal ────────────────────────────────────────────────────────────
+
+@router.get("/signal")
+async def get_signal_data():
+    buffer = signal_reader.get_buffer()
+    return {
+        "running": signal_reader._running,
+        "port":    signal_reader._port,
+        "samples": len(buffer),
+        "data":    buffer[-100:],
+    }
+
+
+@router.post("/signal/start")
+async def start_signal(port: str, baudrate: int = 9600):
+    signal_reader.start(port, baudrate)
+    return {"status": "started", "port": port}
+
+
+@router.post("/signal/stop")
+async def stop_signal():
+    signal_reader.stop()
+    return {"status": "stopped"}

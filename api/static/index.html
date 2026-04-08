@@ -3,679 +3,843 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>STRATUM — Hardware Memory Engine</title>
+<title>STRATUM // Hardware Memory Engine</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<style>
+  body { font-family: 'Space Grotesk', sans-serif; background-color: #0e0e0e; color: #ffffff; margin: 0; overflow: hidden; }
+  .scanline-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to bottom, rgba(164,255,185,0.03) 50%, rgba(0,0,0,0) 50%); background-size: 100% 4px; pointer-events: none; z-index: 100; }
+  .data-grid { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-image: radial-gradient(circle, rgba(73,72,71,0.1) 1px, transparent 1px); background-size: 24px 24px; pointer-events: none; z-index: 0; }
+  .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24; }
+  .glow-sm   { text-shadow: 0 0 5px rgba(164,255,185,0.5); }
+  .glow-cyan { text-shadow: 0 0 5px rgba(0,203,254,0.5); }
+  .stepped-transition { transition-timing-function: steps(4, end); }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: #000000; }
+  ::-webkit-scrollbar-thumb { background: #494847; }
+  ::-webkit-scrollbar-thumb:hover { background: #a4ffb9; }
+  .blinking-cursor::after { content: '█'; animation: blink 1s step-start infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .nav-item.active { color: #a4ffb9; background: #131313; border-left: 2px solid #a4ffb9; }
+  .tab-content { display: none; }
+  .tab-content.active { display: flex; flex-direction: column; flex: 1; overflow-y: auto; }
+  .signal-bar { transition: height 0.15s steps(4, end); }
+  .voice-active { color: #ff716c !important; animation: voice-pulse 0.8s steps(4,end) infinite; }
+  @keyframes voice-pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+  .msg-queued { background: #131313; border-right: 2px solid #494847; padding: 12px 16px; opacity: 0.55; margin-bottom: 8px; }
+  .queue-badge { font-size:8px; padding:1px 5px; background:#494847; color:#adaaaa; letter-spacing:.08em; margin-left:6px; }
+</style>
 <script id="tailwind-config">
   tailwind.config = {
     darkMode: "class",
     theme: {
       extend: {
         colors: {
-          "on-tertiary-container": "#d5f3ff",
-          "surface-container": "#1f1f27",
-          "surface": "#13131b",
-          "surface-tint": "#c9beff",
-          "tertiary-container": "#00768f",
-          "surface-container-highest": "#34343d",
-          "outline-variant": "#484556",
-          "on-surface": "#e4e1ed",
-          "secondary-fixed-dim": "#00e479",
-          "on-surface-variant": "#c9c3d9",
-          "surface-bright": "#393841",
-          "on-error-container": "#ffdad6",
-          "secondary": "#f5fff3",
-          "surface-dim": "#13131b",
-          "tertiary": "#3cd7ff",
-          "outline": "#938ea2",
-          "surface-container-high": "#2a2932",
-          "secondary-container": "#34ff8d",
-          "inverse-primary": "#5e35f1",
-          "surface-container-lowest": "#0e0d15",
-          "background": "#13131b",
-          "inverse-surface": "#e4e1ed",
-          "on-background": "#e4e1ed",
-          "primary": "#c9beff",
-          "inverse-on-surface": "#302f38",
-          "surface-container-low": "#1b1b23",
-          "error": "#ffb4ab",
-          "on-tertiary": "#003642",
-          "on-primary": "#2f009b",
-          "primary-container": "#6c47ff",
-          "on-primary-container": "#f1ebff",
-          "surface-variant": "#34343d",
-          "error-container": "#93000a",
+          "primary-fixed": "#00fd87", "surface-container": "#1a1919",
+          "secondary": "#00cbfe", "surface-container-lowest": "#000000",
+          "tertiary-dim": "#2be800", "primary-fixed-dim": "#00ed7e",
+          "background": "#0e0e0e", "surface": "#0e0e0e",
+          "surface-container-low": "#131313", "error-container": "#9f0519",
+          "outline": "#777575", "on-error": "#490006",
+          "on-secondary": "#003e50", "on-background": "#ffffff",
+          "outline-variant": "#494847", "on-primary-container": "#005b2c",
+          "primary-dim": "#00ed7e", "surface-tint": "#a4ffb9",
+          "error": "#ff716c", "surface-dim": "#0e0e0e",
+          "primary": "#a4ffb9", "on-surface": "#ffffff",
+          "on-surface-variant": "#adaaaa", "surface-container-highest": "#262626",
+          "tertiary": "#8eff71", "surface-variant": "#262626",
+          "secondary-container": "#006782", "surface-bright": "#2c2c2c",
+          "surface-container-high": "#201f1f", "on-primary": "#006532",
+          "inverse-on-surface": "#565554", "inverse-surface": "#fcf8f8",
+          "primary-container": "#00fd87", "inverse-primary": "#006e37",
+          "tertiary-container": "#2ff801",
         },
-        fontFamily: {
-          "headline": ["Syne", "sans-serif"],
-          "body": ["JetBrains Mono", "monospace"],
-          "label": ["JetBrains Mono", "monospace"]
-        },
-        borderRadius: {"DEFAULT": "0px", "lg": "0px", "xl": "0px", "full": "9999px"},
+        borderRadius: { "DEFAULT": "0px", "lg": "0px", "xl": "0px", "full": "9999px" },
+        fontFamily: { "headline": ["Space Grotesk"], "body": ["Space Grotesk"], "label": ["Space Grotesk"] }
       },
     },
   }
 </script>
-<style>
-  .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; vertical-align: middle; }
-  ::-webkit-scrollbar { width: 4px; }
-  ::-webkit-scrollbar-track { background: #13131b; }
-  ::-webkit-scrollbar-thumb { background: #34343d; }
-  .blinking-cursor::after { content: '█'; animation: blink 1s step-start infinite; }
-  @keyframes blink { 50% { opacity: 0; } }
-  .tab-content { display: none; }
-  .tab-content.active { display: block; }
-  .nav-item.active { color: #34ff8d; background: rgba(52,255,141,0.05); border-right: 2px solid #34ff8d; }
-  .signal-bar { transition: height 0.15s ease; }
-</style>
 </head>
-<body class="bg-[#04040a] text-on-surface font-body selection:bg-primary-container selection:text-white antialiased overflow-hidden">
+<body class="dark selection:bg-primary selection:text-on-primary">
+<div class="scanline-overlay"></div>
+<div class="data-grid"></div>
 
-<!-- TopAppBar -->
-<header class="fixed top-0 w-full z-50 flex justify-between items-center px-6 h-16 bg-[#04040a] border-b border-[#34343d]/15">
+<!-- ── HEADER ──────────────────────────────────────────────────────────── -->
+<header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-6 h-14 bg-black/90 border-b border-[#a4ffb9]/20 shadow-[0_0_15px_rgba(164,255,185,0.1)]">
   <div class="flex items-center gap-8">
-    <span class="text-2xl font-black tracking-tighter text-[#6c47ff] uppercase font-headline">STRATUM</span>
-    <div class="hidden md:flex items-center gap-6">
-      <div class="flex items-center gap-2">
-        <span id="conn-dot" class="w-2 h-2 bg-gray-500"></span>
-        <span id="conn-label" class="text-[10px] tracking-widest text-gray-500">CONNECTING...</span>
+    <span class="text-2xl font-black text-[#a4ffb9] tracking-[-0.05em]">STRATUM</span>
+    <div class="hidden md:flex gap-4 font-mono text-[10px] tracking-widest items-center opacity-80">
+      <div class="flex items-center gap-1.5">
+        <span id="svc-sqlite-dot" class="w-1.5 h-1.5 bg-outline rounded-full"></span>
+        <span id="svc-sqlite">SQLite: —</span>
       </div>
-      <div class="flex gap-4 border-l border-outline-variant/30 pl-6">
-        <div class="flex flex-col">
-          <span class="text-[9px] text-outline">FACTS</span>
-          <span id="h-facts" class="text-xs font-bold">0</span>
-        </div>
-        <div class="flex flex-col">
-          <span class="text-[9px] text-outline">MSGS</span>
-          <span id="h-msgs" class="text-xs font-bold">0</span>
-        </div>
-        <div class="flex flex-col">
-          <span class="text-[9px] text-outline">NODES</span>
-          <span id="h-nodes" class="text-xs font-bold">0</span>
-        </div>
-        <div class="flex flex-col">
-          <span class="text-[9px] text-outline text-secondary-container">DEVICES</span>
-          <span id="h-devices" class="text-xs font-bold text-secondary-container">0</span>
-        </div>
+      <div class="flex items-center gap-1.5">
+        <span id="svc-qdrant-dot" class="w-1.5 h-1.5 bg-outline rounded-full"></span>
+        <span id="svc-qdrant">Qdrant: —</span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <span id="svc-ollama-dot" class="w-1.5 h-1.5 bg-outline rounded-full animate-pulse"></span>
+        <span id="svc-ollama">Ollama: —</span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <span class="material-symbols-outlined text-[10px] text-[#494847]">memory</span>
+        <span id="svc-cache">Cache: —</span>
+      </div>
+      <div class="flex items-center gap-1.5 border-l border-[#a4ffb9]/20 pl-4">
+        <span id="conn-dot" class="w-1.5 h-1.5 bg-gray-500 rounded-full"></span>
+        <span id="conn-label" class="text-gray-500">CONNECTING...</span>
       </div>
     </div>
   </div>
   <div class="flex items-center gap-4">
-    <button class="p-2 hover:bg-[#1f1f27] text-outline transition-colors"><span class="material-symbols-outlined text-sm">sensors</span></button>
-    <button class="p-2 hover:bg-[#1f1f27] text-outline transition-colors"><span class="material-symbols-outlined text-sm">memory</span></button>
-    <button class="p-2 hover:bg-[#1f1f27] text-outline transition-colors"><span class="material-symbols-outlined text-sm">hub</span></button>
-    <button class="p-2 hover:bg-[#1f1f27] text-[#6c47ff] transition-colors"><span class="material-symbols-outlined text-sm">developer_board</span></button>
+    <div class="hidden md:flex gap-3 font-mono text-[10px] tracking-widest text-[#adaaaa]">
+      <div class="flex flex-col items-center">
+        <span class="text-[8px] opacity-50">FACTS</span>
+        <span id="h-facts" class="text-primary font-bold">0</span>
+      </div>
+      <div class="flex flex-col items-center">
+        <span class="text-[8px] opacity-50">MSGS</span>
+        <span id="h-msgs" class="text-primary font-bold">0</span>
+      </div>
+      <div class="flex flex-col items-center">
+        <span class="text-[8px] opacity-50">NODES</span>
+        <span id="h-nodes" class="text-secondary font-bold">0</span>
+      </div>
+    </div>
+    <!-- Active profile badge -->
+    <div class="hidden md:flex items-center gap-1.5 border-l border-[#a4ffb9]/20 pl-4">
+      <span class="material-symbols-outlined text-[10px] text-[#adaaaa]">psychology</span>
+      <span id="h-active-profile" class="text-[9px] font-mono tracking-widest text-[#adaaaa]">—</span>
+    </div>
+    <div class="flex gap-2 ml-4">
+      <button onclick="openVisionModal()" class="p-1.5 text-[#adaaaa] hover:text-[#8eff71] transition-colors" title="Analizar circuito con IA visual">
+        <span class="material-symbols-outlined text-sm">photo_camera</span>
+      </button>
+      <a href="/static/graph3d.html" target="_blank" class="p-1.5 text-[#adaaaa] hover:text-[#8eff71] transition-colors" title="Grafo 3D">
+        <span class="material-symbols-outlined text-sm">hub</span>
+      </a>
+      <a href="/api/circuits/viewer" target="_blank" class="p-1.5 text-[#adaaaa] hover:text-[#8eff71] transition-colors" title="Circuit Viewer">
+        <span class="material-symbols-outlined text-sm">schema</span>
+      </a>
+    </div>
   </div>
 </header>
 
-<!-- SideNavBar -->
-<nav class="fixed left-0 top-16 bottom-0 w-20 flex flex-col items-center py-8 z-40 bg-[#13131b] border-r border-[#34343d]/15">
-  <div class="flex flex-col items-center gap-2 mb-8">
-    <div class="w-10 h-10 bg-surface-container-highest flex items-center justify-center border border-outline-variant/20">
-      <span class="material-symbols-outlined text-primary text-xl">schema</span>
-    </div>
-    <span class="text-[8px] font-bold text-outline text-center">v1.0.0</span>
+<!-- ── LEFT SIDEBAR ─────────────────────────────────────────────────────── -->
+<aside class="fixed left-0 top-14 h-[calc(100vh-3.5rem)] flex flex-col z-40 bg-[#0e0e0e] w-64 border-r border-[#a4ffb9]/10 font-mono text-[0.6875rem] tracking-widest overflow-y-auto">
+  <div class="p-4 border-b border-[#a4ffb9]/10">
+    <div class="text-[#a4ffb9] font-bold">ENGINE_v2.0.0</div>
+    <div id="engine-status" class="text-[#adaaaa] text-[9px]">STATUS: INITIALIZING</div>
   </div>
-  <div class="flex flex-col w-full gap-2">
-    <button onclick="switchNav('memory')" id="nav-memory" class="nav-item active flex flex-col items-center py-4 w-full transition-all">
-      <span class="material-symbols-outlined mb-1">database</span>
-      <span class="text-[8px] tracking-widest font-bold">MEMORY</span>
-    </button>
-    <button onclick="switchNav('graph')" id="nav-graph" class="nav-item text-[#34343d] flex flex-col items-center py-4 w-full hover:text-[#c9beff] hover:bg-[#1f1f27] transition-all">
-      <span class="material-symbols-outlined mb-1">schema</span>
-      <span class="text-[8px] tracking-widest font-bold">GRAPH</span>
-    </button>
-    <button onclick="switchNav('hardware')" id="nav-hardware" class="nav-item text-[#34343d] flex flex-col items-center py-4 w-full hover:text-[#c9beff] hover:bg-[#1f1f27] transition-all">
-      <span class="material-symbols-outlined mb-1">memory</span>
-      <span class="text-[8px] tracking-widest font-bold">HARDWARE</span>
-    </button>
-    <button onclick="switchNav('search')" id="nav-search" class="nav-item text-[#34343d] flex flex-col items-center py-4 w-full hover:text-[#c9beff] hover:bg-[#1f1f27] transition-all">
-      <span class="material-symbols-outlined mb-1">search</span>
-      <span class="text-[8px] tracking-widest font-bold">SEARCH</span>
-    </button>
-    <button onclick="switchNav('metrics')" id="nav-metrics" class="nav-item text-[#34343d] flex flex-col items-center py-4 w-full hover:text-[#c9beff] hover:bg-[#1f1f27] transition-all">
-      <span class="material-symbols-outlined mb-1">analytics</span>
-      <span class="text-[8px] tracking-widest font-bold">METRICS</span>
-    </button>
-  </div>
-  <div class="mt-auto flex flex-col w-full gap-2">
-    <button onclick="switchNav('logs')" id="nav-logs" class="nav-item text-[#34343d] flex flex-col items-center py-4 w-full hover:text-[#c9beff] hover:bg-[#1f1f27]">
-      <span class="material-symbols-outlined mb-1">terminal</span>
-      <span class="text-[8px] font-bold">LOGS</span>
-    </button>
-  </div>
-</nav>
 
-<!-- Main Content -->
-<main class="ml-20 mt-16 h-[calc(100vh-64px)] grid grid-cols-10 overflow-hidden bg-[#04040a]">
+  <!-- Nav -->
+  <nav class="py-4">
+    <div class="px-4 mb-2 text-[#adaaaa] text-[8px] opacity-50">CORE_MODULES</div>
+    <button onclick="switchNav('telemetry')" id="nav-telemetry" class="nav-item active flex items-center gap-3 py-2 pl-4 w-full text-left stepped-transition">
+      <span class="material-symbols-outlined text-sm">analytics</span> TELEMETRY
+    </button>
+    <button onclick="switchNav('devices')" id="nav-devices" class="nav-item flex items-center gap-3 py-2 pl-4 w-full text-left text-[#adaaaa] hover:bg-[#201f1f] hover:text-[#00cbfe] transition-all">
+      <span class="material-symbols-outlined text-sm">router</span> DEVICES
+    </button>
+    <button onclick="switchNav('search')" id="nav-search" class="nav-item flex items-center gap-3 py-2 pl-4 w-full text-left text-[#adaaaa] hover:bg-[#201f1f] hover:text-[#00cbfe] transition-all">
+      <span class="material-symbols-outlined text-sm">search</span> SEARCH
+    </button>
+    <button onclick="switchNav('intel')" id="nav-intel" class="nav-item flex items-center gap-3 py-2 pl-4 w-full text-left text-[#adaaaa] hover:bg-[#201f1f] hover:text-[#00cbfe] transition-all">
+      <span class="material-symbols-outlined text-sm">psychology</span> INTEL
+    </button>
+    <button onclick="switchNav('system')" id="nav-system" class="nav-item flex items-center gap-3 py-2 pl-4 w-full text-left text-[#adaaaa] hover:bg-[#201f1f] hover:text-[#00cbfe] transition-all">
+      <span class="material-symbols-outlined text-sm">settings</span> SYSTEM
+    </button>
+  </nav>
 
-  <!-- Chat Area (70%) -->
-  <section class="col-span-10 md:col-span-7 flex flex-col border-r border-[#34343d]/15 relative overflow-hidden" style="height: calc(100vh - 64px);">
-    <div id="messages" class="flex-1 overflow-y-auto p-6 space-y-6 min-h-0">
-      <!-- Session init -->
-      <div class="flex items-center gap-4 text-outline-variant/50 text-[10px] uppercase tracking-widest">
-        <div class="h-[1px] flex-1 bg-outline-variant/20"></div>
-        <span id="session-time">Session Initialized</span>
-        <div class="h-[1px] flex-1 bg-outline-variant/20"></div>
-      </div>
-      <!-- Welcome -->
-      <div class="flex flex-col items-start space-y-2">
-        <div class="bg-primary-container/10 p-5 max-w-[90%] border-l-2 border-[#6c47ff]">
-          <div class="flex items-center gap-3 mb-3">
-            <span class="text-[10px] font-black text-[#6c47ff] tracking-tighter uppercase font-headline">STRATUM_ENGINE</span>
-            <span class="px-1.5 py-0.5 bg-[#6c47ff]/20 text-[#c9beff] text-[8px] font-bold uppercase">SYSTEM</span>
-          </div>
-          <p class="text-sm text-on-primary-container">Hardware Memory Engine online. Escribí un comando o consulta.</p>
-        </div>
-      </div>
-    </div>
+  <!-- Dynamic panels inside sidebar -->
+  <div class="flex-1 overflow-y-auto px-4 py-2">
 
-    <!-- Input -->
-    <div class="p-6 bg-[#04040a] border-t border-[#34343d]/15">
-      <div class="relative flex items-center">
-        <div class="absolute left-4 text-[#6c47ff] flex items-center gap-2">
-          <span class="text-xs font-bold uppercase tracking-widest">CMD</span>
-          <span class="material-symbols-outlined text-sm">chevron_right</span>
-        </div>
-        <input id="prompt" class="w-full bg-surface-container-lowest border-b border-outline-variant py-4 pl-20 pr-24 focus:outline-none focus:border-tertiary text-sm font-body text-on-surface placeholder-outline-variant/50 transition-all" placeholder="Execute system command or query database..." type="text"/>
-        <div class="absolute right-4 flex items-center gap-3">
-          <button id="vision-btn" onclick="openVisionModal()" title="Analizar circuito con IA visual"
-            class="text-outline hover:text-[#3cd7ff] transition-colors">
-            <span class="material-symbols-outlined">photo_camera</span>
-          </button>
-          <button id="send-btn" onclick="sendMessage()" class="text-outline hover:text-primary transition-colors">
-            <span class="material-symbols-outlined">terminal</span>
-          </button>
-        </div>
-      </div>
-      <div class="flex gap-4 mt-3">
-        <span id="status-ready" class="text-[8px] text-outline-variant tracking-widest uppercase flex items-center gap-1">
-          <span class="w-1 h-1 bg-tertiary"></span> READY_FOR_INPUT
-        </span>
-        <span class="text-[8px] text-outline-variant tracking-widest uppercase flex items-center gap-1">
-          <span id="engine-dot" class="w-1 h-1 bg-outline-variant"></span>
-          <span id="engine-status">ENGINE_OFFLINE</span>
-        </span>
-        <span id="agents-label" class="text-[8px] text-outline-variant tracking-widest uppercase hidden"></span>
-      </div>
-    </div>
-  </section>
-
-  <!-- Right Panel (30%) -->
-  <aside class="hidden md:flex md:col-span-3 flex-col bg-surface-dim">
-
-    <!-- MEMORY TAB -->
-    <div id="panel-memory" class="tab-content active flex-1 overflow-y-auto p-5 space-y-6">
+    <!-- TELEMETRY PANEL -->
+    <div id="panel-telemetry" class="tab-content active space-y-4">
       <div>
-        <div class="flex justify-between items-center mb-4">
-          <h3 class="text-[10px] font-bold tracking-[0.2em] text-outline uppercase">SYSTEM_STATS</h3>
-        </div>
-        <div class="grid grid-cols-2 gap-2 mb-4">
-          <div class="bg-surface-container p-3">
-            <span class="text-[8px] text-outline block">FACTS</span>
-            <span id="s-facts" class="text-lg font-bold text-primary">0</span>
-          </div>
-          <div class="bg-surface-container p-3">
-            <span class="text-[8px] text-outline block">MESSAGES</span>
-            <span id="s-msgs" class="text-lg font-bold text-tertiary">0</span>
-          </div>
-          <div class="bg-surface-container p-3">
-            <span class="text-[8px] text-outline block">GRAPH NODES</span>
-            <span id="s-nodes" class="text-lg font-bold text-secondary-container">0</span>
-          </div>
-          <div class="bg-surface-container p-3">
-            <span class="text-[8px] text-outline block">GRAPH EDGES</span>
-            <span id="s-edges" class="text-lg font-bold">0</span>
-          </div>
+        <div class="text-[8px] opacity-50 mb-2">MEMORY_STATISTICS</div>
+        <div class="bg-surface-container-low p-3 space-y-1.5 border-l border-primary/20">
+          <div class="flex justify-between"><span>FACTS</span><span id="s-facts" class="text-primary">0</span></div>
+          <div class="flex justify-between"><span>MESSAGES</span><span id="s-msgs" class="text-primary">0</span></div>
+          <div class="flex justify-between"><span>NODES</span><span id="s-nodes" class="text-secondary">0</span></div>
+          <div class="flex justify-between"><span>EDGES</span><span id="s-edges" class="text-secondary">0</span></div>
+          <div class="flex justify-between"><span>DEVICES</span><span id="s-devices" class="text-[#8eff71]">0</span></div>
+          <div class="flex justify-between"><span>FLASHES</span><span id="s-flashes" class="text-[#8eff71]">0</span></div>
         </div>
       </div>
       <div>
-        <div class="flex justify-between items-center mb-4">
-          <h3 class="text-[10px] font-bold tracking-[0.2em] text-outline uppercase">KNOWN_FACTS</h3>
-          <span id="facts-count" class="text-[9px] text-[#6c47ff] font-bold">0 TOTAL</span>
+        <div class="text-[8px] opacity-50 mb-2">KNOWN_FACTS</div>
+        <div id="facts-list" class="space-y-1">
+          <p class="text-[10px] text-[#adaaaa]">Sin hechos</p>
         </div>
-        <div id="facts-list" class="space-y-2">
-          <p class="text-[10px] text-outline-variant">Sin hechos registrados</p>
+      </div>
+      <div>
+        <div class="text-[8px] opacity-50 mb-2">KNOWLEDGE_GRAPH</div>
+        <div id="graph-list" class="space-y-1">
+          <p class="text-[10px] text-[#adaaaa]">Sin relaciones</p>
         </div>
       </div>
     </div>
 
-    <!-- GRAPH TAB -->
-    <div id="panel-graph" class="tab-content flex-1 overflow-y-auto p-5 space-y-4">
+    <!-- DEVICES PANEL -->
+    <div id="panel-devices" class="tab-content space-y-4">
       <div class="flex justify-between items-center">
-        <h3 class="text-[10px] font-bold tracking-[0.2em] text-outline uppercase">KNOWLEDGE_GRAPH</h3>
-        <a href="/static/graph3d.html" target="_blank" class="text-[8px] text-[#6c47ff] hover:text-primary font-bold uppercase">OPEN 3D →</a>
+        <div class="text-[8px] opacity-50">CONNECTED_DEVICES</div>
+        <button onclick="loadHardware()" class="text-[8px] text-secondary hover:text-primary">↻ SCAN</button>
       </div>
-      <div id="graph-list" class="space-y-2">
-        <p class="text-[10px] text-outline-variant">Sin relaciones aún</p>
-      </div>
-    </div>
-
-    <!-- HARDWARE TAB -->
-    <div id="panel-hardware" class="tab-content flex-1 overflow-y-auto p-5 space-y-6">
-      <div>
-        <div class="flex justify-between items-center mb-4">
-          <h3 class="text-[10px] font-bold tracking-[0.2em] text-outline uppercase">CONNECTED_DEVICES</h3>
-          <button onclick="loadHardware()" class="text-[8px] text-[#6c47ff] font-bold uppercase">↻ SCAN</button>
-        </div>
-        <div id="devices-list" class="space-y-2">
-          <p class="text-[10px] text-outline-variant">Escaneando...</p>
-        </div>
+      <div id="devices-list" class="space-y-2">
+        <p class="text-[10px] text-[#adaaaa]">Escaneando...</p>
       </div>
       <div>
-        <div class="flex justify-between items-center mb-3">
-          <h3 class="text-[10px] font-bold tracking-[0.2em] text-outline uppercase">HW_STATS</h3>
-        </div>
-        <div class="grid grid-cols-2 gap-2">
-          <div class="bg-surface-container p-3">
-            <span class="text-[8px] text-outline block">REGISTERED</span>
-            <span id="hw-devices" class="text-lg font-bold text-secondary-container">0</span>
-          </div>
-          <div class="bg-surface-container p-3">
-            <span class="text-[8px] text-outline block">TOTAL FLASHES</span>
-            <span id="hw-flashes" class="text-lg font-bold text-[#6c47ff]">0</span>
-          </div>
-          <div class="bg-surface-container p-3">
-            <span class="text-[8px] text-outline block">SUCCESSFUL</span>
-            <span id="hw-success" class="text-lg font-bold text-secondary-container">0</span>
-          </div>
-          <div class="bg-surface-container p-3">
-            <span class="text-[8px] text-outline block">FAILED</span>
-            <span id="hw-failed" class="text-lg font-bold text-error">0</span>
-          </div>
+        <div class="text-[8px] opacity-50 mb-2">HW_STATS</div>
+        <div class="bg-surface-container-low p-3 space-y-1.5 border-l border-secondary/20">
+          <div class="flex justify-between"><span>REGISTERED</span><span id="hw-devices" class="text-secondary">0</span></div>
+          <div class="flex justify-between"><span>TOTAL FLASHES</span><span id="hw-flashes" class="text-secondary">0</span></div>
+          <div class="flex justify-between"><span>SUCCESSFUL</span><span id="hw-success" class="text-primary">0</span></div>
+          <div class="flex justify-between"><span>FAILED</span><span id="hw-failed" class="text-[#ff716c]">0</span></div>
         </div>
       </div>
-      <!-- Circuit Vision Results -->
+      <!-- Vision results -->
       <div id="vision-results-panel" class="hidden">
-        <div class="flex justify-between items-center mb-3">
-          <h3 class="text-[10px] font-bold tracking-[0.2em] text-[#3cd7ff] uppercase">LAST_CIRCUIT_ANALYSIS</h3>
-          <button onclick="openVisionModal()" class="text-[8px] text-[#3cd7ff] font-bold uppercase">+ NEW</button>
+        <div class="flex justify-between items-center mb-2">
+          <div class="text-[8px] opacity-50 text-secondary">LAST_CIRCUIT_ANALYSIS</div>
+          <button onclick="openVisionModal()" class="text-[8px] text-secondary">+ NEW</button>
         </div>
-        <div id="vision-results-content" class="space-y-2"></div>
-      </div>
-      <!-- Oscilloscope -->
-      <div class="border border-outline-variant/10 bg-[#0e0d15] p-4">
-        <div class="flex justify-between items-center mb-4">
-          <span class="text-[9px] font-bold text-outline tracking-tighter uppercase">REAL_TIME_OSCILLOSCOPE</span>
-          <span id="osc-status" class="text-[8px] text-outline">CH_01: IDLE</span>
-        </div>
-        <div id="osc-bars" class="h-24 flex items-end gap-[1px]">
-          <!-- filled by JS -->
-        </div>
-        <div class="mt-4 grid grid-cols-2 gap-2">
-          <div class="bg-surface-container-highest p-2">
-            <span class="text-[8px] block text-outline">PEAK_VOLT</span>
-            <span id="osc-volt" class="text-xs font-bold">—</span>
-          </div>
-          <div class="bg-surface-container-highest p-2">
-            <span class="text-[8px] block text-outline">A0_RAW</span>
-            <span id="osc-a0" class="text-xs font-bold">—</span>
-          </div>
-        </div>
+        <div id="vision-results-content" class="space-y-1"></div>
       </div>
     </div>
 
-    <!-- SEARCH TAB -->
-    <div id="panel-search" class="tab-content flex-1 overflow-y-auto p-5 space-y-4">
-      <h3 class="text-[10px] font-bold tracking-[0.2em] text-outline uppercase">SEMANTIC_SEARCH</h3>
+    <!-- SEARCH PANEL -->
+    <div id="panel-search" class="tab-content space-y-3">
+      <div class="text-[8px] opacity-50">SEMANTIC_SEARCH</div>
       <div class="relative">
-        <input id="search-input" type="text" placeholder="Query memory vector store..."
-          class="w-full bg-surface-container-lowest border-b border-outline-variant py-3 px-4 focus:outline-none focus:border-tertiary text-xs font-body text-on-surface placeholder-outline-variant/50"/>
-        <button onclick="doSearch()" class="absolute right-3 top-3 text-outline hover:text-primary">
+        <input id="search-input" type="text" placeholder="Query memory..."
+          class="w-full bg-black border-b border-[#494847] py-2 px-3 focus:outline-none focus:border-secondary text-xs text-white placeholder-[#494847]"/>
+        <button onclick="doSearch()" class="absolute right-2 top-2 text-[#adaaaa] hover:text-primary">
           <span class="material-symbols-outlined text-sm">search</span>
         </button>
       </div>
       <div id="search-results" class="space-y-2"></div>
     </div>
 
-    <!-- METRICS TAB -->
-    <div id="panel-metrics" class="tab-content flex-1 overflow-y-auto p-5 space-y-6">
-      <div class="flex justify-between items-center">
-        <h3 class="text-[10px] font-bold tracking-[0.2em] text-outline uppercase">SYSTEM_METRICS</h3>
-        <button onclick="loadMetrics()" class="text-[8px] text-[#6c47ff] font-bold uppercase">↻ REFRESH</button>
-      </div>
-
-      <!-- Perfil del usuario -->
+    <!-- INTEL PANEL -->
+    <div id="panel-intel" class="tab-content space-y-4">
+      <!-- Perfiles -->
       <div>
-        <h4 class="text-[9px] font-bold text-outline uppercase mb-3 flex items-center gap-2">
-          <span class="material-symbols-outlined text-sm text-[#6c47ff]">person</span>
-          USER_PROFILE
-        </h4>
-        <div id="metrics-profile" class="space-y-2">
-          <p class="text-[10px] text-outline-variant">Cargando perfil...</p>
+        <div class="flex justify-between items-center mb-2">
+          <div class="text-[8px] opacity-50">AI_PROFILES</div>
+          <button onclick="showCreateProfile()" class="text-[8px] text-secondary hover:text-primary">+ NEW</button>
+        </div>
+        <div id="intel-profiles" class="space-y-2">
+          <p class="text-[10px] text-[#adaaaa]">Cargando...</p>
         </div>
       </div>
 
-      <!-- Métricas de memoria -->
-      <div>
-        <h4 class="text-[9px] font-bold text-outline uppercase mb-3 flex items-center gap-2">
-          <span class="material-symbols-outlined text-sm text-tertiary">memory</span>
-          MEMORY_STATS
-        </h4>
-        <div class="grid grid-cols-2 gap-2">
-          <div class="bg-surface-container p-3">
-            <span class="text-[8px] text-outline block">HECHOS</span>
-            <span id="m-facts" class="text-xl font-bold text-primary">—</span>
-          </div>
-          <div class="bg-surface-container p-3">
-            <span class="text-[8px] text-outline block">MENSAJES</span>
-            <span id="m-msgs" class="text-xl font-bold text-tertiary">—</span>
-          </div>
-          <div class="bg-surface-container p-3">
-            <span class="text-[8px] text-outline block">NODOS GRAFO</span>
-            <span id="m-nodes" class="text-xl font-bold text-secondary-container">—</span>
-          </div>
-          <div class="bg-surface-container p-3">
-            <span class="text-[8px] text-outline block">ARISTAS</span>
-            <span id="m-edges" class="text-xl font-bold">—</span>
-          </div>
+      <!-- Form crear perfil (oculto por defecto) -->
+      <div id="intel-create-profile-form" class="hidden bg-[#131313] p-3 border border-secondary/20 space-y-2">
+        <div class="text-[8px] text-secondary mb-2">NUEVO_PERFIL</div>
+        <input id="intel-pf-name" type="text" placeholder="Nombre del perfil"
+          class="w-full bg-black border-b border-[#494847] py-1.5 px-2 text-[10px] text-white placeholder-[#494847] focus:outline-none focus:border-secondary"/>
+        <textarea id="intel-pf-prompt" rows="4" placeholder="System prompt..."
+          class="w-full bg-black border border-[#494847] p-2 text-[10px] text-white placeholder-[#494847] focus:outline-none focus:border-secondary resize-none font-mono leading-relaxed"></textarea>
+        <input id="intel-pf-desc" type="text" placeholder="Descripción (opcional)"
+          class="w-full bg-black border-b border-[#494847] py-1.5 px-2 text-[10px] text-white placeholder-[#494847] focus:outline-none focus:border-secondary"/>
+        <div class="flex gap-2 pt-1">
+          <button onclick="hideCreateProfile()" class="flex-1 py-1.5 border border-[#494847]/30 text-[9px] text-[#adaaaa] hover:border-[#adaaaa]">CANCEL</button>
+          <button onclick="saveNewProfile()" class="flex-1 py-1.5 bg-secondary/10 border border-secondary/40 text-[9px] text-secondary hover:bg-secondary/20">SAVE</button>
         </div>
       </div>
 
-      <!-- Métricas de hardware -->
+      <!-- Fuentes de conocimiento -->
       <div>
-        <h4 class="text-[9px] font-bold text-outline uppercase mb-3 flex items-center gap-2">
-          <span class="material-symbols-outlined text-sm text-secondary-container">developer_board</span>
-          HARDWARE_STATS
-        </h4>
-        <div class="grid grid-cols-2 gap-2">
-          <div class="bg-surface-container p-3">
-            <span class="text-[8px] text-outline block">DISPOSITIVOS</span>
-            <span id="m-devices" class="text-xl font-bold text-secondary-container">—</span>
-          </div>
-          <div class="bg-surface-container p-3">
-            <span class="text-[8px] text-outline block">FLASHES</span>
-            <span id="m-flashes" class="text-xl font-bold text-[#6c47ff]">—</span>
-          </div>
-          <div class="bg-surface-container p-3">
-            <span class="text-[8px] text-outline block">EXITOSOS</span>
-            <span id="m-success" class="text-xl font-bold text-secondary-container">—</span>
-          </div>
-          <div class="bg-surface-container p-3">
-            <span class="text-[8px] text-outline block">FALLIDOS</span>
-            <span id="m-failed" class="text-xl font-bold text-error">—</span>
-          </div>
+        <div class="flex justify-between items-center mb-2">
+          <div class="text-[8px] opacity-50">KNOWLEDGE_SOURCES</div>
+          <button onclick="showCreateSource()" class="text-[8px] text-secondary hover:text-primary">+ ADD</button>
+        </div>
+        <div id="intel-sources" class="space-y-2">
+          <p class="text-[10px] text-[#adaaaa]">Sin fuentes</p>
         </div>
       </div>
 
-      <!-- Tasa de éxito -->
-      <div>
-        <h4 class="text-[9px] font-bold text-outline uppercase mb-2 flex items-center gap-2">
-          <span class="material-symbols-outlined text-sm text-[#ffaa00]">task_alt</span>
-          SUCCESS_RATE
-        </h4>
-        <div class="bg-surface-container p-3">
-          <div class="flex justify-between items-center mb-2">
-            <span class="text-[9px] text-outline-variant">Flash success rate</span>
-            <span id="m-rate" class="text-[10px] font-bold text-secondary-container">—%</span>
-          </div>
-          <div class="w-full bg-surface-container-highest h-1.5">
-            <div id="m-rate-bar" class="h-1.5 bg-secondary-container transition-all duration-500" style="width:0%"></div>
-          </div>
+      <!-- Form crear fuente (oculto por defecto) -->
+      <div id="intel-create-source-form" class="hidden bg-[#131313] p-3 border border-[#8eff71]/20 space-y-2">
+        <div class="text-[8px] text-[#8eff71] mb-2">NUEVA_FUENTE</div>
+        <input id="intel-src-name" type="text" placeholder="Nombre (ej: Datasheet ESP32)"
+          class="w-full bg-black border-b border-[#494847] py-1.5 px-2 text-[10px] text-white placeholder-[#494847] focus:outline-none focus:border-[#8eff71]"/>
+        <textarea id="intel-src-content" rows="5" placeholder="Pegá el contenido (texto, datasheet, documentación)..."
+          class="w-full bg-black border border-[#494847] p-2 text-[10px] text-white placeholder-[#494847] focus:outline-none focus:border-[#8eff71] resize-none font-mono leading-relaxed"></textarea>
+        <input id="intel-src-desc" type="text" placeholder="Descripción (opcional)"
+          class="w-full bg-black border-b border-[#494847] py-1.5 px-2 text-[10px] text-white placeholder-[#494847] focus:outline-none focus:border-[#8eff71]"/>
+        <div class="flex gap-2 pt-1">
+          <button onclick="hideCreateSource()" class="flex-1 py-1.5 border border-[#494847]/30 text-[9px] text-[#adaaaa] hover:border-[#adaaaa]">CANCEL</button>
+          <button onclick="saveNewSource()" class="flex-1 py-1.5 bg-[#8eff71]/10 border border-[#8eff71]/40 text-[9px] text-[#8eff71] hover:bg-[#8eff71]/20">SAVE + INDEX</button>
         </div>
       </div>
+    </div>
 
-      <!-- Plugins -->
+    <!-- SYSTEM PANEL -->
+    <div id="panel-system" class="tab-content space-y-4">
       <div>
-        <h4 class="text-[9px] font-bold text-outline uppercase mb-3 flex items-center gap-2">
-          <span class="material-symbols-outlined text-sm text-[#3cd7ff]">extension</span>
-          PLUGINS
-        </h4>
+        <div class="flex justify-between items-center mb-2">
+          <div class="text-[8px] opacity-50">PLUGINS</div>
+          <button onclick="loadMetrics()" class="text-[8px] text-secondary">↻</button>
+        </div>
         <div id="metrics-plugins" class="space-y-1">
-          <p class="text-[10px] text-outline-variant">Sin plugins cargados</p>
+          <p class="text-[10px] text-[#adaaaa]">Sin plugins</p>
         </div>
       </div>
-
-      <!-- Proactive engine status -->
       <div>
-        <h4 class="text-[9px] font-bold text-outline uppercase mb-3 flex items-center gap-2">
-          <span class="material-symbols-outlined text-sm text-[#6c47ff]">notifications_active</span>
-          PROACTIVE_ENGINE
-        </h4>
-        <div id="metrics-proactive" class="bg-surface-container p-3 space-y-1">
-          <p class="text-[10px] text-outline-variant">Cargando...</p>
+        <div class="text-[8px] opacity-50 mb-2">USER_PROFILE</div>
+        <div id="metrics-profile" class="space-y-1">
+          <p class="text-[10px] text-[#adaaaa]">Cargando...</p>
         </div>
+      </div>
+      <div>
+        <div class="text-[8px] opacity-50 mb-2">PROACTIVE_ENGINE</div>
+        <div id="metrics-proactive" class="bg-surface-container-low p-2 border-l border-primary/20">
+          <p class="text-[10px] text-[#adaaaa]">Cargando...</p>
+        </div>
+      </div>
+      <div>
+        <div class="text-[8px] opacity-50 mb-2">SYSTEM_LOGS</div>
+        <div id="logs-list" class="space-y-0.5 font-mono text-[9px] max-h-64 overflow-y-auto"></div>
       </div>
     </div>
 
-    <!-- LOGS TAB -->
-    <div id="panel-logs" class="tab-content flex-1 overflow-y-auto p-5">
-      <h3 class="text-[10px] font-bold tracking-[0.2em] text-outline uppercase mb-4">SYSTEM_LOGS</h3>
-      <div id="logs-list" class="space-y-1 font-body text-[10px]"></div>
-    </div>
+  </div><!-- end dynamic panels -->
 
-    <!-- Footer -->
-    <div class="p-4 bg-surface-container-low border-t border-[#34343d]/15 flex-shrink-0">
-      <button onclick="loadHardware()" class="w-full bg-primary-container text-on-primary-fixed py-3 text-[10px] font-bold tracking-[0.3em] uppercase hover:bg-primary transition-all active:scale-[0.98]">
-        CONNECT NEW DEVICE
+  <!-- Bottom -->
+  <div class="p-4 border-t border-[#a4ffb9]/10 space-y-2">
+    <a href="/api/circuits/viewer" target="_blank"
+       class="w-full flex items-center justify-center gap-2 py-2 border border-secondary/30 text-secondary hover:bg-secondary/10 transition-colors text-[10px]">
+      <span class="material-symbols-outlined text-sm">schema</span> CIRCUIT VIEWER
+    </a>
+    <button onclick="if(confirm('Terminar sesión?'))window.close()"
+       class="w-full flex items-center justify-center gap-2 py-2 border border-error/30 text-error hover:bg-error/10 transition-colors text-[10px]">
+      <span class="material-symbols-outlined text-sm">power_settings_new</span> TERMINATE
+    </button>
+  </div>
+</aside>
+
+<!-- ── MAIN CONTENT ─────────────────────────────────────────────────────── -->
+<main class="ml-64 mr-80 pt-14 h-screen flex flex-col relative z-10">
+
+  <!-- Chat messages -->
+  <div id="messages" class="flex-1 overflow-y-auto p-6 space-y-6 scroll-smooth">
+    <!-- Session init -->
+    <div class="flex items-center gap-4 text-[#494847] text-[9px] uppercase tracking-widest">
+      <div class="h-[1px] flex-1 bg-[#494847]/30"></div>
+      <span id="session-time">SESSION_INIT</span>
+      <div class="h-[1px] flex-1 bg-[#494847]/30"></div>
+    </div>
+    <!-- Welcome -->
+    <div class="flex flex-col items-start">
+      <div class="bg-[#131313] border-l-2 border-primary p-4 max-w-2xl">
+        <div class="text-[9px] mb-2 opacity-50 text-primary">STRATUM_ENGINE // SYSTEM</div>
+        <p class="text-sm font-mono tracking-tight">Hardware Memory Engine online. Escribí un comando o consulta de hardware.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Input area -->
+  <div class="bg-[#0e0e0e] p-6 border-t border-[#a4ffb9]/10">
+    <div class="flex items-center gap-4 border-b border-secondary/30 focus-within:border-secondary transition-colors pb-2">
+      <span class="text-secondary font-mono text-sm">&gt;</span>
+      <input id="prompt"
+        class="bg-transparent border-none focus:ring-0 w-full font-mono text-sm uppercase placeholder:opacity-30 placeholder:text-[#adaaaa] focus:outline-none"
+        placeholder="ENTER COMMAND OR HARDWARE QUERY..." type="text"/>
+      <button id="voice-btn" onclick="toggleVoice()" class="text-[#adaaaa] hover:text-primary transition-colors" title="Dictado por voz">
+        <span class="material-symbols-outlined text-sm">mic</span>
+      </button>
+      <button id="vision-btn" onclick="openVisionModal()" class="text-[#adaaaa] hover:text-secondary transition-colors" title="Analizar circuito">
+        <span class="material-symbols-outlined text-sm">photo_camera</span>
+      </button>
+      <button id="send-btn" onclick="sendMessage()" class="text-secondary hover:text-primary transition-colors">
+        <span class="material-symbols-outlined">send</span>
       </button>
     </div>
-  </aside>
+    <div class="flex gap-4 mt-2">
+      <span class="text-[8px] text-[#adaaaa] tracking-widest flex items-center gap-1">
+        <span id="status-dot" class="w-1 h-1 bg-[#494847]"></span>
+        <span id="status-text">ENGINE_OFFLINE</span>
+      </span>
+      <span id="agents-label" class="text-[8px] text-[#adaaaa] tracking-widest hidden"></span>
+    </div>
+  </div>
+
+  <!-- Collapsible circuit viewer -->
+  <div class="relative z-20">
+    <input class="hidden peer" id="viewer-toggle" type="checkbox"/>
+    <label class="flex justify-between items-center px-4 py-1 bg-[#1a1919] border-t border-[#a4ffb9]/20 cursor-pointer text-[10px] font-mono hover:bg-[#201f1f]" for="viewer-toggle">
+      <div class="flex items-center gap-2 text-[#adaaaa]">
+        <span class="material-symbols-outlined text-sm">schema</span>
+        CIRCUIT_VIEWER
+      </div>
+      <span class="material-symbols-outlined text-sm text-[#adaaaa] transition-transform peer-checked:rotate-180">expand_less</span>
+    </label>
+    <div class="h-0 overflow-hidden transition-all duration-300 bg-black peer-checked:h-40 border-t border-[#a4ffb9]/20 flex items-center justify-center">
+      <a href="/api/circuits/viewer" target="_blank"
+         class="text-[10px] font-mono text-[#adaaaa] hover:text-primary flex items-center gap-2 transition-colors">
+        <span class="material-symbols-outlined">open_in_new</span>
+        ABRIR CIRCUIT VIEWER →
+      </a>
+    </div>
+  </div>
 </main>
 
-<!-- ── VISION MODAL ─────────────────────────────────────────── -->
-<div id="vision-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80">
-  <div class="bg-[#13131b] border border-outline-variant/30 w-full max-w-lg mx-4 flex flex-col">
+<!-- ── RIGHT SIDEBAR ─────────────────────────────────────────────────────── -->
+<aside class="fixed right-0 top-14 h-[calc(100vh-3.5rem)] w-80 bg-[#0e0e0e] border-l border-[#a4ffb9]/10 p-6 flex flex-col font-mono z-40 overflow-hidden">
 
-    <!-- Header -->
-    <div class="flex justify-between items-center px-6 py-4 border-b border-outline-variant/20">
-      <div class="flex items-center gap-3">
-        <span class="material-symbols-outlined text-[#3cd7ff]">photo_camera</span>
-        <span class="text-[10px] font-bold tracking-[0.2em] uppercase text-outline">CIRCUIT_VISION_ANALYZER</span>
+  <!-- Bridge Status -->
+  <div class="mb-4 bg-[#131313] border-l-2 border-[#494847] p-3" id="bridge-card-web">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="material-symbols-outlined text-sm text-[#494847]" id="bridge-icon-web">router</span>
+        <div>
+          <div class="text-[8px] text-[#adaaaa] tracking-widest">HARDWARE_BRIDGE</div>
+          <div id="bridge-status-web" class="text-[9px] text-[#494847] font-mono">CHECKING...</div>
+        </div>
       </div>
-      <button onclick="closeVisionModal()" class="text-outline hover:text-error transition-colors">
+      <div class="text-right">
+        <span id="bridge-dot-web" class="w-2 h-2 bg-[#494847] rounded-full inline-block"></span>
+        <div id="bridge-since-web" class="text-[8px] text-[#494847] mt-0.5"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Jobs -->
+  <div class="mb-6">
+    <div class="text-[10px] text-[#adaaaa] mb-3 flex justify-between items-center">
+      <span>ACTIVE_JOBS</span>
+      <span id="jobs-count" class="text-secondary">0</span>
+    </div>
+    <div id="jobs-list" class="space-y-3">
+      <div class="bg-[#131313] border-l border-[#494847]/50 p-3 opacity-40">
+        <div class="text-[10px] text-[#adaaaa]">NO_ACTIVE_JOBS</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live signal -->
+  <div class="flex-1 flex flex-col overflow-hidden">
+    <div class="text-[10px] text-[#adaaaa] mb-3 flex justify-between items-center">
+      <span>LIVE_SIGNAL // SERIAL</span>
+      <span id="osc-status-dot" class="w-2 h-2 bg-[#494847] rounded-full"></span>
+    </div>
+
+    <!-- Hex readout -->
+    <div id="osc-hex" class="flex-none bg-black border border-[#494847]/20 p-2 font-mono text-[9px] text-secondary/80 leading-tight mb-2 space-y-0.5">
+      <div class="flex gap-2 opacity-40"><span>0x4A</span><span>0x22</span><span>0xF1</span><span>0x00</span><span>0x1A</span><span>0xBC</span></div>
+      <div class="flex gap-2"><span>0x4B</span><span class="text-primary">0x33</span><span>0xF1</span><span>0x01</span><span class="text-primary">0x1B</span><span>0xBD</span></div>
+      <div class="flex gap-2 opacity-70"><span>0x4C</span><span>0x44</span><span>0xF1</span><span>0x00</span><span>0x1C</span><span>0xBE</span></div>
+    </div>
+
+    <!-- Waveform -->
+    <div class="flex-1 bg-black border border-[#494847]/20 p-2 flex flex-col overflow-hidden">
+      <div class="flex-1 relative" style="min-height:80px">
+        <canvas id="osc-chart"></canvas>
+      </div>
+      <div class="mt-2 grid grid-cols-2 gap-2 flex-none">
+        <div class="bg-[#201f1f] p-1.5">
+          <span class="text-[8px] block text-[#adaaaa]">PEAK_VOLT</span>
+          <span id="osc-volt" class="text-xs font-bold">—</span>
+        </div>
+        <div class="bg-[#201f1f] p-1.5">
+          <span class="text-[8px] block text-[#adaaaa]">A0_RAW</span>
+          <span id="osc-a0" class="text-xs font-bold">—</span>
+        </div>
+      </div>
+      <div id="osc-label" class="mt-2 text-[8px] text-[#494847] italic">AWAITING_SIGNAL_DATA...</div>
+    </div>
+  </div>
+
+  <!-- Auth status -->
+  <div class="mt-4 pt-4 border-t border-[#494847]/20">
+    <div id="auth-panel" class="bg-[#201f1f] p-3 border border-secondary/20">
+      <div class="flex items-center gap-3">
+        <span class="material-symbols-outlined text-secondary text-sm">lock_open</span>
+        <div class="flex flex-col">
+          <span class="text-[10px] text-secondary">SECURITY_PROTOCOL</span>
+          <span id="auth-label" class="text-[8px] text-[#adaaaa]">SINGLE_USER_MODE</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- Corner accents -->
+<div class="fixed top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-primary z-[200]"></div>
+<div class="fixed top-0 right-0 w-2 h-2 border-t-2 border-r-2 border-primary z-[200]"></div>
+<div class="fixed bottom-0 left-0 w-2 h-2 border-b-2 border-l-2 border-primary z-[200]"></div>
+<div class="fixed bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-primary z-[200]"></div>
+
+<!-- ── VISION MODAL ───────────────────────────────────────────────────────── -->
+<div id="vision-modal" class="fixed inset-0 z-[150] hidden items-center justify-center bg-black/80">
+  <div class="bg-[#0e0e0e] border border-[#494847]/30 w-full max-w-lg mx-4 flex flex-col font-mono">
+    <div class="flex justify-between items-center px-6 py-4 border-b border-[#494847]/20">
+      <div class="flex items-center gap-3">
+        <span class="material-symbols-outlined text-secondary">photo_camera</span>
+        <span class="text-[10px] font-bold tracking-widest text-[#adaaaa]">CIRCUIT_VISION_ANALYZER</span>
+      </div>
+      <button onclick="closeVisionModal()" class="text-[#adaaaa] hover:text-error transition-colors">
         <span class="material-symbols-outlined text-sm">close</span>
       </button>
     </div>
-
-    <!-- Body -->
     <div class="p-6 space-y-4">
-
-      <!-- Drop zone / preview -->
       <div id="vision-dropzone"
-        class="border-2 border-dashed border-outline-variant/40 hover:border-[#3cd7ff]/60 transition-colors flex flex-col items-center justify-center p-8 cursor-pointer relative"
+        class="border-2 border-dashed border-[#494847]/40 hover:border-secondary/60 transition-colors flex flex-col items-center justify-center p-8 cursor-pointer"
         onclick="document.getElementById('vision-file-input').click()"
         ondragover="event.preventDefault()"
         ondrop="handleVisionDrop(event)">
         <input id="vision-file-input" type="file" accept="image/*" class="hidden" onchange="handleVisionFile(event)"/>
         <img id="vision-preview" class="hidden max-h-48 object-contain mb-3"/>
-        <div id="vision-placeholder" class="flex flex-col items-center gap-2 text-outline-variant">
+        <div id="vision-placeholder" class="flex flex-col items-center gap-2 text-[#494847]">
           <span class="material-symbols-outlined text-4xl">image</span>
-          <span class="text-[10px] uppercase tracking-widest">Arrastrá una imagen o hacé click</span>
-          <span class="text-[9px]">JPG, PNG, WEBP — foto del circuito</span>
+          <span class="text-[10px] uppercase tracking-widest">Arrastrá o hacé click</span>
+          <span class="text-[9px]">JPG, PNG, WEBP</span>
         </div>
       </div>
-
-      <!-- Device selector -->
       <div>
-        <label class="text-[9px] text-outline uppercase tracking-widest block mb-1">Asociar a dispositivo (opcional)</label>
+        <label class="text-[9px] text-[#adaaaa] uppercase tracking-widest block mb-1">Dispositivo (opcional)</label>
         <div class="flex gap-2">
           <input id="vision-device" type="text" placeholder="ej: Arduino Uno"
-            class="flex-1 bg-surface-container-lowest border-b border-outline-variant py-2 px-3 text-xs font-body text-on-surface placeholder-outline-variant/50 focus:outline-none focus:border-tertiary"/>
-          <button onclick="loadDevicesForVision()" class="text-[8px] text-[#6c47ff] hover:text-primary font-bold uppercase px-2">
-            SCAN
-          </button>
+            class="flex-1 bg-black border-b border-[#494847] py-2 px-3 text-xs text-white placeholder-[#494847] focus:outline-none focus:border-secondary"/>
+          <button onclick="loadDevicesForVision()" class="text-[8px] text-secondary hover:text-primary font-bold uppercase px-2">SCAN</button>
         </div>
         <div id="vision-devices-list" class="mt-2 space-y-1"></div>
       </div>
-
-      <!-- Status -->
-      <div id="vision-status" class="hidden text-[10px] text-outline-variant space-y-1">
+      <div id="vision-status" class="hidden text-[10px] text-[#adaaaa] space-y-1">
         <div class="flex items-center gap-2">
-          <span id="vision-status-dot" class="w-2 h-2 bg-outline-variant animate-pulse"></span>
-          <span id="vision-status-text">Analizando circuito...</span>
+          <span id="vision-status-dot" class="w-2 h-2 bg-[#494847] animate-pulse"></span>
+          <span id="vision-status-text">Analizando...</span>
         </div>
-        <div class="w-full bg-surface-container-highest h-0.5">
-          <div id="vision-progress" class="h-0.5 bg-[#3cd7ff] transition-all duration-300" style="width:0%"></div>
+        <div class="w-full bg-[#262626] h-0.5">
+          <div id="vision-progress" class="h-0.5 bg-secondary transition-all duration-300" style="width:0%"></div>
         </div>
       </div>
-
     </div>
-
-    <!-- Footer -->
     <div class="px-6 pb-6 flex gap-3">
-      <button onclick="closeVisionModal()" class="flex-1 border border-outline-variant/30 py-3 text-[10px] font-bold tracking-widest uppercase text-outline hover:border-outline transition-colors">
+      <button onclick="closeVisionModal()"
+        class="flex-1 border border-[#494847]/30 py-3 text-[10px] font-bold tracking-widest uppercase text-[#adaaaa] hover:border-[#adaaaa] transition-colors">
         CANCEL
       </button>
-      <button id="vision-analyze-btn" onclick="analyzeCircuit()"
-        class="flex-1 bg-[#3cd7ff]/10 border border-[#3cd7ff]/40 text-[#3cd7ff] py-3 text-[10px] font-bold tracking-widest uppercase hover:bg-[#3cd7ff]/20 transition-all disabled:opacity-40 disabled:pointer-events-none">
+      <button id="vision-analyze-btn" onclick="analyzeCircuit()" disabled
+        class="flex-1 bg-secondary/10 border border-secondary/40 text-secondary py-3 text-[10px] font-bold tracking-widest uppercase hover:bg-secondary/20 transition-all disabled:opacity-40 disabled:pointer-events-none">
         ANALYZE_CIRCUIT
       </button>
     </div>
   </div>
 </div>
 
-<!-- Background Decoration -->
-<div class="fixed inset-0 pointer-events-none z-[-1] opacity-20">
-  <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-[#6c47ff] blur-[200px] rounded-full"></div>
-  <div class="absolute bottom-0 left-0 w-[400px] h-[400px] bg-[#3cd7ff] blur-[180px] rounded-full"></div>
-</div>
-
+<!-- ── SCRIPTS ───────────────────────────────────────────────────────────── -->
 <script>
-const API = `http://${location.hostname}:8000/api`;
-const WS_URL      = `ws://${location.hostname}:8000/ws/chat`;
-const WS_SIGNAL   = `ws://${location.hostname}:8000/ws/signal`;
+const API          = `http://${location.hostname}:8000/api`;
+const WS_URL       = `ws://${location.hostname}:8000/ws/chat`;
+const WS_SIGNAL    = `ws://${location.hostname}:8000/ws/signal`;
 const WS_PROACTIVE = `ws://${location.hostname}:8000/ws/proactive`;
 
 let ws, wsSignal, wsProactive;
 let isStreaming = false;
 let currentAgentEl = null;
 let signalBuffer = [];
+let _session_id   = localStorage.getItem('stratum_session_id') || null;
+let _wsRetryDelay = 2000;
+let _offlineQueue = JSON.parse(localStorage.getItem('stratum_web_offline_queue') || '[]');
 
-// ── NAVIGATION ────────────────────────────────────────────
+// ── VOICE INPUT ───────────────────────────────────────────────────────────
+let _voiceRec = null, _voiceOn = false;
+function _initVoice() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { alert('Tu navegador no soporta reconocimiento de voz.'); return false; }
+  _voiceRec = new SR();
+  _voiceRec.lang = 'es-AR';
+  _voiceRec.continuous = false;
+  _voiceRec.interimResults = false;
+  _voiceRec.onstart = () => {
+    _voiceOn = true;
+    const b = document.getElementById('voice-btn');
+    if (b) b.classList.add('voice-active');
+  };
+  _voiceRec.onresult = (e) => {
+    const transcript = e.results[0][0].transcript;
+    const inp = document.getElementById('prompt');
+    if (inp) { inp.value = transcript; inp.focus(); }
+  };
+  _voiceRec.onend = () => {
+    _voiceOn = false;
+    const b = document.getElementById('voice-btn');
+    if (b) b.classList.remove('voice-active');
+  };
+  _voiceRec.onerror = (e) => {
+    _voiceOn = false;
+    const b = document.getElementById('voice-btn');
+    if (b) b.classList.remove('voice-active');
+    if (e.error !== 'no-speech') console.warn('Voice error:', e.error);
+  };
+  return true;
+}
+function toggleVoice() {
+  if (!_voiceRec && !_initVoice()) return;
+  _voiceOn ? _voiceRec.stop() : _voiceRec.start();
+}
+
+// ── OFFLINE QUEUE ────────────────────────────────────────────────────────
+function _saveQueue() {
+  localStorage.setItem('stratum_web_offline_queue', JSON.stringify(_offlineQueue));
+}
+function _updateQueueBadge() {
+  const s = document.getElementById('status-text');
+  if (!s) return;
+  s.innerHTML = _offlineQueue.length > 0
+    ? `ENGINE_OFFLINE <span class="queue-badge">${_offlineQueue.length} QUEUED</span>`
+    : s.textContent;
+}
+function _enqueueMessage(text) {
+  _offlineQueue.push({ text, ts: Date.now() });
+  _saveQueue();
+  const area = document.getElementById('chat-area');
+  if (area) {
+    const div = document.createElement('div');
+    const ts  = new Date().toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+    div.className     = 'msg-queued font-mono text-xs';
+    div.dataset.queued = 'true';
+    div.innerHTML = `<span class="text-[8px] text-[#494847] mr-2">${ts} QUEUED</span><span class="text-[#adaaaa]">${text.replace(/</g,'&lt;')}</span>`;
+    area.appendChild(div);
+    area.scrollTop = area.scrollHeight;
+  }
+  _updateQueueBadge();
+  addLog(`Mensaje encolado (sin conexión): "${text.slice(0, 40)}"`, 'warn');
+}
+async function drainOfflineQueue() {
+  if (!_offlineQueue.length) return;
+  document.querySelectorAll('[data-queued="true"]').forEach(el => el.remove());
+  const queue = [..._offlineQueue];
+  _offlineQueue = [];
+  _saveQueue();
+  for (const item of queue) {
+    if (!ws || ws.readyState !== 1) break;
+    addMessage('user', item.text, []);
+    isStreaming = true;
+    document.getElementById('send-btn').classList.add('opacity-40', 'pointer-events-none');
+    currentAgentEl = null;
+    addLog(`Enviando mensaje encolado: "${item.text.slice(0, 40)}"`, 'info');
+    ws.send(JSON.stringify({ message: item.text }));
+    await new Promise(res => {
+      const handler = (e) => {
+        try { const d = JSON.parse(e.data); if (d.type === 'done' || d.type === 'error') { ws.removeEventListener('message', handler); res(); } } catch(e) {}
+      };
+      ws.addEventListener('message', handler);
+      setTimeout(res, 30000);
+    });
+  }
+}
+
+// ── NAVIGATION ──────────────────────────────────────────────────────────
 function switchNav(tab) {
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.remove('active');
-    el.classList.add('text-[#34343d]');
+    el.classList.add('text-[#adaaaa]');
   });
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
 
-  const navEl = document.getElementById(`nav-${tab}`);
+  const navEl   = document.getElementById(`nav-${tab}`);
   const panelEl = document.getElementById(`panel-${tab}`);
-  if (navEl) { navEl.classList.add('active'); navEl.classList.remove('text-[#34343d]'); }
-  if (panelEl) panelEl.classList.add('active');
+  if (navEl)   { navEl.classList.add('active');   navEl.classList.remove('text-[#adaaaa]'); }
+  if (panelEl)   panelEl.classList.add('active');
 
-  if (tab === 'hardware') loadHardware();
-  if (tab === 'graph')    loadGraph();
-  if (tab === 'memory')   loadFacts();
-  if (tab === 'metrics')  loadMetrics();
+  if (tab === 'devices')   loadHardware();
+  if (tab === 'telemetry') { loadFacts(); loadGraph(); }
+  if (tab === 'system')    loadMetrics();
+  if (tab === 'intel')     loadIntelligence();
 }
 
-// ── WEBSOCKET CHAT ────────────────────────────────────────
+// ── WEBSOCKET CHAT ───────────────────────────────────────────────────────
 function connectWS() {
-  ws = new WebSocket(WS_URL);
-
-  ws.onopen = () => {
+  const wsUrl = WS_URL + (_session_id ? `?session=${encodeURIComponent(_session_id)}` : '');
+  ws = new WebSocket(wsUrl);
+  ws.onopen  = () => {
+    _wsRetryDelay = 2000;
     setConnected(true);
     addLog('WebSocket conectado', 'info');
     loadStats();
     loadFacts();
+    if (_offlineQueue.length > 0) drainOfflineQueue();
   };
-
   ws.onclose = () => {
     setConnected(false);
-    addLog('WebSocket desconectado — reconectando...', 'warn');
-    setTimeout(connectWS, 2000);
+    addLog('WS desconectado — reconectando...', 'warn');
+    setTimeout(connectWS, _wsRetryDelay);
+    _wsRetryDelay = Math.min(_wsRetryDelay * 2, 30000);
   };
-
   ws.onerror = () => addLog('Error de WebSocket', 'error');
-
   ws.onmessage = (e) => {
     const data = JSON.parse(e.data);
-
+    if (data.type === 'session') {
+      _session_id = data.session_id;
+      localStorage.setItem('stratum_session_id', _session_id);
+      if (data.resumed) loadSessionHistory(_session_id);
+      return;
+    }
     if (data.type === 'token') {
       appendToken(data.content);
-
     } else if (data.type === 'done') {
       finishStreaming(data);
-      if (data.facts)  updateFacts(data.facts);
+      if (data.facts) updateFacts(data.facts);
       loadStats();
-      if (data.graph)  updateGraphStats(data.graph);
-
     } else if (data.type === 'error') {
       finishStreaming(null);
-      addLog(`Error: ${data.content}`, 'error');
       addMessage('agent', `Error: ${data.content}`, []);
     }
   };
 }
 
+async function loadSessionHistory(sid) {
+  try {
+    const d = await fetch(`${API}/history?session_id=${encodeURIComponent(sid)}&limit=20`).then(r => r.json());
+    const msgs = (d.messages || []).reverse();
+    if (!msgs.length) return;
+    msgs.forEach(m => {
+      if (m.role !== 'user' && m.role !== 'assistant') return;
+      addMessage(m.role === 'user' ? 'user' : 'agent', m.content, m.agents_used || []);
+    });
+    addLog(`Historial reanudado — ${msgs.length} mensajes`, 'info');
+  } catch(e) {}
+}
+
 function setConnected(ok) {
   const dot   = document.getElementById('conn-dot');
   const label = document.getElementById('conn-label');
-  const edot  = document.getElementById('engine-dot');
   const estat = document.getElementById('engine-status');
   if (ok) {
-    dot.className   = 'w-2 h-2 bg-secondary-container animate-pulse';
-    label.className = 'text-[10px] tracking-widest text-secondary-container';
-    label.textContent = 'ACTIVE CONNECTION';
-    edot.className  = 'w-1 h-1 bg-secondary-container';
-    estat.textContent = 'ENGINE_STABLE';
+    dot.className   = 'w-1.5 h-1.5 bg-primary rounded-full animate-pulse';
+    label.className = 'text-primary text-[10px] tracking-widest';
+    label.textContent = 'ACTIVE_CONNECTION';
+    estat.textContent = 'STATUS: OPERATIONAL';
+    estat.className   = 'text-primary text-[9px]';
   } else {
-    dot.className   = 'w-2 h-2 bg-gray-500';
-    label.className = 'text-[10px] tracking-widest text-gray-500';
+    dot.className   = 'w-1.5 h-1.5 bg-gray-500 rounded-full';
+    label.className = 'text-gray-500 text-[10px] tracking-widest';
     label.textContent = 'DISCONNECTED';
-    edot.className  = 'w-1 h-1 bg-outline-variant';
-    estat.textContent = 'ENGINE_OFFLINE';
+    estat.textContent = 'STATUS: OFFLINE';
+    estat.className   = 'text-error text-[9px]';
   }
 }
 
-// ── CHAT ─────────────────────────────────────────────────
+// ── HEALTH CHECK ─────────────────────────────────────────────────────────
+async function loadHealth() {
+  try {
+    const r = await fetch(`${API}/health`);
+    const d = await r.json();
+    const svc = d.services || {};
+    setServiceDot('sqlite', svc.sqlite === 'ok');
+    setServiceDot('qdrant', svc.qdrant === 'ok');
+    setServiceDot('ollama', svc.ollama === 'ok');
+  } catch(e) {
+    ['sqlite','qdrant','ollama'].forEach(s => setServiceDot(s, false));
+  }
+  // Cache stats
+  try {
+    const c = await fetch(`${API}/cache/stats`).then(r => r.json());
+    const el = document.getElementById('svc-cache');
+    if (el) el.textContent = `Cache: ${c.entries ?? '?'}`;
+  } catch(e) {}
+}
+
+function setServiceDot(name, ok) {
+  const dot  = document.getElementById(`svc-${name}-dot`);
+  const span = document.getElementById(`svc-${name}`);
+  if (!dot || !span) return;
+  dot.className = `w-1.5 h-1.5 rounded-full ${ok ? 'bg-primary' : 'bg-error'}`;
+  span.textContent = `${name.charAt(0).toUpperCase() + name.slice(1)}: ${ok ? 'OK' : 'ERR'}`;
+}
+
+// ── BRIDGE STATUS ─────────────────────────────────────────────────────────
+async function loadBridgeStatus() {
+  const dot    = document.getElementById('bridge-dot-web');
+  const icon   = document.getElementById('bridge-icon-web');
+  const txt    = document.getElementById('bridge-status-web');
+  const since  = document.getElementById('bridge-since-web');
+  const card   = document.getElementById('bridge-card-web');
+  try {
+    const d = await fetch(`${API}/hardware/bridge/status`).then(r => r.json());
+    const ok = d.connected === true;
+    if (dot)  dot.className  = ok ? 'w-2 h-2 bg-[#8eff71] rounded-full animate-pulse inline-block' : 'w-2 h-2 bg-[#494847] rounded-full inline-block';
+    if (icon) icon.className = `material-symbols-outlined text-sm ${ok ? 'text-[#8eff71]' : 'text-[#494847]'}`;
+    if (txt)  { txt.textContent = ok ? 'CONNECTED' : 'DISCONNECTED'; txt.className = `text-[9px] font-mono ${ok ? 'text-[#8eff71]' : 'text-[#494847]'}`; }
+    if (card) card.style.borderLeftColor = ok ? '#8eff71' : '#494847';
+    if (since && d.connected_at && ok) {
+      const mins = Math.round((Date.now() - new Date(d.connected_at).getTime()) / 60000);
+      since.textContent = `${mins}m`;
+    } else if (since) {
+      since.textContent = d.pending_jobs > 0 ? `${d.pending_jobs} pending` : '';
+    }
+  } catch(e) {
+    if (txt) { txt.textContent = 'UNREACHABLE'; txt.className = 'text-[9px] font-mono text-error'; }
+  }
+}
+
+// ── AUTH STATUS ───────────────────────────────────────────────────────────
+async function loadAuthStatus() {
+  try {
+    const r = await fetch(`${API}/auth/status`);
+    const d = await r.json();
+    const el = document.getElementById('auth-label');
+    if (el) el.textContent = d.multi_user ? 'MULTI_USER_JWT_ACTIVE' : 'SINGLE_USER_MODE';
+  } catch(e) {}
+}
+
+// ── CHAT ─────────────────────────────────────────────────────────────────
 function sendMessage() {
   const input = document.getElementById('prompt');
   const text  = input.value.trim();
-  if (!text || isStreaming || !ws || ws.readyState !== 1) return;
+  if (!text || isStreaming) return;
+  input.value = '';
+
+  // Sin conexión → encolar
+  if (!ws || ws.readyState !== 1) {
+    _enqueueMessage(text);
+    return;
+  }
 
   addMessage('user', text, []);
-  input.value = '';
-  isStreaming = true;
-  document.getElementById('send-btn').classList.add('opacity-50', 'pointer-events-none');
-
+  isStreaming   = true;
+  document.getElementById('send-btn').classList.add('opacity-40', 'pointer-events-none');
   currentAgentEl = addMessage('agent', '', [], true);
-  addLog(`CMD: ${text.slice(0, 50)}`, 'cmd');
-
+  addLog(`CMD: ${text.slice(0, 60)}`, 'cmd');
   ws.send(JSON.stringify({ message: text }));
 }
 
 function addMessage(role, content, agents = [], streaming = false) {
   const msgs = document.getElementById('messages');
   const ts   = new Date().toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-
-  const div = document.createElement('div');
+  const div  = document.createElement('div');
 
   if (role === 'user') {
     div.className = 'flex flex-col items-end';
     div.innerHTML = `
-      <div class="bg-surface-container-low p-4 max-w-[85%] border-r-2 border-primary/20">
-        <div class="flex justify-between items-center mb-2">
-          <span class="text-[9px] font-bold text-outline-variant uppercase">USR_INPUT</span>
-          <span class="text-[9px] text-outline-variant">${ts}</span>
-        </div>
-        <p class="text-sm leading-relaxed text-on-surface-variant">${escHtml(content)}</p>
+      <div class="bg-[#201f1f] border-r-2 border-secondary p-4 max-w-xl font-mono text-sm tracking-tight text-secondary">
+        <div class="text-[9px] mb-2 opacity-50">OPERATOR_OVERRIDE // ${ts}</div>
+        ${escHtml(content)}
       </div>`;
   } else {
-    const agentBadges = (agents || []).map(a => {
-      const colors = {
-        memory:   'bg-[#6c47ff]/20 text-[#c9beff]',
-        hardware: 'bg-[#3cd7ff]/20 text-[#3cd7ff]',
-        research: 'bg-surface-container-highest text-outline',
-        code:     'bg-[#34ff8d]/20 text-[#34ff8d]',
-        direct:   'bg-surface-container-highest text-outline',
-      };
-      const cls = colors[a] || 'bg-surface-container-highest text-outline';
-      return `<span class="px-1.5 py-0.5 ${cls} text-[8px] font-bold uppercase">AGNT_${a.toUpperCase()}</span>`;
+    const badges = (agents || []).map(a => {
+      const colors = { memory:'text-primary', hardware:'text-secondary', research:'text-[#adaaaa]', code:'text-[#8eff71]', proactive:'text-[#ffaa00]', direct:'text-[#adaaaa]' };
+      const c = colors[a] || 'text-[#adaaaa]';
+      return `<span class="px-1 py-0.5 bg-[#131313] ${c} text-[8px] font-bold uppercase border border-current/20">AGNT_${a.toUpperCase()}</span>`;
     }).join('');
 
-    div.className = 'flex flex-col items-start space-y-2';
+    div.className = 'flex flex-col items-start';
     div.innerHTML = `
-      <div class="bg-primary-container/10 p-5 max-w-[90%] border-l-2 border-[#6c47ff]">
-        <div class="flex items-center gap-3 mb-3">
-          <span class="text-[10px] font-black text-[#6c47ff] tracking-tighter uppercase font-headline">STRATUM_ENGINE</span>
-          <div class="flex gap-1 flex-wrap">${agentBadges}</div>
-          <span class="text-[9px] text-outline-variant ml-auto">${ts}</span>
+      <div class="bg-[#131313] border-l-2 border-primary p-4 max-w-2xl font-mono text-sm tracking-tight">
+        <div class="flex items-center gap-2 mb-2 flex-wrap">
+          <span class="text-[9px] text-primary opacity-50">STRATUM_ENGINE // AI_CORE // ${ts}</span>
+          <div class="flex gap-1 agent-badges">${badges}</div>
         </div>
-        <div class="text-sm leading-relaxed text-on-primary-container agent-content${streaming ? ' blinking-cursor' : ''}">${escHtml(content)}</div>
+        <div class="agent-content leading-relaxed${streaming ? ' blinking-cursor' : ''}">${escHtml(content)}</div>
       </div>`;
   }
 
@@ -695,159 +859,49 @@ function appendToken(token) {
 function finishStreaming(data) {
   if (currentAgentEl) {
     currentAgentEl.classList.remove('blinking-cursor');
-    // Actualizar badges con agentes reales
-    if (data && data.agents_used && data.agents_used.length) {
-      const badgeContainer = currentAgentEl.closest('.bg-primary-container\\/10').querySelector('.flex.gap-1');
-      if (badgeContainer) {
-        const colors = { memory:'bg-[#6c47ff]/20 text-[#c9beff]', hardware:'bg-[#3cd7ff]/20 text-[#3cd7ff]', research:'bg-surface-container-highest text-outline', code:'bg-[#34ff8d]/20 text-[#34ff8d]', direct:'bg-surface-container-highest text-outline' };
-        badgeContainer.innerHTML = data.agents_used.map(a => {
-          const cls = colors[a] || 'bg-surface-container-highest text-outline';
-          return `<span class="px-1.5 py-0.5 ${cls} text-[8px] font-bold uppercase">AGNT_${a.toUpperCase()}</span>`;
+    if (data?.agents_used?.length) {
+      const container = currentAgentEl.closest('.bg-\\[\\#131313\\]')?.querySelector('.agent-badges');
+      if (container) {
+        const colors = { memory:'text-primary', hardware:'text-secondary', research:'text-[#adaaaa]', code:'text-[#8eff71]', proactive:'text-[#ffaa00]', direct:'text-[#adaaaa]' };
+        container.innerHTML = data.agents_used.map(a => {
+          const c = colors[a] || 'text-[#adaaaa]';
+          return `<span class="px-1 py-0.5 bg-[#131313] ${c} text-[8px] font-bold uppercase border border-current/20">AGNT_${a.toUpperCase()}</span>`;
         }).join('');
       }
     }
   }
-  isStreaming = false;
+  isStreaming    = false;
   currentAgentEl = null;
-  document.getElementById('send-btn').classList.remove('opacity-50', 'pointer-events-none');
+  document.getElementById('send-btn').classList.remove('opacity-40', 'pointer-events-none');
+  updateStatusText('READY_FOR_INPUT', true);
   addLog('Response complete', 'info');
 }
 
-// ── METRICS ───────────────────────────────────────────────
-async function loadMetrics() {
-  try {
-    // Cargar stats generales, hardware, perfil y plugins en paralelo
-    const [statsR, hwR, profileR, pluginsR, proactiveR] = await Promise.all([
-      fetch(`${API}/stats`).then(r => r.json()),
-      fetch(`${API}/hardware/stats`).then(r => r.json()),
-      fetch(`${API}/profile`).then(r => r.json()),
-      fetch(`${API}/plugins`).then(r => r.json()),
-      fetch(`${API}/proactive/status`).then(r => r.json()),
-    ]);
-
-    // Memoria
-    document.getElementById('m-facts').textContent  = statsR.facts_count   ?? '—';
-    document.getElementById('m-msgs').textContent   = statsR.messages_count ?? '—';
-    document.getElementById('m-nodes').textContent  = statsR.graph_nodes    ?? '—';
-    document.getElementById('m-edges').textContent  = statsR.graph_edges    ?? '—';
-
-    // Hardware
-    const hw = hwR.stats || {};
-    document.getElementById('m-devices').textContent = hw.devices       ?? '—';
-    document.getElementById('m-flashes').textContent = hw.total_flashes ?? '—';
-    document.getElementById('m-success').textContent = hw.successful    ?? '—';
-    document.getElementById('m-failed').textContent  = hw.failed        ?? '—';
-
-    // Tasa de éxito
-    const total = hw.total_flashes || 0;
-    const succ  = hw.successful    || 0;
-    const rate  = total > 0 ? Math.round((succ / total) * 100) : 0;
-    document.getElementById('m-rate').textContent     = `${rate}%`;
-    document.getElementById('m-rate-bar').style.width = `${rate}%`;
-    document.getElementById('m-rate-bar').className   =
-      `h-1.5 transition-all duration-500 ${rate >= 80 ? 'bg-secondary-container' : rate >= 50 ? 'bg-[#ffaa00]' : 'bg-error'}`;
-
-    // Perfil del usuario
-    const profile = profileR.profile || {};
-    const profileEl = document.getElementById('metrics-profile');
-    if (profile.interaction_count > 0) {
-      const expertiseColors = {
-        avanzado:    'text-secondary-container',
-        intermedio:  'text-[#ffaa00]',
-        principiante:'text-tertiary',
-        desconocido: 'text-outline',
-      };
-      const ec = expertiseColors[profile.expertise] || 'text-outline';
-      profileEl.innerHTML = `
-        <div class="grid grid-cols-2 gap-2">
-          <div class="bg-surface-container p-2">
-            <span class="text-[8px] text-outline block">EXPERTISE</span>
-            <span class="text-[10px] font-bold ${ec}">${escHtml(profile.expertise || '—')}</span>
-          </div>
-          <div class="bg-surface-container p-2">
-            <span class="text-[8px] text-outline block">INTERACCIONES</span>
-            <span class="text-[10px] font-bold text-primary">${profile.interaction_count}</span>
-          </div>
-        </div>
-        ${profile.platforms?.length ? `
-        <div class="bg-surface-container p-2">
-          <span class="text-[8px] text-outline block mb-1">PLATAFORMAS</span>
-          <div class="flex flex-wrap gap-1">
-            ${profile.platforms.map(p => `<span class="text-[8px] px-1 bg-[#6c47ff]/20 text-[#c9beff]">${escHtml(p)}</span>`).join('')}
-          </div>
-        </div>` : ''}
-        ${profile.last_topics?.length ? `
-        <div class="bg-surface-container p-2">
-          <span class="text-[8px] text-outline block mb-1">TEMAS RECIENTES</span>
-          <div class="flex flex-wrap gap-1">
-            ${profile.last_topics.map(t => `<span class="text-[8px] px-1 bg-surface-container-highest text-outline-variant">${escHtml(t)}</span>`).join('')}
-          </div>
-        </div>` : ''}
-        ${profile.response_style ? `
-        <div class="bg-surface-container p-2">
-          <span class="text-[8px] text-outline block">ESTILO PREFERIDO</span>
-          <span class="text-[9px] text-on-surface-variant">${escHtml(profile.response_style)}</span>
-        </div>` : ''}`;
-    } else {
-      profileEl.innerHTML = '<p class="text-[10px] text-outline-variant">Perfil en construcción — seguí usando Stratum para que aprenda tu estilo.</p>';
-    }
-
-    // Plugins
-    const pluginsEl = document.getElementById('metrics-plugins');
-    const plugins   = pluginsR.plugins || [];
-    if (plugins.length) {
-      pluginsEl.innerHTML = plugins.map(p => `
-        <div class="bg-surface-container p-2 border-l-2 border-[#3cd7ff]/40">
-          <div class="flex justify-between items-center">
-            <span class="text-[9px] font-bold text-[#3cd7ff]">${escHtml(p.name)}</span>
-            <span class="text-[8px] text-outline">v${escHtml(p.version)}</span>
-          </div>
-          <p class="text-[8px] text-outline-variant mt-0.5">${escHtml(p.description)}</p>
-          <div class="flex gap-1 mt-1 flex-wrap">
-            ${p.tools.map(t => `<span class="text-[8px] px-1 bg-surface-container-highest text-outline">${escHtml(t)}</span>`).join('')}
-          </div>
-        </div>`).join('');
-    } else {
-      pluginsEl.innerHTML = '<p class="text-[10px] text-outline-variant">Sin plugins. Agregá archivos en <code class="text-[#6c47ff]">tools/plugins/</code></p>';
-    }
-
-    // Proactive engine
-    const proactEl = document.getElementById('metrics-proactive');
-    proactEl.innerHTML = `
-      <div class="flex items-center gap-2 mb-2">
-        <span class="w-2 h-2 ${proactiveR.running ? 'bg-secondary-container animate-pulse' : 'bg-error'}"></span>
-        <span class="text-[9px] font-bold ${proactiveR.running ? 'text-secondary-container' : 'text-error'}">
-          ${proactiveR.running ? 'ACTIVO' : 'INACTIVO'}
-        </span>
-        <span class="text-[8px] text-outline ml-auto">${proactiveR.clients} cliente(s) conectado(s)</span>
-      </div>
-      <div class="grid grid-cols-2 gap-1 text-[8px] text-outline-variant">
-        <span>Device check: ${proactiveR.intervals?.device_check_seconds}s</span>
-        <span>Inactivity: ${proactiveR.intervals?.inactive_check_seconds}s</span>
-        <span>Errors: ${proactiveR.intervals?.error_check_seconds}s</span>
-        <span>Nightly: 00:00hs</span>
-      </div>`;
-
-  } catch(e) {
-    console.error('Error cargando métricas:', e);
-  }
+function updateStatusText(text, ok) {
+  const dot  = document.getElementById('status-dot');
+  const span = document.getElementById('status-text');
+  if (dot)  dot.className  = `w-1 h-1 ${ok ? 'bg-primary' : 'bg-[#494847]'}`;
+  if (span) span.textContent = text;
 }
 
-// ── API CALLS ─────────────────────────────────────────────
+// ── API ───────────────────────────────────────────────────────────────────
 async function loadStats() {
   try {
     const r = await fetch(`${API}/stats`);
     const d = await r.json();
-    document.getElementById('h-facts').textContent  = d.facts_count;
-    document.getElementById('h-msgs').textContent   = d.messages_count;
-    document.getElementById('h-nodes').textContent  = d.graph_nodes;
-    document.getElementById('h-devices').textContent = (d.hw_devices || 0) + ' ACTIVE';
-    document.getElementById('s-facts').textContent  = d.facts_count;
-    document.getElementById('s-msgs').textContent   = d.messages_count;
-    document.getElementById('s-nodes').textContent  = d.graph_nodes;
-    document.getElementById('s-edges').textContent  = d.graph_edges;
-    document.getElementById('hw-devices').textContent = d.hw_devices || 0;
-    document.getElementById('hw-flashes').textContent = d.hw_flashes || 0;
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    set('h-facts',   d.facts_count);
+    set('h-msgs',    d.messages_count);
+    set('h-nodes',   d.graph_nodes);
+    set('s-facts',   d.facts_count);
+    set('s-msgs',    d.messages_count);
+    set('s-nodes',   d.graph_nodes);
+    set('s-edges',   d.graph_edges);
+    set('s-devices', d.hw_devices || 0);
+    set('s-flashes', d.hw_flashes || 0);
+    set('hw-devices',d.hw_devices || 0);
+    set('hw-flashes',d.hw_flashes || 0);
+    loadJobs();
   } catch(e) {}
 }
 
@@ -861,48 +915,34 @@ async function loadFacts() {
 
 function updateFacts(facts) {
   const el      = document.getElementById('facts-list');
-  const countEl = document.getElementById('facts-count');
   const entries = Object.entries(facts || {});
-  countEl.textContent = entries.length + ' TOTAL';
-
-  if (!entries.length) {
-    el.innerHTML = '<p class="text-[10px] text-outline-variant">Sin hechos registrados</p>';
-    return;
-  }
-
-  el.innerHTML = entries.map(([k, v]) => `
-    <div class="bg-surface-container p-3 border-l-4 border-tertiary">
-      <span class="text-[8px] font-bold text-tertiary block mb-1">${escHtml(k.toUpperCase())}</span>
-      <span class="text-xs text-on-surface-variant">${escHtml(v)}</span>
-    </div>
-  `).join('');
+  if (!entries.length) { el.innerHTML = '<p class="text-[10px] text-[#adaaaa]">Sin hechos</p>'; return; }
+  el.innerHTML = entries.slice(0, 15).map(([k, v]) => `
+    <div class="bg-[#131313] p-2 border-l-2 border-[#8eff71]/40">
+      <span class="text-[8px] font-bold text-[#8eff71] block">${escHtml(k.toUpperCase())}</span>
+      <span class="text-[9px] text-[#adaaaa]">${escHtml(v)}</span>
+    </div>`).join('');
 }
 
 async function loadGraph() {
   try {
     const r = await fetch(`${API}/graph`);
     const d = await r.json();
-    updateGraphStats(d.stats);
     const el = document.getElementById('graph-list');
-    if (!d.relations.length) {
-      el.innerHTML = '<p class="text-[10px] text-outline-variant">Sin relaciones aún</p>';
-      return;
-    }
-    el.innerHTML = d.relations.slice(0, 30).map(rel => `
-      <div class="bg-surface-container p-2 text-[10px]">
+    if (!d.relations?.length) { el.innerHTML = '<p class="text-[10px] text-[#adaaaa]">Sin relaciones</p>'; return; }
+    el.innerHTML = d.relations.slice(0, 12).map(rel => `
+      <div class="text-[9px] p-1.5 bg-[#131313]">
         <span class="text-primary">${escHtml(rel.subject)}</span>
-        <span class="text-outline mx-1">→${escHtml(rel.predicate)}→</span>
-        <span class="text-secondary-container">${escHtml(rel.object)}</span>
-      </div>
-    `).join('');
+        <span class="text-[#494847] mx-1">→${escHtml(rel.predicate)}→</span>
+        <span class="text-secondary">${escHtml(rel.object)}</span>
+      </div>`).join('');
+    const hn = document.getElementById('h-nodes');
+    const sn = document.getElementById('s-nodes');
+    if (hn) hn.textContent = d.stats?.nodes ?? hn.textContent;
+    if (sn) sn.textContent = d.stats?.nodes ?? sn.textContent;
+    const se = document.getElementById('s-edges');
+    if (se) se.textContent = d.stats?.edges ?? se.textContent;
   } catch(e) {}
-}
-
-function updateGraphStats(stats) {
-  if (!stats) return;
-  document.getElementById('h-nodes').textContent = stats.nodes;
-  document.getElementById('s-nodes').textContent = stats.nodes;
-  document.getElementById('s-edges').textContent = stats.edges;
 }
 
 async function loadHardware() {
@@ -910,120 +950,205 @@ async function loadHardware() {
     const r = await fetch(`${API}/hardware/devices`);
     const d = await r.json();
 
-    document.getElementById('hw-devices').textContent  = d.stats.devices;
-    document.getElementById('hw-flashes').textContent  = d.stats.total_flashes;
-    document.getElementById('hw-success').textContent  = d.stats.successful;
-    document.getElementById('hw-failed').textContent   = d.stats.failed;
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    set('hw-devices', d.stats?.devices       || 0);
+    set('hw-flashes', d.stats?.total_flashes || 0);
+    set('hw-success', d.stats?.successful    || 0);
+    set('hw-failed',  d.stats?.failed        || 0);
+    set('s-devices',  d.stats?.devices       || 0);
+    set('s-flashes',  d.stats?.total_flashes || 0);
 
     const el = document.getElementById('devices-list');
-
     const connected  = d.connected  || [];
     const registered = d.registered || [];
     const connNames  = new Set(connected.map(x => x.name));
+    const all = [...connected, ...registered.filter(r => !connNames.has(r.name)).map(r => ({...r, _offline: true}))];
 
-    // Combinar conectados + registrados
-    const allDevices = [...connected];
-    registered.forEach(reg => {
-      if (!connNames.has(reg.name)) allDevices.push({...reg, _offline: true});
-    });
+    if (!all.length) { el.innerHTML = '<p class="text-[10px] text-[#adaaaa]">Sin dispositivos</p>'; return; }
 
-    if (!allDevices.length) {
-      el.innerHTML = '<p class="text-[10px] text-outline-variant">Sin dispositivos detectados</p>';
-      return;
-    }
-
-    el.innerHTML = allDevices.map(d => {
-      const online  = !d._offline;
-      const opacity = online ? '' : 'opacity-50';
-      const status  = online
-        ? '<span class="text-[8px] text-secondary-container font-black">ONLINE</span>'
-        : '<span class="text-[8px] text-error font-black uppercase">OFFLINE</span>';
-      const platform = d.platform || 'UNKNOWN';
-      const port     = d.port || '—';
-
+    el.innerHTML = all.map(dev => {
+      const online = !dev._offline;
+      const badge  = dev.micropython
+        ? '<span class="text-[8px] px-1 bg-primary/10 text-primary border border-primary/20">MicroPython</span>'
+        : '';
       return `
-        <div class="flex items-center gap-4 p-3 bg-surface-container-low border border-outline-variant/10 ${opacity} cursor-pointer hover:bg-surface-container transition-colors"
-             onclick="loadDeviceHistory('${escHtml(d.name)}')">
-          <div class="w-10 h-10 bg-${online ? 'secondary-container' : 'outline-variant'}/10 flex items-center justify-center">
-            <span class="material-symbols-outlined text-${online ? 'secondary-container' : 'outline'}">developer_board</span>
+        <div class="group cursor-pointer py-1.5 hover:bg-[#131313] transition-colors px-1" onclick="loadDeviceHistory('${escHtml(dev.name)}')">
+          <div class="flex items-center gap-2 text-[10px] ${online ? 'text-secondary' : 'text-[#adaaaa]'}">
+            <span class="material-symbols-outlined text-[12px]">${dev.platform?.includes('esp32') ? 'wifi' : 'usb'}</span>
+            ${escHtml(dev.name)}
+            ${online ? '' : '<span class="text-[8px] text-error ml-auto">OFFLINE</span>'}
           </div>
-          <div class="flex-1 min-w-0">
-            <div class="flex justify-between items-center">
-              <span class="text-xs font-bold truncate">${escHtml(d.name)}</span>
-              ${status}
-            </div>
-            <div class="flex gap-2 mt-1 flex-wrap">
-              <span class="text-[8px] px-1 bg-surface-container-highest text-outline uppercase">${escHtml(port)}</span>
-              <span class="text-[8px] px-1 bg-surface-container-highest text-outline uppercase">${escHtml(platform.split(':')[0])}</span>
-            </div>
+          <div class="flex items-center gap-2 ml-5 mt-0.5">
+            <span class="text-[9px] text-[#adaaaa]">${dev.port || '—'}</span>
+            ${badge}
           </div>
         </div>`;
     }).join('');
-
   } catch(e) {
-    document.getElementById('devices-list').innerHTML = '<p class="text-[10px] text-error">Error conectando con el servidor</p>';
+    document.getElementById('devices-list').innerHTML = '<p class="text-[10px] text-error">Error conectando</p>';
   }
 }
 
-async function loadDeviceHistory(deviceName) {
+async function loadDeviceHistory(name) {
   try {
-    const r = await fetch(`${API}/hardware/firmware/${encodeURIComponent(deviceName)}`);
+    const r = await fetch(`${API}/hardware/firmware/${encodeURIComponent(name)}`);
     const d = await r.json();
-
     const el = document.getElementById('devices-list');
-    const current = d.current;
-    const history = d.history || [];
-
-    let html = `
-      <button onclick="loadHardware()" class="text-[8px] text-[#6c47ff] mb-3 hover:underline">← BACK</button>
-      <div class="text-[10px] font-bold text-outline uppercase mb-2">${escHtml(deviceName)}</div>`;
-
-    if (current) {
-      html += `
-        <div class="bg-surface-container p-3 border-l-4 border-secondary-container mb-3">
-          <span class="text-[8px] text-secondary-container font-bold block mb-1">CURRENT FIRMWARE</span>
-          <p class="text-[10px] text-on-surface-variant mb-1">${escHtml(current.task)}</p>
-          <span class="text-[8px] text-outline">${current.timestamp}</span>
-          <pre class="mt-2 text-[9px] text-tertiary bg-[#0e0d15] p-2 overflow-x-auto">${escHtml(current.code.slice(0, 200))}</pre>
-        </div>`;
+    let html = `<button onclick="loadHardware()" class="text-[8px] text-secondary mb-2 hover:underline">← BACK</button>
+      <div class="text-[10px] font-bold mb-2">${escHtml(name)}</div>`;
+    if (d.current) {
+      html += `<div class="bg-[#131313] p-2 border-l-2 border-primary mb-2">
+        <span class="text-[8px] text-primary block mb-1">CURRENT_FIRMWARE</span>
+        <p class="text-[9px] text-[#adaaaa]">${escHtml(d.current.task)}</p>
+        <pre class="text-[8px] text-secondary bg-black p-1 mt-1 overflow-x-auto">${escHtml((d.current.code || '').slice(0,200))}</pre>
+      </div>`;
     }
-
-    if (history.length) {
-      html += `<div class="text-[9px] text-outline uppercase mb-2">HISTORY (${history.length})</div>`;
-      html += history.map(h => `
-        <div class="bg-surface-container-low p-2 mb-1 border-l-2 ${h.success ? 'border-secondary-container' : 'border-error'}">
-          <p class="text-[9px] text-on-surface-variant">${escHtml(h.task.slice(0, 60))}</p>
-          <span class="text-[8px] text-outline">${h.timestamp}</span>
-        </div>`).join('');
-    }
-
+    (d.history || []).forEach(h => {
+      html += `<div class="bg-[#131313] p-2 mb-1 border-l-2 ${h.success ? 'border-primary/40' : 'border-error/40'}">
+        <p class="text-[9px] text-[#adaaaa]">${escHtml(h.task.slice(0,60))}</p>
+        <span class="text-[8px] text-[#494847]">${h.timestamp}</span>
+      </div>`;
+    });
     el.innerHTML = html;
   } catch(e) {}
 }
 
-// ── SEARCH ────────────────────────────────────────────────
+// ── JOBS ─────────────────────────────────────────────────────────────────
+async function loadJobs() {
+  try {
+    const r = await fetch(`${API}/jobs`);
+    const d = await r.json();
+    const jobs = (d.jobs || []).slice(0, 4);
+    const el = document.getElementById('jobs-list');
+    const countEl = document.getElementById('jobs-count');
+    if (countEl) countEl.textContent = d.total || 0;
+
+    if (!jobs.length) {
+      el.innerHTML = '<div class="bg-[#131313] border-l border-[#494847]/50 p-3 opacity-40"><div class="text-[10px] text-[#adaaaa]">NO_ACTIVE_JOBS</div></div>';
+      return;
+    }
+
+    el.innerHTML = jobs.map(j => {
+      const colors   = { done:'border-primary', error:'border-error', running:'border-secondary', pending:'border-[#494847]/50' };
+      const pctColors= { done:'bg-primary', error:'bg-error', running:'bg-secondary animate-pulse', pending:'bg-[#494847]' };
+      const border   = colors[j.status]   || 'border-[#494847]/50';
+      const barColor = pctColors[j.status] || 'bg-[#494847]';
+      const pct      = j.progress || (j.status === 'done' ? 100 : 0);
+      return `
+        <div class="bg-[#131313] border-l-2 ${border} p-3">
+          <div class="flex justify-between text-[10px] mb-1.5">
+            <span class="truncate max-w-[60%]">${escHtml(j.type?.toUpperCase() || 'JOB')}</span>
+            <span class="${j.status === 'done' ? 'text-primary' : j.status === 'error' ? 'text-error' : 'text-secondary'}">${pct}%</span>
+          </div>
+          <div class="w-full h-0.5 bg-black overflow-hidden">
+            <div class="h-full ${barColor}" style="width:${pct}%"></div>
+          </div>
+          <div class="text-[8px] text-[#adaaaa] mt-1">${j.status?.toUpperCase()}</div>
+        </div>`;
+    }).join('');
+  } catch(e) {}
+}
+
+// ── SEARCH ────────────────────────────────────────────────────────────────
 async function doSearch() {
   const q  = document.getElementById('search-input').value.trim();
   const el = document.getElementById('search-results');
   if (!q) return;
-  el.innerHTML = '<p class="text-[10px] text-outline-variant">Buscando...</p>';
+  el.innerHTML = '<p class="text-[10px] text-[#adaaaa]">Buscando...</p>';
   try {
     const r = await fetch(`${API}/search?q=${encodeURIComponent(q)}&top_k=5`);
     const d = await r.json();
-    if (!d.results.length) {
-      el.innerHTML = '<p class="text-[10px] text-outline-variant">Sin resultados</p>';
-      return;
-    }
+    if (!d.results?.length) { el.innerHTML = '<p class="text-[10px] text-[#adaaaa]">Sin resultados</p>'; return; }
     el.innerHTML = d.results.map(res => `
-      <div class="bg-surface-container p-3 border-l-2 border-outline-variant/30 text-[10px] text-on-surface-variant leading-relaxed">
-        ${escHtml(res)}
-      </div>`).join('');
-  } catch(e) {
-    el.innerHTML = '<p class="text-[10px] text-error">Error en búsqueda</p>';
-  }
+      <div class="bg-[#131313] p-2 border-l-2 border-[#494847]/40 text-[9px] text-[#adaaaa] leading-relaxed">${escHtml(res)}</div>`).join('');
+  } catch(e) { el.innerHTML = '<p class="text-[10px] text-error">Error</p>'; }
 }
 
-// ── SIGNAL (OSCILLOSCOPE) ─────────────────────────────────
+// ── METRICS ───────────────────────────────────────────────────────────────
+async function loadMetrics() {
+  try {
+    const [pluginsR, profileR, proactiveR] = await Promise.all([
+      fetch(`${API}/plugins`).then(r => r.json()),
+      fetch(`${API}/profile`).then(r => r.json()),
+      fetch(`${API}/proactive/status`).then(r => r.json()),
+    ]);
+
+    // Plugins
+    const pluginsEl = document.getElementById('metrics-plugins');
+    const plugins   = pluginsR.plugins || [];
+    pluginsEl.innerHTML = plugins.length
+      ? plugins.map(p => `
+          <div class="bg-[#131313] p-2 border-l-2 border-secondary/40">
+            <div class="flex justify-between"><span class="text-[9px] text-secondary">${escHtml(p.name)}</span><span class="text-[8px] text-[#adaaaa]">v${escHtml(p.version)}</span></div>
+            <p class="text-[8px] text-[#494847] mt-0.5">${escHtml(p.description)}</p>
+          </div>`).join('')
+      : '<p class="text-[10px] text-[#adaaaa]">Sin plugins</p>';
+
+    // Perfil
+    const profile  = profileR.profile || {};
+    const profileEl = document.getElementById('metrics-profile');
+    profileEl.innerHTML = profile.interaction_count > 0
+      ? `<div class="bg-[#131313] p-2 space-y-1">
+          <div class="flex justify-between text-[9px]"><span>EXPERTISE</span><span class="text-primary">${escHtml(profile.expertise || '—')}</span></div>
+          <div class="flex justify-between text-[9px]"><span>INTERACTIONS</span><span class="text-primary">${profile.interaction_count}</span></div>
+          ${profile.platforms?.length ? `<div class="text-[8px] text-[#adaaaa]">${profile.platforms.map(p => escHtml(p)).join(' · ')}</div>` : ''}
+        </div>`
+      : '<p class="text-[10px] text-[#adaaaa]">Perfil en construcción</p>';
+
+    // Proactive
+    const proactEl = document.getElementById('metrics-proactive');
+    proactEl.innerHTML = `
+      <div class="flex items-center gap-2 text-[9px]">
+        <span class="w-2 h-2 ${proactiveR.running ? 'bg-primary animate-pulse' : 'bg-error'}"></span>
+        <span class="${proactiveR.running ? 'text-primary' : 'text-error'}">${proactiveR.running ? 'RUNNING' : 'STOPPED'}</span>
+        <span class="text-[#494847] ml-auto">${proactiveR.clients || 0} client(s)</span>
+      </div>`;
+  } catch(e) {}
+}
+
+// ── SIGNAL OSCILLOSCOPE (Chart.js) ────────────────────────────────────────
+let _oscChart = null;
+
+function _initOscChart() {
+  const canvas = document.getElementById('osc-chart');
+  if (!canvas || !window.Chart) return;
+  const ctx = canvas.getContext('2d');
+  const labels = Array.from({length: 40}, (_, i) => i);
+  const data   = Array(40).fill(null);
+  _oscChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data,
+        borderColor: '#00cbfe',
+        borderWidth: 1.5,
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        tension: 0.3,
+        fill: true,
+        backgroundColor: 'rgba(0,203,254,0.06)',
+      }]
+    },
+    options: {
+      animation: false,
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: {
+        x: { display: false },
+        y: {
+          display: true,
+          min: 0, max: 1023,
+          grid: { color: 'rgba(73,72,71,0.2)', lineWidth: 0.5 },
+          ticks: { display: false },
+          border: { display: false },
+        }
+      },
+    }
+  });
+}
+
 function connectSignalWS() {
   wsSignal = new WebSocket(WS_SIGNAL);
   wsSignal.onmessage = (e) => {
@@ -1039,75 +1164,103 @@ function connectSignalWS() {
 }
 
 function renderOscilloscope(latest) {
-  const bars = signalBuffer.slice(-13);
-  const max  = Math.max(...bars.map(b => b.a0 || 0), 1);
-
-  document.getElementById('osc-bars').innerHTML = bars.map((b, i) => {
-    const pct = Math.round(((b.a0 || 0) / 1023) * 100);
-    const isLast = i === bars.length - 1;
-    const color = isLast ? 'bg-[#6c47ff]' : 'bg-tertiary';
-    const opacity = isLast ? '/80' : '/40';
-    return `<div class="flex-1 signal-bar ${color}${opacity}" style="height:${Math.max(pct,3)}%"></div>`;
-  }).join('');
-
+  if (!_oscChart) _initOscChart();
+  if (_oscChart) {
+    const vals = Array(40).fill(null);
+    signalBuffer.forEach((b, i) => { vals[i + (40 - signalBuffer.length)] = b.a0 || 0; });
+    _oscChart.data.datasets[0].data = vals;
+    // último punto en verde
+    _oscChart.data.datasets[0].pointRadius = vals.map((v, i) => (v !== null && i === 39) ? 3 : 0);
+    _oscChart.data.datasets[0].pointBackgroundColor = '#a4ffb9';
+    _oscChart.update('none');
+  }
   if (latest) {
-    document.getElementById('osc-volt').textContent = (latest.v || 0).toFixed(2) + 'V';
-    document.getElementById('osc-a0').textContent   = latest.a0 || 0;
-    document.getElementById('osc-status').textContent = 'CH_01: ACTIVE';
-    document.getElementById('osc-status').className = 'text-[8px] text-secondary-container';
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    set('osc-volt', (latest.v || 0).toFixed(2) + 'V');
+    set('osc-a0', latest.a0 || 0);
+    set('osc-label', 'RECEIVING [SERIAL_DATA_STREAM]...');
+    const dot = document.getElementById('osc-status-dot');
+    if (dot) dot.className = 'w-2 h-2 bg-secondary rounded-full animate-pulse';
   }
 }
 
 function renderIdleOscilloscope() {
-  const bars = Array.from({length: 13}, (_, i) => {
-    const heights = [40,60,85,45,30,50,90,70,40,20,65,95,50];
-    return heights[i];
-  });
-  document.getElementById('osc-bars').innerHTML = bars.map((h, i) => {
-    const color = i === 7 ? 'bg-[#6c47ff]' : 'bg-tertiary';
-    return `<div class="flex-1 ${color}/20" style="height:${h}%"></div>`;
-  }).join('');
+  if (!_oscChart) _initOscChart();
+  if (!_oscChart) return;
+  const idle = [30,50,70,45,20,60,90,65,40,20,55,85,50,35,75,25,60,45,70,40,
+                30,50,70,45,20,60,90,65,40,20,55,85,50,35,75,25,60,45,70,40];
+  _oscChart.data.datasets[0].data = idle.map(h => Math.round(h / 100 * 1023));
+  _oscChart.data.datasets[0].borderColor = 'rgba(0,203,254,0.2)';
+  _oscChart.update('none');
 }
 
-// ── LOGS ─────────────────────────────────────────────────
+// ── LOGS ──────────────────────────────────────────────────────────────────
 function addLog(msg, type = 'info') {
   const el = document.getElementById('logs-list');
   const ts = new Date().toLocaleTimeString('es', {hour12: false});
-  const colors = {
-    info:  'text-outline-variant',
-    warn:  'text-[#ffaa00]',
-    error: 'text-error',
-    cmd:   'text-[#6c47ff]',
-  };
-  const color = colors[type] || 'text-outline-variant';
-  const line  = document.createElement('div');
-  line.className = `${color} leading-relaxed`;
+  const colors = { info:'text-[#494847]', warn:'text-[#ffaa00]', error:'text-error', cmd:'text-primary' };
+  const line = document.createElement('div');
+  line.className  = `${colors[type] || 'text-[#494847]'} leading-relaxed`;
   line.textContent = `[${ts}] ${msg}`;
   el.appendChild(line);
   el.scrollTop = el.scrollHeight;
   if (el.children.length > 200) el.removeChild(el.firstChild);
 }
 
-// ── UTIL ─────────────────────────────────────────────────
-function escHtml(str) {
-  return String(str)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+// ── PROACTIVE ─────────────────────────────────────────────────────────────
+function connectProactiveWS() {
+  wsProactive = new WebSocket(WS_PROACTIVE);
+  wsProactive.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    if (data.type === 'ping') return;
+    showProactiveNotification(data);
+    if (data.type === 'job_complete') loadJobs();
+  };
+  wsProactive.onclose = () => setTimeout(connectProactiveWS, 5000);
+  wsProactive.onerror = () => addLog('WS proactivo error', 'warn');
 }
 
-// ── VISION MODAL ─────────────────────────────────────────
+function showProactiveNotification(data) {
+  const title   = data.title || 'Notificación';
+  const message = data.message || '';
+  const colors  = {
+    device_connected: 'border-primary text-primary',
+    device_inactive:  'border-[#ffaa00] text-[#ffaa00]',
+    recurring_error:  'border-error text-error',
+    job_complete:     'border-secondary text-secondary',
+    daily_summary:    'border-[#8eff71] text-[#8eff71]',
+  };
+  const cls = colors[data.type] || 'border-[#494847] text-[#adaaaa]';
+
+  const notif = document.createElement('div');
+  notif.className = `fixed bottom-6 right-6 z-[300] max-w-sm bg-black border-l-4 ${cls} p-4 font-mono text-[10px]`;
+  notif.innerHTML = `
+    <div class="flex items-start gap-3">
+      <div class="flex-1">
+        <div class="font-bold uppercase tracking-widest mb-1">${escHtml(title)}</div>
+        <div class="text-[#adaaaa] leading-relaxed">${escHtml(message.slice(0,120))}${message.length > 120 ? '...' : ''}</div>
+      </div>
+      <button onclick="this.closest('div.fixed').remove()" class="text-[#494847] hover:text-error flex-shrink-0 ml-2">✕</button>
+    </div>`;
+  document.body.appendChild(notif);
+  setTimeout(() => notif.remove?.(), 8000);
+  addMessage('agent', `${title}\n${message}`, ['proactive']);
+  addLog(`[PROACTIVE] ${title}`, 'info');
+}
+
+// ── VISION MODAL ──────────────────────────────────────────────────────────
 let visionImageB64 = null;
 
 function openVisionModal() {
-  document.getElementById('vision-modal').classList.remove('hidden');
-  document.getElementById('vision-modal').classList.add('flex');
+  const m = document.getElementById('vision-modal');
+  m.classList.remove('hidden');
+  m.classList.add('flex');
   loadDevicesForVision();
 }
-
 function closeVisionModal() {
-  document.getElementById('vision-modal').classList.add('hidden');
-  document.getElementById('vision-modal').classList.remove('flex');
-  // Reset
+  const m = document.getElementById('vision-modal');
+  m.classList.add('hidden');
+  m.classList.remove('flex');
   visionImageB64 = null;
   document.getElementById('vision-preview').classList.add('hidden');
   document.getElementById('vision-preview').src = '';
@@ -1115,228 +1268,273 @@ function closeVisionModal() {
   document.getElementById('vision-status').classList.add('hidden');
   document.getElementById('vision-analyze-btn').disabled = true;
 }
-
 function handleVisionFile(event) {
   const file = event.target.files[0];
-  if (!file) return;
-  loadVisionImage(file);
+  if (file) loadVisionImage(file);
 }
-
 function handleVisionDrop(event) {
   event.preventDefault();
   const file = event.dataTransfer.files[0];
-  if (!file || !file.type.startsWith('image/')) return;
-  loadVisionImage(file);
+  if (file?.type.startsWith('image/')) loadVisionImage(file);
 }
-
 function loadVisionImage(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
-    const dataUrl = e.target.result;
-    // Extraer solo el base64 sin el prefijo data:image/...;base64,
+    const dataUrl  = e.target.result;
     visionImageB64 = dataUrl.split(',')[1];
-
-    // Mostrar preview
-    const preview = document.getElementById('vision-preview');
-    preview.src   = dataUrl;
+    const preview  = document.getElementById('vision-preview');
+    preview.src    = dataUrl;
     preview.classList.remove('hidden');
     document.getElementById('vision-placeholder').classList.add('hidden');
     document.getElementById('vision-analyze-btn').disabled = false;
-    addLog(`Imagen cargada: ${file.name} (${(file.size/1024).toFixed(0)}KB)`, 'info');
   };
   reader.readAsDataURL(file);
 }
-
 async function loadDevicesForVision() {
   try {
     const r = await fetch(`${API}/hardware/devices`);
     const d = await r.json();
     const all = [...(d.connected || []), ...(d.registered || [])];
     const el  = document.getElementById('vision-devices-list');
-    if (!all.length) { el.innerHTML = ''; return; }
     el.innerHTML = all.slice(0, 5).map(dev => `
       <button onclick="document.getElementById('vision-device').value='${escHtml(dev.name)}'"
-        class="text-[8px] px-2 py-1 bg-surface-container text-outline hover:text-primary-container hover:bg-surface-container-high transition-colors mr-1 mb-1">
-        ${escHtml(dev.name)}
-      </button>`).join('');
+        class="text-[8px] px-2 py-1 bg-[#131313] text-[#adaaaa] hover:text-primary hover:bg-[#201f1f] transition-colors mr-1 mb-1">
+        ${escHtml(dev.name)}</button>`).join('');
   } catch(e) {}
 }
-
 async function analyzeCircuit() {
   if (!visionImageB64) return;
-
   const deviceName = document.getElementById('vision-device').value.trim();
   const btn        = document.getElementById('vision-analyze-btn');
   const statusEl   = document.getElementById('vision-status');
   const progressEl = document.getElementById('vision-progress');
   const statusText = document.getElementById('vision-status-text');
   const statusDot  = document.getElementById('vision-status-dot');
-
   btn.disabled = true;
   statusEl.classList.remove('hidden');
-  statusDot.className = 'w-2 h-2 bg-[#3cd7ff] animate-pulse';
-
-  // Simular progreso visual mientras espera la respuesta del LLM
+  statusDot.className = 'w-2 h-2 bg-secondary animate-pulse';
   let progress = 0;
-  const progressInterval = setInterval(() => {
+  const iv = setInterval(() => {
     progress = Math.min(progress + 2, 85);
     progressEl.style.width = progress + '%';
-    if (progress < 30)      statusText.textContent = 'Enviando imagen a LLaVA...';
-    else if (progress < 60) statusText.textContent = 'Identificando componentes...';
-    else                    statusText.textContent = 'Extrayendo conexiones...';
+    statusText.textContent = progress < 30 ? 'Enviando imagen...' : progress < 60 ? 'Identificando componentes...' : 'Extrayendo conexiones...';
   }, 400);
-
-  addLog('Analizando circuito con LLaVA...', 'cmd');
-
   try {
     const r = await fetch(`${API}/hardware/vision/analyze`, {
-      method:  'POST',
-      headers: {'Content-Type': 'application/json'},
-      body:    JSON.stringify({ image: visionImageB64, device_name: deviceName }),
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ image: visionImageB64, device_name: deviceName }),
     });
     const result = await r.json();
-
-    clearInterval(progressInterval);
+    clearInterval(iv);
     progressEl.style.width = '100%';
-
     if (result.success) {
-      statusDot.className  = 'w-2 h-2 bg-secondary-container';
+      statusDot.className   = 'w-2 h-2 bg-primary';
       statusText.textContent = '✓ Análisis completado';
-      addLog('Circuito analizado correctamente', 'info');
-
-      // Mostrar resultado en el chat como mensaje del agente
       addMessage('agent', result.message, ['hardware']);
-
-      // Mostrar en panel hardware
       renderVisionResults(result.circuit);
-
-      // Cerrar modal después de un momento
       setTimeout(closeVisionModal, 1500);
-
-      // Si está en la tab hardware, recargar
-      if (document.getElementById('panel-hardware').classList.contains('active')) {
-        loadHardware();
-      }
     } else {
-      statusDot.className  = 'w-2 h-2 bg-error';
+      statusDot.className   = 'w-2 h-2 bg-error';
       statusText.textContent = 'Error en el análisis';
-      addLog(`Error visión: ${result.message}`, 'error');
       addMessage('agent', result.message, ['hardware']);
       btn.disabled = false;
     }
-
   } catch(e) {
-    clearInterval(progressInterval);
-    statusDot.className  = 'w-2 h-2 bg-error';
+    clearInterval(iv);
+    statusDot.className   = 'w-2 h-2 bg-error';
     statusText.textContent = 'Error de conexión';
-    addLog(`Error conectando con el servidor: ${e}`, 'error');
     btn.disabled = false;
   }
 }
-
 function renderVisionResults(circuit) {
-  if (!circuit || !circuit.project_name) return;
-
+  if (!circuit?.project_name) return;
   const panel   = document.getElementById('vision-results-panel');
   const content = document.getElementById('vision-results-content');
-
   panel.classList.remove('hidden');
-
-  const components = (circuit.components || []).slice(0, 6);
-  const compHtml   = components.map(c => `
-    <div class="flex items-start gap-2 py-1 border-b border-outline-variant/10">
-      <span class="text-[8px] px-1 bg-[#3cd7ff]/10 text-[#3cd7ff] uppercase flex-shrink-0">${escHtml(c.type || '?')}</span>
-      <div class="flex-1 min-w-0">
-        <span class="text-[9px] font-bold text-on-surface">${escHtml(c.name || '?')}</span>
-        ${c.pin ? `<span class="text-[8px] text-outline ml-1">pin ${escHtml(c.pin)}</span>` : ''}
-      </div>
-    </div>`).join('');
-
+  const comps = (circuit.components || []).slice(0, 6);
   content.innerHTML = `
-    <div class="bg-surface-container p-3 border-l-2 border-[#3cd7ff]">
-      <div class="flex justify-between items-center mb-2">
-        <span class="text-[9px] font-bold text-[#3cd7ff]">${escHtml(circuit.project_name)}</span>
-        <span class="text-[8px] px-1 bg-[#3cd7ff]/10 text-[#3cd7ff] uppercase">${escHtml(circuit.confidence || '?')}</span>
+    <div class="bg-[#131313] p-2 border-l-2 border-secondary">
+      <div class="flex justify-between items-center mb-1">
+        <span class="text-[9px] font-bold text-secondary">${escHtml(circuit.project_name)}</span>
+        <span class="text-[8px] text-[#adaaaa]">${escHtml(circuit.confidence || '')}</span>
       </div>
-      ${circuit.description ? `<p class="text-[9px] text-outline-variant mb-2">${escHtml(circuit.description)}</p>` : ''}
-      ${circuit.power ? `<span class="text-[8px] text-outline">⚡ ${escHtml(circuit.power)}</span>` : ''}
+      ${circuit.description ? `<p class="text-[8px] text-[#adaaaa]">${escHtml(circuit.description)}</p>` : ''}
     </div>
-    ${compHtml ? `<div class="mt-2">${compHtml}</div>` : ''}
-    ${circuit.notes ? `<div class="text-[8px] text-outline-variant bg-surface-container-low p-2 mt-1">⚠ ${escHtml(circuit.notes)}</div>` : ''}
-  `;
+    ${comps.map(c => `
+      <div class="flex items-center gap-2 py-1 border-b border-[#494847]/10 text-[9px]">
+        <span class="px-1 bg-secondary/10 text-secondary text-[8px] uppercase">${escHtml(c.type || '?')}</span>
+        <span>${escHtml(c.name || '?')}</span>
+        ${c.pin ? `<span class="text-[#494847] ml-auto">pin ${escHtml(c.pin)}</span>` : ''}
+      </div>`).join('')}`;
 }
 
-// ── PROACTIVE NOTIFICATIONS ───────────────────────────────
-function connectProactiveWS() {
-  wsProactive = new WebSocket(WS_PROACTIVE);
+// ── INTELLIGENCE ──────────────────────────────────────────────────────────
+async function loadIntelligence() {
+  try {
+    const [profilesR, sourcesR, activeR] = await Promise.all([
+      fetch(`${API}/intelligence/profiles`).then(r => r.json()),
+      fetch(`${API}/intelligence/sources`).then(r => r.json()),
+      fetch(`${API}/intelligence/active`).then(r => r.json()),
+    ]);
 
-  wsProactive.onmessage = (e) => {
-    const data = JSON.parse(e.data);
-    if (data.type === 'ping') return;
-    showProactiveNotification(data);
-  };
+    const profiles = profilesR.profiles || [];
+    const sources  = sourcesR.sources   || [];
+    const activeId = activeR.profile?.id;
 
-  wsProactive.onclose = () => setTimeout(connectProactiveWS, 5000);
-  wsProactive.onerror = () => addLog('WebSocket proactivo error', 'warn');
+    // Header badge
+    const badge = document.getElementById('h-active-profile');
+    if (badge) badge.textContent = activeR.profile?.name || '—';
+
+    // Render profiles
+    const pel = document.getElementById('intel-profiles');
+    pel.innerHTML = profiles.length ? profiles.map(p => {
+      const isActive = p.id === activeId;
+      const border   = isActive ? 'border-primary' : 'border-[#494847]/30';
+      const nameClr  = isActive ? 'text-primary' : 'text-white';
+      const activeLbl= isActive ? '<span class="text-[8px] text-primary font-bold">● ACTIVE</span>' : '';
+      const canDel   = !p.id.startsWith('default-');
+      return `
+        <div class="bg-[#131313] border-l-2 ${border} p-2.5 space-y-1">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] font-bold ${nameClr}">${escHtml(p.name)}</span>
+            <div class="flex items-center gap-2">
+              ${activeLbl}
+              ${canDel ? `<button onclick="deleteProfile('${p.id}')" class="text-[8px] text-error hover:opacity-80">✕</button>` : ''}
+            </div>
+          </div>
+          ${p.description ? `<p class="text-[8px] text-[#adaaaa]">${escHtml(p.description)}</p>` : ''}
+          <div class="text-[7px] text-[#494847] font-mono leading-tight line-clamp-2 mt-1">${escHtml(p.system_prompt.slice(0, 80))}...</div>
+          ${!isActive ? `<button onclick="activateProfile('${p.id}')" class="mt-1 w-full py-1 text-[8px] border border-secondary/30 text-secondary hover:bg-secondary/10 transition-colors">SET ACTIVE</button>` : ''}
+        </div>`;
+    }).join('') : '<p class="text-[10px] text-[#adaaaa]">Sin perfiles</p>';
+
+    // Render sources
+    const sel = document.getElementById('intel-sources');
+    sel.innerHTML = sources.length ? sources.map(s => {
+      const indexed = s.indexed;
+      const idxClr  = indexed ? 'text-primary' : 'text-[#adaaaa]';
+      const idxLbl  = indexed ? 'INDEXED' : 'NOT_INDEXED';
+      return `
+        <div class="bg-[#131313] border-l-2 border-[#8eff71]/30 p-2.5">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] font-bold text-[#8eff71]">${escHtml(s.name)}</span>
+            <div class="flex items-center gap-2">
+              <span class="text-[7px] ${idxClr}">${idxLbl}</span>
+              <button onclick="deleteSource('${s.id}')" class="text-[8px] text-error hover:opacity-80">✕</button>
+            </div>
+          </div>
+          ${s.description ? `<p class="text-[8px] text-[#adaaaa] mt-0.5">${escHtml(s.description)}</p>` : ''}
+          <div class="flex gap-1 mt-1.5">
+            <span class="text-[7px] px-1 py-0.5 bg-black border border-[#494847]/30 text-[#adaaaa]">${escHtml(s.type.toUpperCase())}</span>
+            ${!indexed ? `<button onclick="indexSource('${s.id}')" class="text-[7px] px-1 py-0.5 bg-[#8eff71]/10 border border-[#8eff71]/30 text-[#8eff71] hover:bg-[#8eff71]/20">INDEX NOW</button>` : ''}
+          </div>
+        </div>`;
+    }).join('') : '<p class="text-[10px] text-[#adaaaa]">Sin fuentes</p>';
+
+  } catch(e) { addLog('Error cargando intelligence', 'error'); }
 }
 
-function showProactiveNotification(data) {
-  const type    = data.type || 'info';
-  const title   = data.title || 'Notificación';
-  const message = data.message || '';
-
-  // Colores por tipo
-  const colors = {
-    device_connected:      'border-secondary-container text-secondary-container',
-    device_inactive:       'border-[#ffaa00] text-[#ffaa00]',
-    recurring_error:       'border-error text-error',
-    daily_summary:         'border-[#6c47ff] text-[#6c47ff]',
-    nightly_consolidation: 'border-tertiary text-tertiary',
-  };
-  const colorCls = colors[type] || 'border-outline-variant text-outline-variant';
-  const icons = {
-    device_connected:      'developer_board',
-    device_inactive:       'schedule',
-    recurring_error:       'warning',
-    daily_summary:         'analytics',
-    nightly_consolidation: 'psychology',
-  };
-  const icon = icons[type] || 'notifications';
-
-  // Crear notificación flotante
-  const notif = document.createElement('div');
-  notif.className = `fixed bottom-6 right-6 z-50 max-w-sm bg-surface-container border-l-4 ${colorCls} p-4 shadow-lg animate-pulse`;
-  notif.style.animation = 'none';
-  notif.innerHTML = `
-    <div class="flex items-start gap-3">
-      <span class="material-symbols-outlined text-sm mt-0.5">${icon}</span>
-      <div class="flex-1 min-w-0">
-        <div class="text-[9px] font-bold uppercase tracking-widest mb-1">${escHtml(title)}</div>
-        <div class="text-[10px] text-on-surface-variant leading-relaxed">${escHtml(message.slice(0, 120))}${message.length > 120 ? '...' : ''}</div>
-      </div>
-      <button onclick="this.parentElement.parentElement.remove()" class="text-outline hover:text-error flex-shrink-0">
-        <span class="material-symbols-outlined text-xs">close</span>
-      </button>
-    </div>`;
-
-  document.body.appendChild(notif);
-
-  // Auto-cerrar en 8 segundos
-  setTimeout(() => notif.remove(), 8000);
-
-  // También agregar al chat como mensaje del sistema
-  addMessage('agent', `**${title}**\n${message}`, ['proactive']);
-  addLog(`[PROACTIVE] ${title}`, 'info');
+async function activateProfile(id) {
+  try {
+    await fetch(`${API}/intelligence/profiles/${id}/activate`, {method:'POST'});
+    addLog(`Perfil activado`, 'info');
+    loadIntelligence();
+  } catch(e) { addLog('Error activando perfil', 'error'); }
 }
 
-// ── INIT ─────────────────────────────────────────────────
+async function deleteProfile(id) {
+  if (!confirm('¿Eliminar este perfil?')) return;
+  try {
+    const r = await fetch(`${API}/intelligence/profiles/${id}`, {method:'DELETE'});
+    const d = await r.json();
+    if (d.ok) { addLog('Perfil eliminado', 'info'); loadIntelligence(); }
+    else addLog('No se puede eliminar este perfil', 'warn');
+  } catch(e) {}
+}
+
+function showCreateProfile() {
+  document.getElementById('intel-create-profile-form').classList.remove('hidden');
+}
+function hideCreateProfile() {
+  document.getElementById('intel-create-profile-form').classList.add('hidden');
+  document.getElementById('intel-pf-name').value = '';
+  document.getElementById('intel-pf-prompt').value = '';
+  document.getElementById('intel-pf-desc').value = '';
+}
+async function saveNewProfile() {
+  const name   = document.getElementById('intel-pf-name').value.trim();
+  const prompt = document.getElementById('intel-pf-prompt').value.trim();
+  const desc   = document.getElementById('intel-pf-desc').value.trim();
+  if (!name || !prompt) { addLog('Nombre y system prompt requeridos', 'warn'); return; }
+  try {
+    const r = await fetch(`${API}/intelligence/profiles`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name, system_prompt: prompt, description: desc}),
+    });
+    const d = await r.json();
+    if (d.profile) { hideCreateProfile(); loadIntelligence(); addLog(`Perfil creado: ${name}`, 'info'); }
+  } catch(e) { addLog('Error creando perfil', 'error'); }
+}
+
+async function indexSource(id) {
+  try {
+    addLog('Indexando fuente...', 'info');
+    const r = await fetch(`${API}/intelligence/sources/${id}/index`, {method:'POST'});
+    const d = await r.json();
+    if (d.ok) { addLog(`Fuente indexada — ${d.chunks} chunks`, 'info'); loadIntelligence(); }
+    else addLog('Error indexando', 'error');
+  } catch(e) { addLog('Error indexando fuente', 'error'); }
+}
+
+async function deleteSource(id) {
+  if (!confirm('¿Eliminar esta fuente?')) return;
+  try {
+    await fetch(`${API}/intelligence/sources/${id}`, {method:'DELETE'});
+    addLog('Fuente eliminada', 'info');
+    loadIntelligence();
+  } catch(e) {}
+}
+
+function showCreateSource() {
+  document.getElementById('intel-create-source-form').classList.remove('hidden');
+}
+function hideCreateSource() {
+  document.getElementById('intel-create-source-form').classList.add('hidden');
+  document.getElementById('intel-src-name').value = '';
+  document.getElementById('intel-src-content').value = '';
+  document.getElementById('intel-src-desc').value = '';
+}
+async function saveNewSource() {
+  const name    = document.getElementById('intel-src-name').value.trim();
+  const content = document.getElementById('intel-src-content').value.trim();
+  const desc    = document.getElementById('intel-src-desc').value.trim();
+  if (!name || !content) { addLog('Nombre y contenido requeridos', 'warn'); return; }
+  try {
+    const r = await fetch(`${API}/intelligence/sources`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name, type:'text', content, description: desc}),
+    });
+    const d = await r.json();
+    if (d.source) {
+      addLog(`Fuente creada: ${name} — indexando...`, 'info');
+      hideCreateSource();
+      await indexSource(d.source.id);
+    }
+  } catch(e) { addLog('Error creando fuente', 'error'); }
+}
+
+// ── UTILS ─────────────────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────
 document.getElementById('session-time').textContent =
-  'Session Initialized :: ' + new Date().toISOString().replace('T','_').slice(0,19);
+  'SESSION_INIT :: ' + new Date().toISOString().replace('T', '_').slice(0, 19);
 
 document.getElementById('prompt').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
-
 document.getElementById('search-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') doSearch();
 });
@@ -1345,7 +1543,30 @@ renderIdleOscilloscope();
 connectWS();
 connectSignalWS();
 connectProactiveWS();
-setInterval(loadStats, 10000);
+loadHealth();
+loadAuthStatus();
+loadIntelligence();
+loadBridgeStatus();
+setInterval(loadStats,        10000);
+setInterval(loadJobs,          5000);
+setInterval(loadHealth,       30000);
+setInterval(loadBridgeStatus, 10000);
+
+// Mostrar mensajes encolados de sesiones anteriores
+if (_offlineQueue.length > 0) {
+  _updateQueueBadge();
+  const area = document.getElementById('chat-area');
+  if (area) {
+    _offlineQueue.forEach(item => {
+      const div = document.createElement('div');
+      const ts  = new Date(item.ts).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+      div.className      = 'msg-queued font-mono text-xs';
+      div.dataset.queued = 'true';
+      div.innerHTML = `<span class="text-[8px] text-[#494847] mr-2">${ts} QUEUED</span><span class="text-[#adaaaa]">${item.text.replace(/</g,'&lt;')}</span>`;
+      area.appendChild(div);
+    });
+  }
+}
 </script>
 </body>
 </html>

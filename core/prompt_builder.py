@@ -30,16 +30,8 @@ def format_facts(facts):
     return text
 
 
-def build_prompt(user_input, history, memories, facts, graph_context="", user_profile_context=""):
-
-    now   = datetime.now()
-    fecha = now.strftime("%A %d de %B de %Y, %H:%M hs")
-
-    system_prompt = f"""Eres AI Memory Engine, un asistente de IA local con memoria persistente.
-Corrés 100% en la PC del usuario usando Ollama — no sos ChatGPT, Claude ni ningún servicio cloud.
-Tu nombre es AI Memory Engine. Nunca digas que sos un asistente de Alibaba Cloud ni de ninguna otra empresa.
-
-Hoy es {fecha}.
+DEFAULT_SYSTEM_PROMPT = """Eres Stratum, un asistente de hardware con memoria persistente especializado en Arduino, ESP32 y microcontroladores.
+Corrés 100% en la PC del usuario. No sos ChatGPT, Claude ni ningún servicio cloud.
 
 Tu objetivo es ayudar al usuario usando:
 - Los datos que ya sabés de él (hechos persistidos)
@@ -54,8 +46,19 @@ Reglas:
 - Si no sabés algo, decilo claramente sin inventar
 - Nunca rompas el personaje ni menciones modelos de lenguaje subyacentes"""
 
+
+def build_prompt(user_input, history, memories, facts, graph_context="",
+                 user_profile_context="", system_prompt: str = None,
+                 source_context: str = ""):
+
+    now   = datetime.now()
+    fecha = now.strftime("%A %d de %B de %Y, %H:%M hs")
+
+    base_prompt = (system_prompt or DEFAULT_SYSTEM_PROMPT) + f"\n\nHoy es {fecha}."
+
     sections = [
-        system_prompt,
+        base_prompt,
+        source_context,              # ← contexto de fuentes del perfil activo
         user_profile_context,          # ← perfil del usuario (adaptación dinámica)
         format_facts(facts),
         graph_context,

@@ -1,0 +1,1351 @@
+<!DOCTYPE html>
+<html class="dark" lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<title>STRATUM</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<style>
+  * { -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: 'Space Grotesk', sans-serif;
+    background: #0e0e0e; color: #fff;
+    margin: 0; overflow: hidden;
+    height: 100dvh;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .scanline {
+    position: fixed; inset: 0;
+    background: linear-gradient(to bottom, rgba(164,255,185,0.02) 50%, transparent 50%);
+    background-size: 100% 4px;
+    pointer-events: none; z-index: 100;
+  }
+  .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24; }
+  /* Panels */
+  .panel { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+  .panel.active { display: flex; }
+  /* Nav */
+  .nav-tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 56px; color: #494847; transition: color 0.15s; font-size: 9px; letter-spacing: 0.08em; }
+  .nav-tab.active { color: #a4ffb9; }
+  .nav-tab.active .material-symbols-outlined { color: #a4ffb9; }
+  /* Chat */
+  .msg-agent  { background: #131313; border-left: 2px solid #a4ffb9; padding: 12px; margin-bottom: 12px; }
+  .msg-user   { background: #201f1f; border-right: 2px solid #00cbfe; padding: 12px; margin-bottom: 12px; margin-left: 32px; }
+  .blinking::after { content: '█'; animation: blink 1s step-start infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 3px; }
+  ::-webkit-scrollbar-track { background: #000; }
+  ::-webkit-scrollbar-thumb { background: #494847; }
+  /* Cards */
+  .card { background: #131313; border-left: 2px solid #494847; padding: 10px 12px; margin-bottom: 8px; }
+  .card-green { border-left-color: #a4ffb9; }
+  .card-cyan  { border-left-color: #00cbfe; }
+  .card-lime  { border-left-color: #8eff71; }
+  /* Input */
+  .cmd-input { background: transparent; border: none; outline: none; color: #fff; font-family: inherit; font-size: 13px; width: 100%; }
+  /* Toast */
+  .toast {
+    position: fixed; top: calc(env(safe-area-inset-top) + 8px); left: 12px; right: 12px;
+    z-index: 500; background: #0e0e0e; border-left: 3px solid #a4ffb9;
+    padding: 10px 14px; font-mono: true; font-size: 11px;
+    animation: slideDown 0.2s ease;
+  }
+  @keyframes slideDown { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  /* Profile badge */
+  .profile-chip { background: #131313; border: 1px solid #a4ffb9/20; padding: 2px 8px; font-size: 9px; letter-spacing: 0.1em; }
+  /* Voice */
+  .voice-active { color: #ff716c !important; animation: voice-pulse 0.8s steps(4,end) infinite; }
+  @keyframes voice-pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+  /* Offline queue */
+  .msg-queued { background: #201f1f; border-right: 2px solid #494847; padding: 12px; margin-bottom: 12px; margin-left: 32px; opacity: 0.6; }
+  .queue-badge { display:inline-block; font-size:8px; padding:1px 5px; background:#494847; color:#adaaaa; letter-spacing:.08em; margin-left:6px; }
+  /* FAB */
+  .fab {
+    position: fixed; bottom: calc(56px + env(safe-area-inset-bottom) + 16px); right: 16px;
+    width: 48px; height: 48px; background: #00cbfe/10; border: 1px solid #00cbfe/40;
+    color: #00cbfe; display: flex; align-items: center; justify-content: center;
+    z-index: 90;
+  }
+</style>
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          primary: '#a4ffb9', secondary: '#00cbfe', tertiary: '#8eff71',
+          background: '#0e0e0e', surface: '#131313', error: '#ff716c',
+        },
+        borderRadius: { DEFAULT: '0px', lg: '0px', xl: '0px', full: '9999px' },
+        fontFamily: { sans: ['Space Grotesk'] },
+      },
+    },
+  }
+</script>
+</head>
+<body class="dark">
+<div class="scanline"></div>
+
+<!-- ── HEADER ──────────────────────────────────────────────────────────────── -->
+<header class="flex items-center justify-between px-4 h-12 bg-black/90 border-b border-[#a4ffb9]/20 flex-shrink-0" style="padding-top: env(safe-area-inset-top)">
+  <div class="flex items-center gap-3">
+    <span class="text-lg font-black text-[#a4ffb9] tracking-[-0.05em]">STRATUM</span>
+    <div class="flex gap-1.5 items-center">
+      <span id="svc-sqlite-dot" class="w-1.5 h-1.5 bg-[#494847] rounded-full"></span>
+      <span id="svc-qdrant-dot" class="w-1.5 h-1.5 bg-[#494847] rounded-full"></span>
+      <span id="svc-llm-dot"    class="w-1.5 h-1.5 bg-[#494847] rounded-full animate-pulse"></span>
+    </div>
+  </div>
+  <div class="flex items-center gap-2">
+    <span id="h-active-profile" class="text-[9px] font-mono text-[#adaaaa] tracking-widest">—</span>
+    <span id="bridge-dot" class="w-2 h-2 bg-[#494847]" title="Hardware Bridge"></span>
+    <span id="conn-dot" class="w-2 h-2 bg-[#494847]"></span>
+  </div>
+</header>
+
+<!-- ── MAIN AREA ────────────────────────────────────────────────────────────── -->
+<div class="flex flex-col" style="height: calc(100dvh - 48px - 56px - env(safe-area-inset-top) - env(safe-area-inset-bottom))">
+
+  <!-- PANEL: CHAT ─────────────────────────────────────────────────────────── -->
+  <div id="panel-chat" class="panel active">
+    <!-- Messages -->
+    <div id="messages" class="flex-1 overflow-y-auto px-3 py-3">
+      <div class="text-[9px] text-[#494847] text-center mb-4 tracking-widest" id="session-time">SESSION_INIT</div>
+      <div id="chat-header-badge" class="hidden text-center text-[9px] text-secondary border border-secondary/30 py-1 mb-3 tracking-widest">SESIÓN REANUDADA</div>
+      <div class="msg-agent">
+        <div class="text-[8px] text-[#a4ffb9] opacity-50 mb-1 tracking-widest">STRATUM // SYSTEM</div>
+        <p class="text-xs font-mono">Hardware Memory Engine online. Escribí un comando.</p>
+      </div>
+    </div>
+    <!-- Input bar -->
+    <div class="flex-shrink-0 bg-[#0e0e0e] border-t border-[#a4ffb9]/10 px-3 py-2">
+      <div class="flex items-center gap-2 border-b border-[#00cbfe]/30 pb-2">
+        <span class="text-secondary font-mono text-sm flex-shrink-0">&gt;</span>
+        <input id="prompt" class="cmd-input" placeholder="COMMAND..." type="text"/>
+        <button id="voice-btn" onclick="toggleVoice()" class="text-[#adaaaa] active:text-primary flex-shrink-0 p-1" title="Voz">
+          <span class="material-symbols-outlined text-xl">mic</span>
+        </button>
+        <button onclick="sendMessage()" id="send-btn" class="text-secondary active:text-primary flex-shrink-0 p-1">
+          <span class="material-symbols-outlined text-xl">send</span>
+        </button>
+      </div>
+      <div class="flex items-center gap-2 mt-1.5">
+        <span id="status-dot" class="w-1.5 h-1.5 bg-[#494847]"></span>
+        <span id="status-text" class="text-[9px] text-[#adaaaa] tracking-widest">ENGINE_OFFLINE</span>
+        <span id="agents-label" class="text-[9px] text-[#adaaaa] tracking-widest hidden ml-auto"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- PANEL: INTEL ────────────────────────────────────────────────────────── -->
+  <div id="panel-intel" class="panel overflow-y-auto px-3 py-3 space-y-4">
+    <div>
+      <div class="flex justify-between items-center mb-2">
+        <span class="text-[9px] text-[#adaaaa] tracking-widest">AI_PROFILES</span>
+        <button onclick="showCreateProfile()" class="text-[9px] text-secondary">+ NEW</button>
+      </div>
+      <div id="intel-profiles"><p class="text-[10px] text-[#adaaaa]">Cargando...</p></div>
+    </div>
+    <!-- Create profile form -->
+    <div id="intel-create-profile-form" class="hidden bg-[#131313] p-3 border border-secondary/20 space-y-2">
+      <div class="text-[9px] text-secondary mb-1">NUEVO_PERFIL</div>
+      <input id="intel-pf-name" type="text" placeholder="Nombre"
+        class="w-full bg-black border-b border-[#494847] py-2 px-2 text-xs text-white placeholder-[#494847] focus:outline-none focus:border-secondary"/>
+      <textarea id="intel-pf-prompt" rows="4" placeholder="System prompt..."
+        class="w-full bg-black border border-[#494847] p-2 text-xs text-white placeholder-[#494847] focus:outline-none focus:border-secondary resize-none font-mono"></textarea>
+      <div class="flex gap-2">
+        <button onclick="hideCreateProfile()" class="flex-1 py-2 border border-[#494847]/30 text-[9px] text-[#adaaaa]">CANCEL</button>
+        <button onclick="saveNewProfile()" class="flex-1 py-2 bg-secondary/10 border border-secondary/40 text-[9px] text-secondary">SAVE</button>
+      </div>
+    </div>
+    <div>
+      <div class="flex justify-between items-center mb-2">
+        <span class="text-[9px] text-[#adaaaa] tracking-widest">KNOWLEDGE_SOURCES</span>
+        <button onclick="showCreateSource()" class="text-[9px] text-[#8eff71]">+ ADD</button>
+      </div>
+      <div id="intel-sources"><p class="text-[10px] text-[#adaaaa]">Sin fuentes</p></div>
+    </div>
+    <div id="intel-create-source-form" class="hidden bg-[#131313] p-3 border border-[#8eff71]/20 space-y-2">
+      <div class="text-[9px] text-[#8eff71] mb-1">NUEVA_FUENTE</div>
+      <input id="intel-src-name" type="text" placeholder="Nombre"
+        class="w-full bg-black border-b border-[#494847] py-2 px-2 text-xs text-white placeholder-[#494847] focus:outline-none focus:border-[#8eff71]"/>
+      <textarea id="intel-src-content" rows="5" placeholder="Pegar contenido (datasheet, docs)..."
+        class="w-full bg-black border border-[#494847] p-2 text-xs text-white placeholder-[#494847] focus:outline-none focus:border-[#8eff71] resize-none font-mono"></textarea>
+      <div class="flex gap-2">
+        <button onclick="hideCreateSource()" class="flex-1 py-2 border border-[#494847]/30 text-[9px] text-[#adaaaa]">CANCEL</button>
+        <button onclick="saveNewSource()" class="flex-1 py-2 bg-[#8eff71]/10 border border-[#8eff71]/40 text-[9px] text-[#8eff71]">SAVE + INDEX</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PANEL: DEVICES ──────────────────────────────────────────────────────── -->
+  <div id="panel-devices" class="panel overflow-y-auto px-3 py-3 space-y-3">
+    <!-- Bridge status -->
+    <div id="bridge-card" class="card text-xs flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="material-symbols-outlined text-base text-[#494847]" id="bridge-icon">router</span>
+        <div>
+          <div class="text-[9px] text-[#adaaaa] tracking-widest">HARDWARE_BRIDGE</div>
+          <div id="bridge-status-text" class="text-[10px] text-[#494847] font-mono">CHECKING...</div>
+        </div>
+      </div>
+      <div class="text-right">
+        <div id="bridge-since" class="text-[9px] text-[#494847]"></div>
+      </div>
+    </div>
+    <div class="flex justify-between items-center">
+      <span class="text-[9px] text-[#adaaaa] tracking-widest">HARDWARE_DEVICES</span>
+      <button onclick="loadHardware()" class="text-[9px] text-secondary">↻ SCAN</button>
+    </div>
+    <div id="devices-list"><p class="text-[10px] text-[#adaaaa]">Escaneando...</p></div>
+    <div class="card card-cyan text-xs space-y-1.5">
+      <div class="flex justify-between"><span class="text-[#adaaaa]">REGISTERED</span><span id="hw-devices" class="text-secondary">0</span></div>
+      <div class="flex justify-between"><span class="text-[#adaaaa]">FLASHES</span><span id="hw-flashes" class="text-secondary">0</span></div>
+      <div class="flex justify-between"><span class="text-[#adaaaa]">SUCCESS</span><span id="hw-success" class="text-primary">0</span></div>
+      <div class="flex justify-between"><span class="text-[#adaaaa]">FAILED</span><span id="hw-failed" class="text-error">0</span></div>
+    </div>
+    <!-- Camera scan result -->
+    <div id="vision-result-panel" class="hidden card card-cyan">
+      <div class="text-[9px] text-secondary mb-1">LAST_CIRCUIT_SCAN</div>
+      <div id="vision-result-content"></div>
+    </div>
+  </div>
+
+  <!-- PANEL: SEARCH ───────────────────────────────────────────────────────── -->
+  <div id="panel-search" class="panel flex-col overflow-hidden">
+    <div class="px-3 pt-3 pb-2 flex-shrink-0">
+      <div class="text-[9px] text-[#adaaaa] tracking-widest mb-2">SEMANTIC_SEARCH</div>
+      <div class="flex items-center gap-2 border-b border-[#494847] pb-2">
+        <input id="search-input" type="text" placeholder="Query memory..."
+          class="cmd-input flex-1"/>
+        <button onclick="doSearch()" class="text-secondary p-1">
+          <span class="material-symbols-outlined text-xl">search</span>
+        </button>
+      </div>
+    </div>
+    <div id="search-results" class="flex-1 overflow-y-auto px-3 pb-3 space-y-2"></div>
+  </div>
+
+  <!-- PANEL: MENU (system, jobs, signal) ──────────────────────────────────── -->
+  <div id="panel-menu" class="panel overflow-y-auto px-3 py-3 space-y-4">
+    <!-- Jobs -->
+    <div>
+      <div class="flex justify-between items-center mb-2">
+        <span class="text-[9px] text-[#adaaaa] tracking-widest">ACTIVE_JOBS</span>
+        <span id="jobs-count" class="text-[9px] text-secondary">0</span>
+      </div>
+      <div id="jobs-list">
+        <div class="card opacity-40 text-[10px] text-[#adaaaa]">NO_ACTIVE_JOBS</div>
+      </div>
+    </div>
+    <!-- Stats -->
+    <div>
+      <div class="text-[9px] text-[#adaaaa] tracking-widest mb-2">MEMORY_STATS</div>
+      <div class="card card-green text-xs space-y-1.5">
+        <div class="flex justify-between"><span class="text-[#adaaaa]">FACTS</span><span id="s-facts" class="text-primary">0</span></div>
+        <div class="flex justify-between"><span class="text-[#adaaaa]">MESSAGES</span><span id="s-msgs" class="text-primary">0</span></div>
+        <div class="flex justify-between"><span class="text-[#adaaaa]">GRAPH NODES</span><span id="s-nodes" class="text-secondary">0</span></div>
+        <div class="flex justify-between"><span class="text-[#adaaaa]">GRAPH EDGES</span><span id="s-edges" class="text-secondary">0</span></div>
+      </div>
+    </div>
+    <!-- Auth -->
+    <div>
+      <div class="text-[9px] text-[#adaaaa] tracking-widest mb-2">SECURITY</div>
+      <div class="card card-cyan text-xs flex items-center gap-3">
+        <span class="material-symbols-outlined text-secondary">lock_open</span>
+        <span id="auth-label" class="text-[#adaaaa]">SINGLE_USER_MODE</span>
+      </div>
+    </div>
+    <!-- Proactive -->
+    <div>
+      <div class="text-[9px] text-[#adaaaa] tracking-widest mb-2">PROACTIVE_ENGINE</div>
+      <div id="metrics-proactive" class="card card-green text-[10px] text-[#adaaaa]">Cargando...</div>
+    </div>
+    <!-- Logs -->
+    <div>
+      <div class="text-[9px] text-[#adaaaa] tracking-widest mb-2">SYSTEM_LOGS</div>
+      <div id="logs-list" class="font-mono text-[9px] space-y-0.5 max-h-48 overflow-y-auto"></div>
+    </div>
+    <!-- Settings -->
+    <div>
+      <div class="text-[9px] text-[#adaaaa] tracking-widest mb-2">SETTINGS</div>
+      <div class="card text-xs space-y-3">
+        <div>
+          <label class="text-[9px] text-[#adaaaa] tracking-widest block mb-1">BACKEND_URL</label>
+          <input id="settings-url" type="url" placeholder="http://192.168.1.15:8000"
+            class="w-full bg-black border border-[#494847]/50 text-white text-[10px] font-mono px-2 py-1.5 focus:border-primary/60 outline-none"/>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="setPreset('local')" class="flex-1 py-1 text-[9px] border border-secondary/30 text-secondary tracking-widest active:bg-secondary/10">LOCAL WiFi</button>
+          <button onclick="setPreset('railway')" class="flex-1 py-1 text-[9px] border border-primary/30 text-primary tracking-widest active:bg-primary/10">RAILWAY</button>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="testConnection()" class="flex-1 py-1.5 text-[9px] border border-[#494847]/50 text-[#adaaaa] tracking-widest active:bg-[#494847]/20">TEST</button>
+          <button onclick="saveSettings()" class="flex-1 py-1.5 text-[9px] bg-primary/10 border border-primary/40 text-primary tracking-widest active:bg-primary/20">GUARDAR</button>
+        </div>
+        <div id="settings-status" class="text-[9px] hidden"></div>
+        <button onclick="clearSession()" class="w-full py-1 text-[9px] border border-error/30 text-error tracking-widest active:bg-error/10">CLEAR SESSION</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end main area -->
+
+<!-- ── FAB Camera ─────────────────────────────────────────────────────────── -->
+<button id="camera-fab" class="fab active:bg-secondary/20" onclick="openCamera()" title="Escanear circuito">
+  <span class="material-symbols-outlined">photo_camera</span>
+</button>
+
+<!-- ── BOTTOM NAV ─────────────────────────────────────────────────────────── -->
+<nav class="fixed bottom-0 left-0 right-0 flex bg-black/95 border-t border-[#a4ffb9]/20 z-50" style="padding-bottom: env(safe-area-inset-bottom)">
+  <button onclick="switchPanel('chat')"    id="nav-chat"    class="nav-tab active">
+    <span class="material-symbols-outlined text-xl">chat</span><span>CHAT</span>
+  </button>
+  <button onclick="switchPanel('intel')"   id="nav-intel"   class="nav-tab">
+    <span class="material-symbols-outlined text-xl">psychology</span><span>INTEL</span>
+  </button>
+  <button onclick="switchPanel('devices')" id="nav-devices" class="nav-tab">
+    <span class="material-symbols-outlined text-xl">router</span><span>DEVICES</span>
+  </button>
+  <button onclick="switchPanel('search')"  id="nav-search"  class="nav-tab">
+    <span class="material-symbols-outlined text-xl">search</span><span>SEARCH</span>
+  </button>
+  <button onclick="switchPanel('menu')"    id="nav-menu"    class="nav-tab">
+    <span class="material-symbols-outlined text-xl">menu</span><span>MENU</span>
+  </button>
+</nav>
+
+<!-- ── CAMERA MODAL ───────────────────────────────────────────────────────── -->
+<div id="camera-modal" class="fixed inset-0 z-[200] hidden flex-col bg-black/95">
+  <div class="flex items-center justify-between px-4 py-3 border-b border-[#494847]/30 flex-shrink-0">
+    <span class="text-[10px] font-mono tracking-widest text-secondary">CIRCUIT_SCANNER</span>
+    <button onclick="closeCameraModal()" class="text-[#adaaaa] active:text-error p-1">
+      <span class="material-symbols-outlined">close</span>
+    </button>
+  </div>
+  <div class="flex-1 flex flex-col p-4 gap-3 overflow-y-auto">
+    <img id="cam-preview" class="hidden max-h-48 w-full object-contain border border-[#494847]/30 flex-shrink-0"/>
+    <div id="cam-placeholder" class="flex flex-col items-center gap-3 text-[#494847] py-8">
+      <span class="material-symbols-outlined text-6xl">photo_camera</span>
+      <span class="text-xs font-mono tracking-widest">CAPTURÁ EL CIRCUITO</span>
+    </div>
+
+    <!-- Resultado de visión (oculto hasta analizar) -->
+    <div id="cam-result-panel" class="hidden space-y-3">
+      <div class="border-l-2 border-primary px-3 py-2 bg-[#131313]">
+        <div class="text-[8px] text-primary tracking-widest mb-1">CIRCUIT_DETECTED</div>
+        <p id="cam-result-desc" class="text-[10px] text-[#adaaaa] font-mono leading-relaxed"></p>
+        <div id="cam-result-meta" class="text-[9px] text-secondary mt-1"></div>
+      </div>
+      <!-- MCU selector -->
+      <div class="space-y-1">
+        <label class="text-[9px] text-[#adaaaa] tracking-widest block">TARGET MCU</label>
+        <select id="cam-mcu-select"
+          class="w-full bg-black border border-[#494847]/60 text-white text-[10px] font-mono px-2 py-1.5 focus:border-primary/60 outline-none">
+          <option value="Arduino Uno">Arduino Uno</option>
+          <option value="ESP32">ESP32</option>
+          <option value="ESP8266">ESP8266</option>
+          <option value="Raspberry Pi Pico">Raspberry Pi Pico (MicroPython)</option>
+        </select>
+      </div>
+      <!-- Pipeline steps -->
+      <div id="cam-pipeline-steps" class="hidden space-y-1">
+        <div id="step-parse"    class="flex items-center gap-2 text-[9px] font-mono"><span class="step-icon w-3 h-3 border border-[#494847] flex-shrink-0"></span><span class="text-[#494847]">PARSEAR_CIRCUITO</span></div>
+        <div id="step-save"     class="flex items-center gap-2 text-[9px] font-mono"><span class="step-icon w-3 h-3 border border-[#494847] flex-shrink-0"></span><span class="text-[#494847]">GUARDAR_CONTEXTO</span></div>
+        <div id="step-firmware" class="flex items-center gap-2 text-[9px] font-mono"><span class="step-icon w-3 h-3 border border-[#494847] flex-shrink-0"></span><span class="text-[#494847]">GENERAR_FIRMWARE</span></div>
+        <div id="step-done"     class="flex items-center gap-2 text-[9px] font-mono"><span class="step-icon w-3 h-3 border border-[#494847] flex-shrink-0"></span><span class="text-[#494847]">LISTO</span></div>
+      </div>
+    </div>
+
+    <div id="cam-status" class="hidden text-[10px] text-[#adaaaa] font-mono text-center"></div>
+    <div class="w-full bg-[#131313] h-0.5 hidden flex-shrink-0" id="cam-progress-bar">
+      <div id="cam-progress" class="h-full bg-secondary transition-all duration-300" style="width:0%"></div>
+    </div>
+  </div>
+  <!-- Botones dinámicos -->
+  <div id="cam-btns-default" class="flex gap-3 px-4 pb-4 flex-shrink-0" style="padding-bottom: calc(env(safe-area-inset-bottom) + 16px)">
+    <button onclick="triggerCamera()" class="flex-1 py-3 bg-secondary/10 border border-secondary/40 text-secondary text-[10px] font-mono tracking-widest active:bg-secondary/20">
+      <span class="material-symbols-outlined text-sm align-middle mr-1">camera_alt</span>CAPTURAR
+    </button>
+    <button id="cam-analyze-btn" onclick="analyzeCameraImage()" disabled
+      class="flex-1 py-3 bg-primary/10 border border-primary/40 text-primary text-[10px] font-mono tracking-widest active:bg-primary/20 disabled:opacity-40 disabled:pointer-events-none">
+      <span class="material-symbols-outlined text-sm align-middle mr-1">memory</span>ANALIZAR
+    </button>
+  </div>
+  <div id="cam-btns-result" class="hidden gap-3 px-4 pb-4 flex-shrink-0" style="padding-bottom: calc(env(safe-area-inset-bottom) + 16px)">
+    <button onclick="closeCameraModal()" class="flex-1 py-3 border border-[#494847]/40 text-[#adaaaa] text-[10px] font-mono tracking-widest active:bg-[#494847]/20">
+      CERRAR
+    </button>
+    <button id="cam-program-btn" onclick="programFromVision()"
+      class="flex-1 py-3 bg-[#8eff71]/10 border border-[#8eff71]/50 text-[#8eff71] text-[10px] font-mono tracking-widest active:bg-[#8eff71]/20">
+      <span class="material-symbols-outlined text-sm align-middle mr-1">bolt</span>PROGRAMAR
+    </button>
+  </div>
+</div>
+
+<!-- ── SCRIPTS ─────────────────────────────────────────────────────────────── -->
+<script type="module">
+// Importar Capacitor plugins desde CDN (para producción, se bundlea con npm)
+// En la app nativa, los plugins están disponibles via window.Capacitor
+const isNative = () => window.Capacitor?.isNativePlatform?.() ?? false;
+
+// ── CONFIG (dynamic — reads localStorage first) ───────────────────────────
+const DEFAULT_BACKEND = isNative()
+  ? 'http://192.168.1.15:8000'
+  : `http://${location.hostname}:${location.port || 8000}`;
+
+function getBackend() {
+  return localStorage.getItem('stratum_backend_url') || DEFAULT_BACKEND;
+}
+
+// Mutable — se recalcula al reconectar/guardar settings
+let BACKEND = getBackend();
+let API     = BACKEND + '/api';
+
+let ws, wsProactive;
+
+// ── VOICE INPUT ───────────────────────────────────────────────────────────
+let _voiceRec = null, _voiceOn = false;
+function _initVoice() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return false;
+  _voiceRec = new SR();
+  _voiceRec.lang = 'es-AR';
+  _voiceRec.continuous = false;
+  _voiceRec.interimResults = false;
+  _voiceRec.onstart = () => {
+    _voiceOn = true;
+    const b = document.getElementById('voice-btn');
+    if (b) b.classList.add('voice-active');
+  };
+  _voiceRec.onresult = (e) => {
+    const text = e.results[0][0].transcript;
+    const inp  = document.getElementById('prompt');
+    if (inp) { inp.value = text; inp.focus(); }
+  };
+  _voiceRec.onend = () => {
+    _voiceOn = false;
+    const b = document.getElementById('voice-btn');
+    if (b) b.classList.remove('voice-active');
+  };
+  _voiceRec.onerror = (e) => {
+    _voiceOn = false;
+    const b = document.getElementById('voice-btn');
+    if (b) b.classList.remove('voice-active');
+    if (e.error !== 'no-speech') console.warn('Voice error:', e.error);
+  };
+  return true;
+}
+window.toggleVoice = function() {
+  if (!_voiceRec && !_initVoice()) return;
+  _voiceOn ? _voiceRec.stop() : _voiceRec.start();
+};
+let isStreaming    = false;
+let currentMsgEl  = null;
+let visionB64      = null;
+let _session_id    = localStorage.getItem('stratum_session_id') || null;
+let _wsRetryDelay  = 2000;  // exponential backoff
+let _offlineQueue  = JSON.parse(localStorage.getItem('stratum_offline_queue') || '[]');
+
+// ── PANEL NAVIGATION ──────────────────────────────────────────────────────
+function switchPanel(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(`panel-${name}`)?.classList.add('active');
+  document.getElementById(`nav-${name}`)?.classList.add('active');
+
+  const fab = document.getElementById('camera-fab');
+  fab.style.display = name === 'chat' ? 'flex' : 'none';
+
+  if (name === 'devices') { loadHardware(); startBridgePoll(); } else { stopBridgePoll(); }
+  if (name === 'intel')   loadIntelligence();
+  if (name === 'menu')    { loadMetrics(); loadJobs(); initSettingsPanel(); }
+}
+
+// ── WEBSOCKET CHAT ─────────────────────────────────────────────────────────
+function connectWS() {
+  BACKEND = getBackend();
+  API     = BACKEND + '/api';
+  const wsBase = BACKEND.replace(/^http/, 'ws');
+  const wsUrl  = wsBase + '/ws/chat' + (_session_id ? `?session=${encodeURIComponent(_session_id)}` : '');
+  ws = new WebSocket(wsUrl);
+  ws.onopen  = () => {
+    _wsRetryDelay = 2000;
+    setConnected(true);
+    loadStats();
+    if (_offlineQueue.length > 0) drainOfflineQueue();
+  };
+  ws.onclose = () => {
+    setConnected(false);
+    setTimeout(connectWS, _wsRetryDelay);
+    _wsRetryDelay = Math.min(_wsRetryDelay * 2, 30000);
+  };
+  ws.onmessage = (e) => {
+    const d = JSON.parse(e.data);
+    if (d.type === 'token')  { appendToken(d.content); }
+    else if (d.type === 'done')    { finishStreaming(d); loadStats(); }
+    else if (d.type === 'error')   { finishStreaming(null); addMessage('agent', `Error: ${d.content}`, []); }
+    else if (d.type === 'session') {
+      _session_id = d.session_id;
+      localStorage.setItem('stratum_session_id', _session_id);
+      if (d.resumed) { showSessionBadge(); loadSessionHistory(_session_id); }
+    }
+  };
+}
+
+async function loadSessionHistory(sid) {
+  try {
+    const d = await fetch(`${API}/history?session_id=${encodeURIComponent(sid)}&limit=20`).then(r => r.json());
+    const msgs = (d.messages || []).reverse();
+    if (!msgs.length) return;
+    msgs.forEach(m => {
+      if (m.role !== 'user' && m.role !== 'assistant') return;
+      addMessage(m.role === 'user' ? 'user' : 'agent', m.content, m.agents_used || []);
+    });
+    document.getElementById('messages').scrollTop = 99999;
+  } catch(e) {}
+}
+
+function showSessionBadge() {
+  const el = document.getElementById('chat-header-badge');
+  if (!el) return;
+  el.classList.remove('hidden');
+  setTimeout(() => el.classList.add('hidden'), 4000);
+}
+
+function connectProactiveWS() {
+  const wsBase = getBackend().replace(/^http/, 'ws');
+  wsProactive = new WebSocket(wsBase + '/ws/proactive');
+  wsProactive.onmessage = (e) => {
+    const d = JSON.parse(e.data);
+    if (d.type === 'ping') return;
+    showToast(d.title || 'Notificación', d.message || '', d.type);
+    if (d.type === 'job_complete') loadJobs();
+    // Push notification nativa si la app está en background
+    if (isNative() && window.Capacitor?.Plugins?.LocalNotifications) {
+      window.Capacitor.Plugins.LocalNotifications.schedule({
+        notifications: [{ title: d.title, body: d.message, id: Date.now(), schedule: { at: new Date() } }]
+      }).catch(() => {});
+    }
+  };
+  wsProactive.onclose = () => setTimeout(connectProactiveWS, 5000);
+}
+
+function setConnected(ok) {
+  const dot = document.getElementById('conn-dot');
+  if (dot) dot.className = ok ? 'w-2 h-2 bg-primary animate-pulse' : 'w-2 h-2 bg-error';
+  updateStatus(ok ? 'READY' : 'OFFLINE', ok);
+}
+
+function updateStatus(text, ok) {
+  const d = document.getElementById('status-dot');
+  const s = document.getElementById('status-text');
+  if (d) d.className = `w-1.5 h-1.5 ${ok ? 'bg-primary' : 'bg-[#494847]'}`;
+  if (s) s.textContent = text;
+}
+
+// ── OFFLINE QUEUE ─────────────────────────────────────────────────────────
+function _saveQueue() {
+  localStorage.setItem('stratum_offline_queue', JSON.stringify(_offlineQueue));
+}
+
+function _updateQueueBadge() {
+  const s = document.getElementById('status-text');
+  if (!s) return;
+  if (_offlineQueue.length > 0) {
+    s.innerHTML = `OFFLINE <span class="queue-badge">${_offlineQueue.length} QUEUED</span>`;
+  }
+}
+
+function _enqueueMessage(text) {
+  _offlineQueue.push({ text, ts: Date.now() });
+  _saveQueue();
+  // Mostrar en UI como "queued"
+  const msgs = document.getElementById('messages');
+  const div  = document.createElement('div');
+  const time = new Date().toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+  div.className = 'msg-queued';
+  div.dataset.queued = 'true';
+  div.innerHTML = `
+    <div class="text-[8px] text-[#494847] mb-1 tracking-widest">${time} · QUEUED</div>
+    <p class="text-xs font-mono text-[#adaaaa]">${escHtml(text)}</p>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = 99999;
+  _updateQueueBadge();
+  showToast('Sin conexión', 'Mensaje encolado. Se enviará al reconectar.', 'warning');
+}
+
+async function drainOfflineQueue() {
+  if (!_offlineQueue.length) return;
+  // Eliminar los mensajes "queued" de la UI
+  document.querySelectorAll('[data-queued="true"]').forEach(el => el.remove());
+  const queue = [..._offlineQueue];
+  _offlineQueue = [];
+  _saveQueue();
+  for (const item of queue) {
+    if (!ws || ws.readyState !== 1) break;
+    addMessage('user', item.text);
+    isStreaming  = true;
+    document.getElementById('send-btn').classList.add('opacity-40', 'pointer-events-none');
+    currentMsgEl = addMessage('agent', '', [], true);
+    updateStatus('PROCESSING...', true);
+    ws.send(JSON.stringify({ message: item.text }));
+    // Esperar a que termine antes de enviar el siguiente
+    await new Promise(res => {
+      const done = () => { ws.removeEventListener('message', handler); res(); };
+      const handler = (e) => {
+        const d = JSON.parse(e.data);
+        if (d.type === 'done' || d.type === 'error') done();
+      };
+      ws.addEventListener('message', handler);
+      setTimeout(done, 30000); // timeout safety
+    });
+  }
+}
+
+// ── CHAT ──────────────────────────────────────────────────────────────────
+function sendMessage() {
+  const input = document.getElementById('prompt');
+  const text  = input.value.trim();
+  if (!text || isStreaming) return;
+  input.value = '';
+  // Sin conexión → encolar
+  if (!ws || ws.readyState !== 1) {
+    _enqueueMessage(text);
+    return;
+  }
+  addMessage('user', text);
+  isStreaming   = true;
+  document.getElementById('send-btn').classList.add('opacity-40', 'pointer-events-none');
+  currentMsgEl = addMessage('agent', '', [], true);
+  updateStatus('PROCESSING...', true);
+  ws.send(JSON.stringify({ message: text }));
+  // Haptic feedback en dispositivo nativo
+  if (isNative() && window.Capacitor?.Plugins?.Haptics) {
+    window.Capacitor.Plugins.Haptics.impact({ style: 'light' }).catch(() => {});
+  }
+}
+
+function addMessage(role, content, agents = [], streaming = false) {
+  const msgs = document.getElementById('messages');
+  const ts   = new Date().toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+  const div  = document.createElement('div');
+
+  if (role === 'user') {
+    div.className = 'msg-user';
+    div.innerHTML = `
+      <div class="text-[8px] text-secondary opacity-50 mb-1 tracking-widest">${ts}</div>
+      <p class="text-xs font-mono text-secondary">${escHtml(content)}</p>`;
+  } else {
+    const badges = (agents || []).map(a => `<span class="text-[7px] px-1 bg-black text-[#adaaaa] border border-[#494847]/30 mr-1">AGNT_${a.toUpperCase()}</span>`).join('');
+    div.className = 'msg-agent';
+    div.innerHTML = `
+      <div class="flex items-center gap-2 mb-1 flex-wrap">
+        <span class="text-[8px] text-primary opacity-50 tracking-widest">STRATUM // ${ts}</span>
+        <span class="agent-badges">${badges}</span>
+      </div>
+      <div class="agent-content text-xs font-mono leading-relaxed${streaming ? ' blinking' : ''}">${escHtml(content)}</div>`;
+  }
+
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return role === 'agent' ? div.querySelector('.agent-content') : null;
+}
+
+function appendToken(token) {
+  if (!currentMsgEl) return;
+  currentMsgEl.classList.remove('blinking');
+  currentMsgEl.textContent += token;
+  currentMsgEl.classList.add('blinking');
+  document.getElementById('messages').scrollTop = 99999;
+}
+
+function finishStreaming(data) {
+  if (currentMsgEl) {
+    currentMsgEl.classList.remove('blinking');
+    if (data?.agents_used?.length) {
+      const b = currentMsgEl.closest('.msg-agent')?.querySelector('.agent-badges');
+      if (b) b.innerHTML = data.agents_used.map(a =>
+        `<span class="text-[7px] px-1 bg-black text-[#adaaaa] border border-[#494847]/30 mr-1">AGNT_${a.toUpperCase()}</span>`
+      ).join('');
+    }
+  }
+  isStreaming   = false;
+  currentMsgEl = null;
+  document.getElementById('send-btn').classList.remove('opacity-40', 'pointer-events-none');
+  updateStatus('READY', true);
+}
+
+// ── HEALTH ────────────────────────────────────────────────────────────────
+async function loadHealth() {
+  try {
+    const d = await fetch(`${API}/health`).then(r => r.json());
+    const svc = d.services || {};
+    setDot('svc-sqlite-dot', svc.sqlite === 'ok');
+    setDot('svc-qdrant-dot', svc.qdrant === 'ok');
+    setDot('svc-llm-dot',    svc.ollama === 'ok');
+  } catch(e) {
+    ['svc-sqlite-dot','svc-qdrant-dot','svc-llm-dot'].forEach(id => setDot(id, false));
+  }
+}
+function setDot(id, ok) {
+  const el = document.getElementById(id);
+  if (el) el.className = `w-1.5 h-1.5 rounded-full ${ok ? 'bg-primary' : 'bg-error'}`;
+}
+
+// ── AUTH ──────────────────────────────────────────────────────────────────
+async function loadAuthStatus() {
+  try {
+    const d = await fetch(`${API}/auth/status`).then(r => r.json());
+    const el = document.getElementById('auth-label');
+    if (el) el.textContent = d.multi_user ? 'MULTI_USER_JWT' : 'SINGLE_USER_MODE';
+  } catch(e) {}
+}
+
+// ── STATS ─────────────────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const d = await fetch(`${API}/stats`).then(r => r.json());
+    const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+    set('s-facts',   d.facts_count);
+    set('s-msgs',    d.messages_count);
+    set('s-nodes',   d.graph_nodes);
+    set('s-edges',   d.graph_edges);
+    set('hw-devices',d.hw_devices || 0);
+    set('hw-flashes',d.hw_flashes || 0);
+  } catch(e) {}
+}
+
+// ── HARDWARE ──────────────────────────────────────────────────────────────
+async function loadHardware() {
+  try {
+    const d = await fetch(`${API}/hardware/devices`).then(r => r.json());
+    const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+    set('hw-devices', d.stats?.devices       || 0);
+    set('hw-flashes', d.stats?.total_flashes || 0);
+    set('hw-success', d.stats?.successful    || 0);
+    set('hw-failed',  d.stats?.failed        || 0);
+    const el  = document.getElementById('devices-list');
+    const all = [...(d.connected || []), ...(d.registered || [])];
+    if (!all.length) { el.innerHTML = '<p class="text-[10px] text-[#adaaaa]">Sin dispositivos</p>'; return; }
+    el.innerHTML = all.slice(0, 10).map(dev => `
+      <div class="card card-cyan text-xs">
+        <div class="flex items-center gap-2 ${dev._offline ? 'opacity-60' : ''}">
+          <span class="material-symbols-outlined text-secondary text-sm">${dev.platform?.includes('esp32') ? 'wifi' : 'usb'}</span>
+          <span class="font-bold">${escHtml(dev.name)}</span>
+          ${dev._offline ? '<span class="text-[8px] text-error ml-auto">OFFLINE</span>' : ''}
+        </div>
+        <div class="text-[9px] text-[#adaaaa] mt-0.5 ml-6">${dev.port || '—'}</div>
+      </div>`).join('');
+  } catch(e) { document.getElementById('devices-list').innerHTML = '<p class="text-[10px] text-error">Error</p>'; }
+}
+
+// ── HARDWARE BRIDGE STATUS ────────────────────────────────────────────────
+let _bridgePollTimer = null;
+
+async function checkBridgeStatus() {
+  const dot  = document.getElementById('bridge-dot');
+  const icon = document.getElementById('bridge-icon');
+  const txt  = document.getElementById('bridge-status-text');
+  const since= document.getElementById('bridge-since');
+  try {
+    const d = await fetch(`${API}/hardware/bridge/status`).then(r => r.json());
+    const connected = d.connected === true;
+    if (dot)  dot.className  = connected ? 'w-2 h-2 bg-[#8eff71] animate-pulse' : 'w-2 h-2 bg-[#494847]';
+    if (icon) icon.className = `material-symbols-outlined text-base ${connected ? 'text-[#8eff71]' : 'text-[#494847]'}`;
+    if (txt)  txt.textContent = connected ? 'CONNECTED' : 'DISCONNECTED';
+    if (txt)  txt.className   = `text-[10px] font-mono ${connected ? 'text-[#8eff71]' : 'text-[#494847]'}`;
+    if (since && d.connected_at) {
+      const mins = Math.round((Date.now() - new Date(d.connected_at).getTime()) / 60000);
+      since.textContent = connected ? `${mins}m ago` : '';
+    } else if (since) {
+      since.textContent = d.pending_jobs > 0 ? `${d.pending_jobs} pending` : '';
+    }
+  } catch(e) {
+    if (dot) dot.className = 'w-2 h-2 bg-[#494847]';
+    if (txt) txt.textContent = 'UNREACHABLE';
+  }
+}
+
+function startBridgePoll() {
+  checkBridgeStatus();
+  _bridgePollTimer = setInterval(checkBridgeStatus, 10000);
+}
+function stopBridgePoll() {
+  clearInterval(_bridgePollTimer);
+  _bridgePollTimer = null;
+}
+
+// ── SEARCH ─────────────────────────────────────────────────────────────────
+async function doSearch() {
+  const q  = document.getElementById('search-input').value.trim();
+  const el = document.getElementById('search-results');
+  if (!q) return;
+  el.innerHTML = '<p class="text-[10px] text-[#adaaaa]">Buscando...</p>';
+  try {
+    const d = await fetch(`${API}/search?q=${encodeURIComponent(q)}&top_k=5`).then(r => r.json());
+    if (!d.results?.length) { el.innerHTML = '<p class="text-[10px] text-[#adaaaa]">Sin resultados</p>'; return; }
+    el.innerHTML = d.results.map(r => `<div class="card text-[10px] text-[#adaaaa] leading-relaxed">${escHtml(r)}</div>`).join('');
+  } catch(e) { el.innerHTML = '<p class="text-[10px] text-error">Error</p>'; }
+}
+
+// ── JOBS ───────────────────────────────────────────────────────────────────
+async function loadJobs() {
+  try {
+    const d = await fetch(`${API}/jobs`).then(r => r.json());
+    const jobs   = (d.jobs || []).slice(0, 3);
+    const el     = document.getElementById('jobs-list');
+    const countEl= document.getElementById('jobs-count');
+    if (countEl) countEl.textContent = d.total || 0;
+    if (!jobs.length) { el.innerHTML = '<div class="card opacity-40 text-[10px] text-[#adaaaa]">NO_ACTIVE_JOBS</div>'; return; }
+    const colors = { done:'border-primary', error:'border-error', running:'border-secondary', pending:'border-[#494847]/50' };
+    const bars   = { done:'bg-primary', error:'bg-error', running:'bg-secondary animate-pulse', pending:'bg-[#494847]' };
+    el.innerHTML = jobs.map(j => {
+      const pct = j.progress || (j.status === 'done' ? 100 : 0);
+      return `
+        <div class="card ${colors[j.status] || 'border-[#494847]/50'} mb-2">
+          <div class="flex justify-between text-[10px] mb-1">
+            <span>${escHtml(j.type?.toUpperCase() || 'JOB')}</span>
+            <span class="${j.status === 'done' ? 'text-primary' : j.status === 'error' ? 'text-error' : 'text-secondary'}">${pct}%</span>
+          </div>
+          <div class="w-full h-0.5 bg-black"><div class="${bars[j.status] || 'bg-[#494847]'}" style="width:${pct}%;height:100%"></div></div>
+        </div>`;
+    }).join('');
+  } catch(e) {}
+}
+
+// ── METRICS ────────────────────────────────────────────────────────────────
+async function loadMetrics() {
+  try {
+    const d = await fetch(`${API}/proactive/status`).then(r => r.json());
+    const el = document.getElementById('metrics-proactive');
+    if (el) el.innerHTML = `
+      <div class="flex items-center gap-2 text-[10px]">
+        <span class="w-2 h-2 ${d.running ? 'bg-primary animate-pulse' : 'bg-error'}"></span>
+        <span class="${d.running ? 'text-primary' : 'text-error'}">${d.running ? 'RUNNING' : 'STOPPED'}</span>
+        <span class="text-[#494847] ml-auto">${d.clients || 0} client(s)</span>
+      </div>`;
+  } catch(e) {}
+}
+
+// ── INTELLIGENCE ───────────────────────────────────────────────────────────
+async function loadIntelligence() {
+  try {
+    const [pr, sr, ar] = await Promise.all([
+      fetch(`${API}/intelligence/profiles`).then(r => r.json()),
+      fetch(`${API}/intelligence/sources`).then(r => r.json()),
+      fetch(`${API}/intelligence/active`).then(r => r.json()),
+    ]);
+    const profiles = pr.profiles || [];
+    const sources  = sr.sources  || [];
+    const activeId = ar.profile?.id;
+
+    const badge = document.getElementById('h-active-profile');
+    if (badge) badge.textContent = ar.profile?.name || '—';
+
+    const pel = document.getElementById('intel-profiles');
+    pel.innerHTML = profiles.map(p => {
+      const active = p.id === activeId;
+      return `
+        <div class="card ${active ? 'card-green' : ''} mb-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold ${active ? 'text-primary' : 'text-white'}">${escHtml(p.name)}</span>
+            ${active ? '<span class="text-[8px] text-primary">● ACTIVE</span>' : `<button onclick="activateProfile('${p.id}')" class="text-[8px] text-secondary active:opacity-70 py-1 px-2 border border-secondary/30">SET</button>`}
+          </div>
+          ${p.description ? `<p class="text-[9px] text-[#adaaaa] mt-1">${escHtml(p.description)}</p>` : ''}
+        </div>`;
+    }).join('') || '<p class="text-[10px] text-[#adaaaa]">Sin perfiles</p>';
+
+    const sel = document.getElementById('intel-sources');
+    sel.innerHTML = sources.map(s => `
+      <div class="card card-lime mb-2">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-[#8eff71]">${escHtml(s.name)}</span>
+          <div class="flex items-center gap-2">
+            <span class="text-[8px] ${s.indexed ? 'text-primary' : 'text-[#adaaaa]'}">${s.indexed ? 'INDEXED' : 'PENDING'}</span>
+            <button onclick="deleteSource('${s.id}')" class="text-[8px] text-error">✕</button>
+          </div>
+        </div>
+        ${!s.indexed ? `<button onclick="indexSource('${s.id}')" class="mt-1 text-[8px] text-[#8eff71] border border-[#8eff71]/30 px-2 py-1">INDEX NOW</button>` : ''}
+      </div>`).join('') || '<p class="text-[10px] text-[#adaaaa]">Sin fuentes</p>';
+  } catch(e) { addLog('Error intelligence', 'error'); }
+}
+
+async function activateProfile(id) {
+  await fetch(`${API}/intelligence/profiles/${id}/activate`, { method: 'POST' });
+  loadIntelligence();
+}
+async function deleteSource(id) {
+  if (!confirm('¿Eliminar fuente?')) return;
+  await fetch(`${API}/intelligence/sources/${id}`, { method: 'DELETE' });
+  loadIntelligence();
+}
+async function indexSource(id) {
+  addLog('Indexando fuente...', 'info');
+  const d = await fetch(`${API}/intelligence/sources/${id}/index`, { method: 'POST' }).then(r => r.json());
+  if (d.ok) { addLog(`Indexada — ${d.chunks} chunks`, 'info'); loadIntelligence(); }
+}
+function showCreateProfile()  { document.getElementById('intel-create-profile-form').classList.remove('hidden'); }
+function hideCreateProfile()  { document.getElementById('intel-create-profile-form').classList.add('hidden'); }
+async function saveNewProfile() {
+  const name   = document.getElementById('intel-pf-name').value.trim();
+  const prompt = document.getElementById('intel-pf-prompt').value.trim();
+  if (!name || !prompt) return;
+  const d = await fetch(`${API}/intelligence/profiles`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, system_prompt: prompt }),
+  }).then(r => r.json());
+  if (d.profile) { hideCreateProfile(); loadIntelligence(); }
+}
+function showCreateSource()   { document.getElementById('intel-create-source-form').classList.remove('hidden'); }
+function hideCreateSource()   { document.getElementById('intel-create-source-form').classList.add('hidden'); }
+async function saveNewSource() {
+  const name    = document.getElementById('intel-src-name').value.trim();
+  const content = document.getElementById('intel-src-content').value.trim();
+  if (!name || !content) return;
+  const d = await fetch(`${API}/intelligence/sources`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, type: 'text', content }),
+  }).then(r => r.json());
+  if (d.source) { hideCreateSource(); await indexSource(d.source.id); }
+}
+
+// ── CAMERA ─────────────────────────────────────────────────────────────────
+function openCamera() {
+  document.getElementById('camera-modal').classList.remove('hidden');
+  document.getElementById('camera-modal').classList.add('flex');
+}
+function closeCameraModal() {
+  document.getElementById('camera-modal').classList.add('hidden');
+  document.getElementById('camera-modal').classList.remove('flex');
+  // Reset state
+  visionB64     = null;
+  _visionResult = null;
+  document.getElementById('cam-preview').classList.add('hidden');
+  document.getElementById('cam-placeholder').classList.remove('hidden');
+  document.getElementById('cam-analyze-btn').disabled = true;
+  document.getElementById('cam-status').classList.add('hidden');
+  document.getElementById('cam-progress-bar').classList.add('hidden');
+  document.getElementById('cam-progress').style.width = '0%';
+  document.getElementById('cam-result-panel').classList.add('hidden');
+  document.getElementById('cam-pipeline-steps').classList.add('hidden');
+  document.getElementById('cam-btns-default').classList.remove('hidden');
+  document.getElementById('cam-btns-result').classList.add('hidden');
+  document.getElementById('cam-btns-result').style.display = '';
+  const programBtn = document.getElementById('cam-program-btn');
+  if (programBtn) { programBtn.disabled = false; programBtn.classList.remove('opacity-40', 'pointer-events-none'); }
+  ['step-parse','step-save','step-firmware','step-done'].forEach(id => _setStep(id, 'pending'));
+}
+
+async function triggerCamera() {
+  if (isNative() && window.Capacitor?.Plugins?.Camera) {
+    try {
+      const { Camera } = window.Capacitor.Plugins;
+      const photo = await Camera.getPhoto({
+        quality:         90,
+        allowEditing:    false,
+        resultType:      'base64',
+        source:          'PROMPT',   // pregunta: cámara o galería
+        saveToGallery:   false,
+      });
+      visionB64 = photo.base64String;
+      const preview = document.getElementById('cam-preview');
+      preview.src = `data:image/jpeg;base64,${visionB64}`;
+      preview.classList.remove('hidden');
+      document.getElementById('cam-placeholder').classList.add('hidden');
+      document.getElementById('cam-analyze-btn').disabled = false;
+    } catch(e) {
+      addLog('Cámara cancelada o sin permiso', 'warn');
+    }
+  } else {
+    // Fallback web: input file
+    const input = document.createElement('input');
+    input.type   = 'file';
+    input.accept = 'image/*';
+    input.capture = 'environment';
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        visionB64 = ev.target.result.split(',')[1];
+        const preview = document.getElementById('cam-preview');
+        preview.src = ev.target.result;
+        preview.classList.remove('hidden');
+        document.getElementById('cam-placeholder').classList.add('hidden');
+        document.getElementById('cam-analyze-btn').disabled = false;
+      };
+      reader.readAsDataURL(file);
+    };
+    input.click();
+  }
+}
+
+// Guarda el resultado de visión para el pipeline
+let _visionResult = null;
+
+async function analyzeCameraImage() {
+  if (!visionB64) return;
+  const btn         = document.getElementById('cam-analyze-btn');
+  const statusEl    = document.getElementById('cam-status');
+  const progressBar = document.getElementById('cam-progress-bar');
+  const progress    = document.getElementById('cam-progress');
+  btn.disabled = true;
+  statusEl.classList.remove('hidden');
+  progressBar.classList.remove('hidden');
+  statusEl.textContent = 'Analizando circuito con IA...';
+  let pct = 0;
+  const iv = setInterval(() => { pct = Math.min(pct + 3, 85); progress.style.width = pct + '%'; }, 300);
+  try {
+    const r = await fetch(`${API}/hardware/vision/analyze`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: visionB64 }),
+    });
+    const result = await r.json();
+    clearInterval(iv);
+    progress.style.width = '100%';
+    if (result.success) {
+      _visionResult = result;
+      if (isNative() && window.Capacitor?.Plugins?.Haptics) {
+        window.Capacitor.Plugins.Haptics.notification({ type: 'SUCCESS' }).catch(() => {});
+      }
+      // Mostrar resultado en modal — no cerrar todavía
+      statusEl.classList.add('hidden');
+      _showVisionResult(result);
+    } else {
+      statusEl.textContent = result.message || 'Error en análisis';
+      btn.disabled = false;
+    }
+  } catch(e) {
+    clearInterval(iv);
+    statusEl.textContent = 'Error de conexión';
+    btn.disabled = false;
+  }
+}
+
+function _showVisionResult(result) {
+  // Cambiar botones
+  document.getElementById('cam-btns-default').classList.add('hidden');
+  document.getElementById('cam-btns-result').classList.remove('hidden');
+  document.getElementById('cam-btns-result').style.display = 'flex';
+  // Llenar resultado
+  const panel   = document.getElementById('cam-result-panel');
+  const descEl  = document.getElementById('cam-result-desc');
+  const metaEl  = document.getElementById('cam-result-meta');
+  const circuit = result.circuit || {};
+  const comps   = circuit.components || [];
+  descEl.textContent = (result.message || '').slice(0, 280) + (result.message?.length > 280 ? '...' : '');
+  metaEl.textContent = comps.length ? `${comps.length} componente(s) detectado(s)` : '';
+  panel.classList.remove('hidden');
+  // Limpiar barra de progreso
+  document.getElementById('cam-progress-bar').classList.add('hidden');
+  document.getElementById('cam-progress').style.width = '0%';
+}
+
+// ── PIPELINE: FOTO → CIRCUITO → FIRMWARE ─────────────────────────────────
+async function _pollJob(jobId) {
+  for (let i = 0; i < 120; i++) {  // max 3 min
+    const d = await fetch(`${API}/jobs/${jobId}`).then(r => r.json());
+    if (d.status === 'done')  return d.result;
+    if (d.status === 'error') throw new Error(d.error || 'Job falló');
+    await new Promise(r => setTimeout(r, 1500));
+  }
+  throw new Error('Timeout esperando job');
+}
+
+function _setStep(stepId, state) {
+  // state: 'pending' | 'running' | 'done' | 'error'
+  const el   = document.getElementById(stepId);
+  if (!el) return;
+  const icon = el.querySelector('.step-icon');
+  const txt  = el.querySelector('span:last-child');
+  const colors = { pending: 'border-[#494847]', running: 'border-secondary bg-secondary/20 animate-pulse', done: 'border-primary bg-primary/20', error: 'border-error bg-error/20' };
+  const txtColors = { pending: 'text-[#494847]', running: 'text-secondary', done: 'text-primary', error: 'text-error' };
+  icon.className = `step-icon w-3 h-3 border flex-shrink-0 ${colors[state]}`;
+  txt.className  = txtColors[state];
+}
+
+async function programFromVision() {
+  if (!_visionResult) return;
+  const mcu        = document.getElementById('cam-mcu-select').value;
+  const deviceSlug = mcu.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+  const description = _visionResult.message || '';
+
+  const programBtn = document.getElementById('cam-program-btn');
+  const statusEl   = document.getElementById('cam-status');
+  const progressBar= document.getElementById('cam-progress-bar');
+  const progress   = document.getElementById('cam-progress');
+  const steps      = document.getElementById('cam-pipeline-steps');
+
+  programBtn.disabled = true;
+  programBtn.classList.add('opacity-40', 'pointer-events-none');
+  steps.classList.remove('hidden');
+  statusEl.classList.remove('hidden');
+  progressBar.classList.remove('hidden');
+
+  try {
+    // ── Step 1: Parse circuit ──────────────────────────────────────────
+    _setStep('step-parse', 'running');
+    statusEl.textContent = 'Parseando circuito...';
+    progress.style.width = '15%';
+
+    const parseRes = await fetch(
+      `${API}/circuits/parse-async?description=${encodeURIComponent(description)}&mcu=${encodeURIComponent(mcu)}`,
+      { method: 'POST' }
+    );
+    if (!parseRes.ok) throw new Error(`Parse error ${parseRes.status}`);
+    const { job_id: parseJobId } = await parseRes.json();
+    const circuitData = await _pollJob(parseJobId);
+    _setStep('step-parse', 'done');
+    progress.style.width = '40%';
+
+    // ── Step 2: Save circuit context to hardware memory ────────────────
+    _setStep('step-save', 'running');
+    statusEl.textContent = 'Guardando contexto de hardware...';
+    progress.style.width = '50%';
+
+    const savePayload = {
+      project_name: circuitData?.name || `Foto_${mcu}`,
+      description:  description.slice(0, 500),
+      components:   circuitData?.components || [],
+      connections:  circuitData?.connections || circuitData?.nets || [],
+    };
+    await fetch(`${API}/hardware/circuit/${encodeURIComponent(deviceSlug)}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(savePayload),
+    });
+    _setStep('step-save', 'done');
+    progress.style.width = '60%';
+
+    // ── Step 3: Generate firmware ──────────────────────────────────────
+    _setStep('step-firmware', 'running');
+    statusEl.textContent = 'Generando firmware con IA...';
+    progress.style.width = '65%';
+
+    const fwRes = await fetch(`${API}/circuits/${encodeURIComponent(deviceSlug)}/generate-firmware`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task_description: `Implementar el circuito detectado por visión: ${description.slice(0, 200)}` }),
+    });
+    if (!fwRes.ok) throw new Error(`Firmware error ${fwRes.status}`);
+    const { job_id: fwJobId } = await fwRes.json();
+    const fwResult = await _pollJob(fwJobId);
+    _setStep('step-firmware', 'done');
+    _setStep('step-done', 'done');
+    progress.style.width = '100%';
+
+    // ── Éxito ──────────────────────────────────────────────────────────
+    statusEl.textContent = '✓ Firmware generado';
+    if (isNative() && window.Capacitor?.Plugins?.Haptics) {
+      window.Capacitor.Plugins.Haptics.notification({ type: 'SUCCESS' }).catch(() => {});
+    }
+
+    // Mostrar en chat
+    const fwCode = fwResult?.code || '';
+    const codeSnippet = fwCode ? `\n\`\`\`\n${fwCode.slice(0, 400)}${fwCode.length > 400 ? '\n...' : ''}\n\`\`\`` : '';
+    addMessage('agent',
+      `✓ Firmware generado para **${mcu}** (${deviceSlug})\n` +
+      `Circuito: ${savePayload.project_name}\n` +
+      `Compilación: ${fwResult?.compile_output || 'OK'}` +
+      codeSnippet,
+      ['hardware', 'circuit']
+    );
+
+    setTimeout(closeCameraModal, 2000);
+
+  } catch(err) {
+    _setStep('step-parse',    'error');
+    _setStep('step-save',     'error');
+    _setStep('step-firmware', 'error');
+    statusEl.textContent = `Error: ${err.message}`;
+    programBtn.disabled = false;
+    programBtn.classList.remove('opacity-40', 'pointer-events-none');
+  }
+}
+
+// ── PUSH NOTIFICATIONS ─────────────────────────────────────────────────────
+async function initPushNotifications() {
+  if (!isNative() || !window.Capacitor?.Plugins?.PushNotifications) return;
+  const { PushNotifications } = window.Capacitor.Plugins;
+  await PushNotifications.requestPermissions();
+  await PushNotifications.register();
+  PushNotifications.addListener('registration', async (token) => {
+    addLog(`Push token: ${token.value.slice(0, 16)}...`, 'info');
+    try {
+      await fetch(`${API}/push/register`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: token.value, platform: window.Capacitor.getPlatform() }),
+      });
+    } catch(e) {}
+  });
+  PushNotifications.addListener('pushNotificationReceived', (notification) => {
+    showToast(notification.title, notification.body, 'push');
+  });
+}
+
+// ── TOAST ──────────────────────────────────────────────────────────────────
+function showToast(title, message, type) {
+  const colors = {
+    device_connected: 'border-primary',
+    device_inactive:  'border-[#ffaa00]',
+    recurring_error:  'border-error',
+    job_complete:     'border-secondary',
+    push:             'border-[#8eff71]',
+  };
+  const toast = document.createElement('div');
+  toast.className = `toast ${colors[type] || 'border-[#494847]'} font-mono`;
+  toast.innerHTML = `
+    <div class="flex items-start gap-2">
+      <div class="flex-1">
+        <div class="font-bold text-[10px] tracking-widest mb-0.5">${escHtml(title)}</div>
+        <div class="text-[9px] text-[#adaaaa]">${escHtml((message || '').slice(0, 100))}</div>
+      </div>
+      <button onclick="this.closest('.toast').remove()" class="text-[#494847] active:text-error">✕</button>
+    </div>`;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove?.(), 6000);
+}
+
+// ── LOGS ───────────────────────────────────────────────────────────────────
+function addLog(msg, type = 'info') {
+  const el = document.getElementById('logs-list');
+  if (!el) return;
+  const colors = { info: 'text-[#494847]', warn: 'text-[#ffaa00]', error: 'text-error', cmd: 'text-primary' };
+  const line = document.createElement('div');
+  line.className  = colors[type] || 'text-[#494847]';
+  line.textContent = `[${new Date().toLocaleTimeString('es', {hour12:false})}] ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+  if (el.children.length > 100) el.removeChild(el.firstChild);
+}
+
+// ── UTILS ──────────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── SETTINGS ───────────────────────────────────────────────────────────────
+function initSettingsPanel() {
+  const input = document.getElementById('settings-url');
+  if (input) input.value = getBackend();
+}
+
+function setPreset(preset) {
+  const input = document.getElementById('settings-url');
+  if (!input) return;
+  if (preset === 'local') {
+    input.value = DEFAULT_BACKEND;
+  } else if (preset === 'railway') {
+    const saved = localStorage.getItem('stratum_railway_url') || '';
+    const url = prompt('URL de Railway (ej: https://stratum.up.railway.app):', saved);
+    if (url) { input.value = url; localStorage.setItem('stratum_railway_url', url); }
+  }
+}
+
+async function testConnection() {
+  const url    = document.getElementById('settings-url')?.value.trim();
+  const status = document.getElementById('settings-status');
+  if (!url || !status) return;
+  status.className = 'text-[9px] text-[#adaaaa]';
+  status.textContent = 'Probando conexión...';
+  status.classList.remove('hidden');
+  try {
+    const r = await fetch(`${url}/api/health`, { signal: AbortSignal.timeout(5000) });
+    if (r.ok) { status.className = 'text-[9px] text-primary'; status.textContent = '✓ Conexión OK'; }
+    else throw new Error(`HTTP ${r.status}`);
+  } catch(e) {
+    status.className = 'text-[9px] text-error';
+    status.textContent = `✗ ${e.message || 'Sin respuesta'}`;
+  }
+}
+
+function saveSettings() {
+  const url    = document.getElementById('settings-url')?.value.trim();
+  const status = document.getElementById('settings-status');
+  if (!url) return;
+  localStorage.setItem('stratum_backend_url', url);
+  if (status) { status.className = 'text-[9px] text-primary'; status.textContent = '✓ Guardado — reconectando...'; status.classList.remove('hidden'); }
+  if (ws)           try { ws.close(); }           catch(e) {}
+  if (wsProactive)  try { wsProactive.close(); }  catch(e) {}
+  setTimeout(() => { connectWS(); connectProactiveWS(); }, 500);
+}
+
+function clearSession() {
+  localStorage.removeItem('stratum_session_id');
+  _session_id = null;
+  addLog('Sesión limpiada — próxima conexión iniciará una nueva', 'info');
+  if (ws) try { ws.close(); } catch(e) {}
+}
+
+// ── INIT ───────────────────────────────────────────────────────────────────
+document.getElementById('session-time').textContent =
+  'SESSION_INIT :: ' + new Date().toISOString().replace('T','_').slice(0,19);
+
+document.getElementById('prompt').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); sendMessage(); }
+});
+document.getElementById('search-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doSearch();
+});
+
+connectWS();
+connectProactiveWS();
+loadHealth();
+loadAuthStatus();
+loadIntelligence();
+initPushNotifications();
+setInterval(loadStats, 15000);
+setInterval(loadJobs,   8000);
+setInterval(loadHealth, 30000);
+
+// Mostrar badge si hay mensajes encolados de sesiones anteriores
+if (_offlineQueue.length > 0) {
+  _updateQueueBadge();
+  _offlineQueue.forEach(item => {
+    const msgs = document.getElementById('messages');
+    const div  = document.createElement('div');
+    const time = new Date(item.ts).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+    div.className = 'msg-queued';
+    div.dataset.queued = 'true';
+    div.innerHTML = `
+      <div class="text-[8px] text-[#494847] mb-1 tracking-widest">${time} · QUEUED</div>
+      <p class="text-xs font-mono text-[#adaaaa]">${escHtml(item.text)}</p>`;
+    msgs.appendChild(div);
+  });
+}
+
+// Expose globals para onclick= en HTML
+window.switchPanel        = switchPanel;
+window.sendMessage        = sendMessage;
+window.doSearch           = doSearch;
+window.loadHardware       = loadHardware;
+window.loadIntelligence   = loadIntelligence;
+window.loadJobs           = loadJobs;
+window.loadMetrics        = loadMetrics;
+window.activateProfile    = activateProfile;
+window.deleteSource       = deleteSource;
+window.indexSource        = indexSource;
+window.showCreateProfile  = showCreateProfile;
+window.hideCreateProfile  = hideCreateProfile;
+window.saveNewProfile     = saveNewProfile;
+window.showCreateSource   = showCreateSource;
+window.hideCreateSource   = hideCreateSource;
+window.saveNewSource      = saveNewSource;
+window.openCamera         = openCamera;
+window.closeCameraModal   = closeCameraModal;
+window.triggerCamera      = triggerCamera;
+window.analyzeCameraImage = analyzeCameraImage;
+window.programFromVision  = programFromVision;
+window.saveSettings       = saveSettings;
+window.testConnection     = testConnection;
+window.setPreset          = setPreset;
+window.clearSession       = clearSession;
+</script>
+</body>
+</html>

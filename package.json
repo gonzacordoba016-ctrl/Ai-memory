@@ -1,8 +1,8 @@
 {
   "dependencies": {
-    "@aethermind/agent": "^0.1.7",
+    "@aethermind/agent": "^0.1.8",
     "@aethermind/providers": "^0.2.2",
-    "@aethermind/proxy": "^0.1.4",
+    "@aethermind/proxy": "^0.1.6",
     "@aethermind/setup": "^0.1.5"
   }
 }

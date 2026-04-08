@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stratum - Visualizador de Circuitos</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@svgdotjs/svg.js@3.0.16/dist/svg.min.js"></script>
+    <style>
+        :root {
+            --bg-dark: #1a1a1a;
+            --bg-darker: #121212;
+            --primary: #00ff88;
+            --secondary: #00aaff;
+            --text: #ffffff;
+            --text-muted: #aaaaaa;
+            --border: #333333;
+        }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-darker);
+            color: var(--text);
+            font-family: 'Courier New', monospace;
+            overflow-x: hidden;
+        }
+        
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        
+        .header {
+            background-color: var(--bg-dark);
+            padding: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .viewer-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        
+        .panel {
+            flex: 1;
+            padding: 1rem;
+            overflow-y: auto;
+            border-right: 1px solid var(--border);
+        }
+        
+        .panel:last-child {
+            border-right: none;
+        }
+        
+        .tabs {
+            display: flex;
+            margin-bottom: 1rem;
+        }
+        
+        .tab {
+            padding: 0.5rem 1rem;
+            background-color: var(--bg-dark);
+            border: 1px solid var(--border);
+            cursor: pointer;
+            margin-right: 0.5rem;
+        }
+        
+        .tab.active {
+            background-color: var(--primary);
+            color: var(--bg-dark);
+        }
+        
+        .view-content {
+            height: calc(100% - 40px);
+        }
+        
+        #schematic-view, #pcb-view {
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-dark);
+            border: 1px solid var(--border);
+        }
+        
+        #breadboard-view {
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-dark);
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .component-list {
+            background-color: var(--bg-dark);
+            padding: 1rem;
+            border-radius: 4px;
+            margin-top: 1rem;
+        }
+        
+        .component-item {
+            padding: 0.5rem;
+            margin-bottom: 0.5rem;
+            background-color: #2a2a2a;
+            border-left: 3px solid var(--primary);
+        }
+        
+        .net-list {
+            background-color: var(--bg-dark);
+            padding: 1rem;
+            border-radius: 4px;
+            margin-top: 1rem;
+        }
+        
+        .net-item {
+            padding: 0.5rem;
+            margin-bottom: 0.5rem;
+            background-color: #2a2a2a;
+            border-left: 3px solid var(--secondary);
+        }
+        
+        button {
+            background-color: var(--primary);
+            color: var(--bg-dark);
+            border: none;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            margin: 0.5rem;
+        }
+        
+        button:hover {
+            opacity: 0.8;
+        }
+        
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin: 1rem 0;
+        }
+        
+        .info-panel {
+            background-color: var(--bg-dark);
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔧 Stratum - Visualizador de Circuitos</h1>
+            <div class="controls">
+                <button id="load-circuit">Cargar Circuito</button>
+                <button id="export-pcb">Exportar PCB (Gerber)</button>
+                <button id="export-svg">Exportar SVG</button>
+                <button id="refresh-view">Actualizar Vista</button>
+            </div>
+        </div>
+        
+        <div class="viewer-container">
+            <div class="panel">
+                <div class="tabs">
+                    <div class="tab active" data-view="schematic">Esquemático 2D</div>
+                    <div class="tab" data-view="breadboard">Breadboard 3D</div>
+                    <div class="tab" data-view="pcb">Layout PCB</div>
+                </div>
+                
+                <div class="view-content">
+                    <div id="schematic-view"></div>
+                    <div id="breadboard-view" class="hidden"></div>
+                    <div id="pcb-view" class="hidden"></div>
+                </div>
+            </div>
+            
+            <div class="panel" style="flex: 0.4;">
+                <h2>📋 Información del Circuito</h2>
+                <div class="info-panel">
+                    <h3 id="circuit-name">Sin circuito cargado</h3>
+                    <p id="circuit-description"></p>
+                </div>
+                
+                <h3>_Componentes</h3>
+                <div id="components-list" class="component-list">
+                    <p>No hay componentes disponibles</p>
+                </div>
+                
+                <h3>_Redes Eléctricas</h3>
+                <div id="nets-list" class="net-list">
+                    <p>No hay redes definidas</p>
+                </div>
+                
+                <h3>⚙️ Acciones</h3>
+                <div class="controls">
+                    <button id="generate-firmware">Generar Firmware</button>
+                    <button id="simulate-circuit">Simular Circuito</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Variables globales
+        let currentCircuit = null;
+        let threeScene = null;
+        let threeRenderer = null;
+        let threeCamera = null;
+
+        // Posiciones personalizadas por componente (drag & drop)
+        let componentPositions = {};
+
+        // ── Drag & Drop sobre SVG ────────────────────────────────────────────
+        // Gestión de arrastre de nodos en el esquemático
+
+        let _dragState = null;
+
+        function _initDraggable(svgEl, compId, onDrop) {
+            svgEl.style.cursor = 'grab';
+            svgEl.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                const svgRoot = svgEl.closest('svg') || svgEl.ownerSVGElement;
+                const pt      = svgRoot.createSVGPoint();
+                const ctm     = svgRoot.getScreenCTM();
+
+                function toSVGCoords(ex, ey) {
+                    pt.x = ex; pt.y = ey;
+                    return pt.matrixTransform(ctm.inverse());
+                }
+
+                const startSVG  = toSVGCoords(e.clientX, e.clientY);
+                const bbox      = svgEl.getBoundingClientRect();
+                const startSVGB = toSVGCoords(bbox.left + bbox.width / 2, bbox.top + bbox.height / 2);
+                const offsetX   = startSVGB.x - startSVG.x;
+                const offsetY   = startSVGB.y - startSVG.y;
+
+                svgEl.style.cursor = 'grabbing';
+
+                function onMove(ev) {
+                    const p = toSVGCoords(ev.clientX, ev.clientY);
+                    const nx = p.x + offsetX;
+                    const ny = p.y + offsetY;
+                    const transform = svgEl.getAttribute('transform') || '';
+                    // Actualizar translate
+                    svgEl.setAttribute('transform', `translate(${nx},${ny})`);
+                    _dragState = { compId, x: nx, y: ny };
+                }
+
+                function onUp() {
+                    svgEl.style.cursor = 'grab';
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                    if (_dragState && _dragState.compId === compId) {
+                        componentPositions[compId] = { x: _dragState.x, y: _dragState.y };
+                        onDrop(compId, _dragState.x, _dragState.y);
+                        _dragState = null;
+                    }
+                }
+
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+            });
+        }
+
+        async function _saveLayout(circuitId) {
+            if (!circuitId) return;
+            try {
+                await fetch(`/api/circuits/${circuitId}/layout`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ positions: componentPositions }),
+                });
+            } catch (e) {
+                console.warn('[Layout] Error guardando posiciones:', e);
+            }
+        }
+        
+        // Elementos del DOM
+        const tabs = document.querySelectorAll('.tab');
+        const schematicView = document.getElementById('schematic-view');
+        const breadboardView = document.getElementById('breadboard-view');
+        const pcbView = document.getElementById('pcb-view');
+        const circuitName = document.getElementById('circuit-name');
+        const circuitDescription = document.getElementById('circuit-description');
+        const componentsList = document.getElementById('components-list');
+        const netsList = document.getElementById('nets-list');
+        
+        // Event Listeners para tabs
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                // Remover clase activa de todos los tabs
+                tabs.forEach(t => t.classList.remove('active'));
+                // Agregar clase activa al tab clickeado
+                tab.classList.add('active');
+                
+                // Ocultar todas las vistas
+                schematicView.classList.add('hidden');
+                breadboardView.classList.add('hidden');
+                pcbView.classList.add('hidden');
+                
+                // Mostrar la vista correspondiente
+                const view = tab.getAttribute('data-view');
+                if (view === 'schematic') {
+                    schematicView.classList.remove('hidden');
+                } else if (view === 'breadboard') {
+                    breadboardView.classList.remove('hidden');
+                    initThreeJS();
+                } else if (view === 'pcb') {
+                    pcbView.classList.remove('hidden');
+                }
+            });
+        });
+        
+        // Función para cargar circuito de ejemplo
+        document.getElementById('load-circuit').addEventListener('click', loadSampleCircuit);
+        
+        // Función para exportar PCB
+        document.getElementById('export-pcb').addEventListener('click', exportPCB);
+        
+        // Función para exportar SVG
+        document.getElementById('export-svg').addEventListener('click', exportSVG);
+        
+        // Función para generar firmware
+        document.getElementById('generate-firmware').addEventListener('click', generateFirmware);
+        
+        // Función para simular circuito
+        document.getElementById('simulate-circuit').addEventListener('click', simulateCircuit);
+        
+        // Cargar circuito de muestra al iniciar
+        window.addEventListener('load', () => {
+            loadSampleCircuit();
+        });
+        
+        // Función para cargar circuito de ejemplo
+        function loadSampleCircuit() {
+            const sampleCircuit = {
+                "name": "LED Blinker",
+                "description": "Circuito básico para parpadear un LED con Arduino",
+                "components": [
+                    {"id": "U1", "name": "Arduino Uno", "type": "arduino_uno"},
+                    {"id": "R1", "name": "Resistencia 220Ω", "type": "resistor", "value": "220", "unit": "ohm"},
+                    {"id": "D1", "name": "LED Rojo", "type": "led", "color": "red"}
+                ],
+                "nets": [
+                    {"name": "VCC", "nodes": ["U1.5V", "D1.A"]},
+                    {"name": "GND", "nodes": ["U1.GND", "R1.2", "D1.K"]},
+                    {"name": "NET_LED", "nodes": ["U1.13", "R1.1"]}
+                ],
+                "power": "5V USB",
+                "warnings": []
+            };
+            
+            currentCircuit = sampleCircuit;
+            updateCircuitInfo();
+            renderSchematic();
+            renderComponentsList();
+            renderNetsList();
+        }
+        
+        // Actualizar información del circuito
+        function updateCircuitInfo() {
+            if (!currentCircuit) return;
+            
+            circuitName.textContent = currentCircuit.name;
+            circuitDescription.textContent = currentCircuit.description;
+        }
+        
+        // Renderizar esquemático
+        function renderSchematic() {
+            if (!currentCircuit) return;
+            
+            // Limpiar vista
+            schematicView.innerHTML = '';
+            
+            // Crear contenedor SVG
+            const container = document.createElement('div');
+            container.style.width = '100%';
+            container.style.height = '100%';
+            container.style.backgroundColor = '#1e1e1e';
+            schematicView.appendChild(container);
+            
+            // Crear SVG usando SVG.js
+            const draw = SVG().addTo('#' + container.id).size('100%', '100%');
+            
+            // Fondo
+            draw.rect('100%', '100%').fill('#1e1e1e');
+            
+            // Título
+            draw.text(currentCircuit.name)
+                .move(20, 20)
+                .font({ size: 20, family: 'Arial', fill: 'white' });
+            
+            // Descripción
+            draw.text(currentCircuit.description)
+                .move(20, 50)
+                .font({ size: 14, family: 'Arial', fill: '#cccccc' });
+            
+            // Posiciones: usar guardadas si existen, si no calcular
+            const savedPos = currentCircuit.positions || {};
+            currentCircuit.components.forEach((comp, index) => {
+                if (savedPos[comp.id]) {
+                    componentPositions[comp.id] = savedPos[comp.id];
+                } else if (!componentPositions[comp.id]) {
+                    componentPositions[comp.id] = {
+                        x: 100 + (index % 3) * 150,
+                        y: 150 + Math.floor(index / 3) * 100,
+                    };
+                }
+            });
+
+            const circuitId = currentCircuit.id || null;
+
+            // Dibujar componentes en grupos arrastrables
+            currentCircuit.components.forEach((comp) => {
+                const pos = componentPositions[comp.id];
+                const {x, y} = pos;
+
+                // Crear grupo SVG nativo para drag
+                const svgRoot = container.querySelector('svg') || container.firstChild;
+                const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                g.setAttribute('id', `comp-${comp.id}`);
+                g.setAttribute('transform', `translate(${x},${y})`);
+                g.setAttribute('data-comp-id', comp.id);
+
+                if (comp.type === 'resistor') {
+                    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                    rect.setAttribute('x', -25); rect.setAttribute('y', -10);
+                    rect.setAttribute('width', 50); rect.setAttribute('height', 20);
+                    rect.setAttribute('fill', '#cc6600'); rect.setAttribute('stroke', 'white'); rect.setAttribute('stroke-width', 1);
+                    g.appendChild(rect);
+                } else if (comp.type === 'led') {
+                    const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+                    poly.setAttribute('points', '-10,-10 10,0 -10,10');
+                    poly.setAttribute('fill', 'none');
+                    poly.setAttribute('stroke', comp.color || '#ff0000'); poly.setAttribute('stroke-width', 2);
+                    g.appendChild(poly);
+                } else if (comp.type === 'arduino_uno') {
+                    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                    rect.setAttribute('x', -40); rect.setAttribute('y', -20);
+                    rect.setAttribute('width', 80); rect.setAttribute('height', 40);
+                    rect.setAttribute('fill', '#334455'); rect.setAttribute('stroke', 'white'); rect.setAttribute('stroke-width', 2);
+                    g.appendChild(rect);
+                    const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    lbl.setAttribute('x', -35); lbl.setAttribute('y', 5);
+                    lbl.setAttribute('font-size', 10); lbl.setAttribute('fill', 'white');
+                    lbl.textContent = 'ARDUINO UNO';
+                    g.appendChild(lbl);
+                } else {
+                    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                    rect.setAttribute('x', -25); rect.setAttribute('y', -15);
+                    rect.setAttribute('width', 50); rect.setAttribute('height', 30);
+                    rect.setAttribute('fill', '#444444'); rect.setAttribute('stroke', 'white'); rect.setAttribute('stroke-width', 1);
+                    g.appendChild(rect);
+                }
+
+                // Etiqueta
+                const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                lbl.setAttribute('x', -25); lbl.setAttribute('y', 35);
+                lbl.setAttribute('font-size', 10); lbl.setAttribute('fill', 'white');
+                lbl.textContent = `${comp.id}: ${comp.name}`;
+                g.appendChild(lbl);
+
+                // Hit-area transparente para facilitar el arrastre
+                const hit = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                hit.setAttribute('x', -30); hit.setAttribute('y', -25);
+                hit.setAttribute('width', 60); hit.setAttribute('height', 70);
+                hit.setAttribute('fill', 'transparent');
+                g.appendChild(hit);
+
+                if (svgRoot && svgRoot.tagName && svgRoot.tagName.toLowerCase() === 'svg') {
+                    svgRoot.appendChild(g);
+                } else {
+                    // fallback: draw en el contenedor
+                    container.appendChild(g);
+                }
+
+                // Hacer arrastrable
+                _initDraggable(g, comp.id, (cId, nx, ny) => {
+                    componentPositions[cId] = { x: nx, y: ny };
+                    _saveLayout(circuitId);
+                });
+            });
+            
+            // Dibujar conexiones
+            currentCircuit.nets.forEach((net, netIndex) => {
+                const colors = ['#ff5555', '#55ff55', '#5555ff', '#ffff55'];
+                const color = colors[netIndex % colors.length];
+                
+                // Conectar nodos (simplificado)
+                for (let i = 0; i < net.nodes.length - 1; i++) {
+                    const node1 = net.nodes[i].split('.')[0];
+                    const node2 = net.nodes[i+1].split('.')[0];
+                    
+                    if (componentPositions[node1] && componentPositions[node2]) {
+                        const pos1 = componentPositions[node1];
+                        const pos2 = componentPositions[node2];
+                        
+                        draw.line(pos1.x, pos1.y, pos2.x, pos2.y)
+                            .stroke({color: color, width: 2});
+                    }
+                }
+                
+                // Etiqueta de red
+                if (net.nodes.length > 0) {
+                    const firstNode = net.nodes[0].split('.')[0];
+                    if (componentPositions[firstNode]) {
+                        const pos = componentPositions[firstNode];
+                        draw.text(net.name)
+                            .move(pos.x, pos.y - 40)
+                            .font({ size: 12, family: 'Arial', fill: color });
+                    }
+                }
+            });
+        }
+        
+        // Renderizar lista de componentes
+        function renderComponentsList() {
+            if (!currentCircuit) return;
+            
+            componentsList.innerHTML = '';
+            
+            currentCircuit.components.forEach(comp => {
+                const item = document.createElement('div');
+                item.className = 'component-item';
+                item.innerHTML = `
+                    <strong>${comp.id}</strong>: ${comp.name}
+                    ${comp.value ? `<br><small>Valor: ${comp.value}${comp.unit || ''}</small>` : ''}
+                    ${comp.color ? `<br><small>Color: ${comp.color}</small>` : ''}
+                `;
+                componentsList.appendChild(item);
+            });
+        }
+        
+        // Renderizar lista de redes
+        function renderNetsList() {
+            if (!currentCircuit) return;
+            
+            netsList.innerHTML = '';
+            
+            currentCircuit.nets.forEach(net => {
+                const item = document.createElement('div');
+                item.className = 'net-item';
+                item.innerHTML = `
+                    <strong>${net.name}</strong>
+                    <br><small>Nodos: ${net.nodes.join(', ')}</small>
+                `;
+                netsList.appendChild(item);
+            });
+        }
+        
+        // Inicializar Three.js para breadboard 3D
+        function initThreeJS() {
+            if (threeScene) return; // Ya inicializado
+            
+            // Crear escena Three.js
+            threeScene = new THREE.Scene();
+            threeScene.background = new THREE.Color(0x1e1e1e);
+            
+            // Crear cámara
+            threeCamera = new THREE.PerspectiveCamera(75, breadboardView.clientWidth / breadboardView.clientHeight, 0.1, 1000);
+            threeCamera.position.z = 50;
+            
+            // Crear renderer
+            threeRenderer = new THREE.WebGLRenderer({ antialias: true });
+            threeRenderer.setSize(breadboardView.clientWidth, breadboardView.clientHeight);
+            breadboardView.innerHTML = '';
+            breadboardView.appendChild(threeRenderer.domElement);
+            
+            // Agregar luces
+            const ambientLight = new THREE.AmbientLight(0x404040);
+            threeScene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(1, 1, 1);
+            threeScene.add(directionalLight);
+            
+            // Crear breadboard básico
+            createBreadboard();
+            
+            // Animación
+            function animate() {
+                requestAnimationFrame(animate);
+                
+                // Rotar breadboard lentamente
+                if (threeScene.children.length > 0) {
+                    threeScene.children[2].rotation.y += 0.005;
+                }
+                
+                threeRenderer.render(threeScene, threeCamera);
+            }
+            
+            animate();
+            
+            // Manejar resize
+            window.addEventListener('resize', () => {
+                threeCamera.aspect = breadboardView.clientWidth / breadboardView.clientHeight;
+                threeCamera.updateProjectionMatrix();
+                threeRenderer.setSize(breadboardView.clientWidth, breadboardView.clientHeight);
+            });
+        }
+        
+        // Crear breadboard en 3D
+        function createBreadboard() {
+            if (!threeScene) return;
+            
+            // Placa base (breadboard)
+            const boardGeometry = new THREE.BoxGeometry(40, 2, 20);
+            const boardMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0xf0d9b5,
+                shininess: 30
+            });
+            const board = new THREE.Mesh(boardGeometry, boardMaterial);
+            board.position.y = -5;
+            threeScene.add(board);
+            
+            // Agujeros
+            const holeGeometry = new THREE.CylinderGeometry(0.2, 0.2, 0.1, 16);
+            const holeMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+            
+            for (let row = 0; row < 5; row++) {
+                for (let col = 0; col < 20; col++) {
+                    const hole = new THREE.Mesh(holeGeometry, holeMaterial);
+                    hole.position.x = -18 + col * 2;
+                    hole.position.y = -4;
+                    hole.position.z = -8 + row * 4;
+                    hole.rotation.x = Math.PI / 2;
+                    threeScene.add(hole);
+                }
+            }
+            
+            // Componentes de ejemplo
+            if (currentCircuit) {
+                currentCircuit.components.forEach((comp, index) => {
+                    let geometry, material, mesh;
+                    
+                    if (comp.type === 'resistor') {
+                        geometry = new THREE.CylinderGeometry(0.3, 0.3, 2, 16);
+                        material = new THREE.MeshPhongMaterial({ color: 0xcc6600 });
+                        mesh = new THREE.Mesh(geometry, material);
+                        mesh.position.set(-15 + index * 5, -3, 0);
+                        mesh.rotation.z = Math.PI / 2;
+                    } else if (comp.type === 'led') {
+                        geometry = new THREE.CylinderGeometry(0.4, 0.4, 1, 16);
+                        material = new THREE.MeshPhongMaterial({ 
+                            color: comp.color === 'red' ? 0xff0000 : 0x00ff00 
+                        });
+                        mesh = new THREE.Mesh(geometry, material);
+                        mesh.position.set(-15 + index * 5, -3, 3);
+                    } else {
+                        geometry = new THREE.BoxGeometry(2, 1, 1);
+                        material = new THREE.MeshPhongMaterial({ color: 0x888888 });
+                        mesh = new THREE.Mesh(geometry, material);
+                        mesh.position.set(-15 + index * 5, -3, -3);
+                    }
+                    
+                    threeScene.add(mesh);
+                });
+            }
+        }
+        
+        // Exportar PCB (simulación)
+        function exportPCB() {
+            if (!currentCircuit) {
+                alert('No hay circuito para exportar');
+                return;
+            }
+            
+            alert('Exportando archivos Gerber...\n\nEn una implementación real, esto generaría archivos ZIP con:\n- copper_top.gbr\n- copper_bottom.gbr\n- silkscreen_top.gto\n- soldermask_bottom.gbo\n- drills.txt\n- outline.gko');
+        }
+        
+        // Exportar SVG
+        function exportSVG() {
+            if (!currentCircuit) {
+                alert('No hay circuito para exportar');
+                return;
+            }
+            
+            // Generar SVG del esquemático
+            const svgContent = schematicView.innerHTML;
+            
+            // Crear blob y descargar
+            const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${currentCircuit.name.replace(/\s+/g, '_')}_schematic.svg`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+        
+        // Generar firmware
+        function generateFirmware() {
+            if (!currentCircuit) {
+                alert('No hay circuito para generar firmware');
+                return;
+            }
+            
+            alert(`Generando firmware para: ${currentCircuit.name}\n\nEn una implementación real, esto crearía un archivo .ino basado en los componentes y conexiones.`);
+        }
+        
+        // Simular circuito
+        function simulateCircuit() {
+            if (!currentCircuit) {
+                alert('No hay circuito para simular');
+                return;
+            }
+            
+            alert(`Simulando circuito: ${currentCircuit.name}\n\nComponentes: ${currentCircuit.components.length}\nRedes: ${currentCircuit.nets.length}`);
+        }
+    </script>
+</body>
+</html>

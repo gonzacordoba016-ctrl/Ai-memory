@@ -26,3 +26,14 @@ pypdf==4.3.1
 tqdm==4.66.4
 
 pyserial==3.5
+
+# Hardware Design
+svgwrite==1.4.3
+httpx==0.27.2
+
+# Auth (multi-usuario JWT)
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Rate limiting
+slowapi==0.1.9

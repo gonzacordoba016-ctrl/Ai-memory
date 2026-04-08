@@ -27,4 +27,11 @@ def setup_logger():
     return logger
 
 
-logger = setup_logger()
+def get_logger(name: str = "ai_agent"):
+    """
+    Returns a logger instance with the specified name.
+    """
+    return logging.getLogger(name)
+
+
+logger = setup_logger()

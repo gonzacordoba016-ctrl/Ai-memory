@@ -106,13 +106,13 @@ def index_knowledge_base(force: bool = False) -> dict:
     indexed_sources = set()
     if not force:
         try:
-            results = vector_store.client.scroll(
+            points, _ = vector_store.client.scroll(
                 collection_name=vector_store.collection,
                 scroll_filter=None,
                 limit=10000,
                 with_payload=True,
             )
-            for point, _ in results:
+            for point in points:
                 src = (point.payload or {}).get("source", "")
                 ktype = (point.payload or {}).get("type", "")
                 if ktype == "knowledge":
@@ -186,14 +186,14 @@ def search_knowledge(query: str, top_k: int = 4) -> list[str]:
 def list_indexed_documents() -> list[dict]:
     """Lista los documentos actualmente indexados con estadísticas."""
     try:
-        results = vector_store.client.scroll(
+        points, _ = vector_store.client.scroll(
             collection_name=vector_store.collection,
             scroll_filter=None,
             limit=10000,
             with_payload=True,
         )
         sources: dict = {}
-        for point, _ in results:
+        for point in points:
             payload = point.payload or {}
             if payload.get("type") != "knowledge":
                 continue

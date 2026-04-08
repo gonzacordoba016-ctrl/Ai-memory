@@ -215,3 +215,85 @@ def list_installed_platforms() -> str:
         return result.stdout or "No hay plataformas instaladas."
     except Exception as e:
         return f"Error: {e}"
+
+
+# ── MicroPython ─────────────────────────────────────────────────────────────
+
+def flash_micropython(script_path: str, port: str) -> dict:
+    """
+    Copia un archivo main.py a un dispositivo MicroPython usando mpremote.
+    Requiere: pip install mpremote
+
+    Returns:
+        {"success": bool, "output": str, "error": str}
+    """
+    import shutil
+
+    if not shutil.which("mpremote"):
+        return {
+            "success": False,
+            "output":  "",
+            "error":   "mpremote no encontrado. Instalalo con: pip install mpremote",
+        }
+
+    try:
+        # Copiar script como main.py en el dispositivo
+        copy_result = subprocess.run(
+            ["mpremote", "connect", port, "cp", script_path, ":main.py"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if copy_result.returncode != 0:
+            return {
+                "success": False,
+                "output":  copy_result.stdout,
+                "error":   copy_result.stderr,
+            }
+
+        # Reset suave para que main.py se ejecute
+        reset_result = subprocess.run(
+            ["mpremote", "connect", port, "reset"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        success = reset_result.returncode == 0
+        output  = copy_result.stdout + reset_result.stdout
+
+        if success:
+            logger.info(f"[MicroPython] Flash exitoso en {port}")
+        else:
+            logger.error(f"[MicroPython] Error en reset: {reset_result.stderr}")
+
+        return {
+            "success": success,
+            "output":  output,
+            "error":   reset_result.stderr if not success else "",
+        }
+
+    except FileNotFoundError:
+        return {"success": False, "output": "", "error": "mpremote no encontrado."}
+    except subprocess.TimeoutExpired:
+        return {"success": False, "output": "", "error": "Timeout. Verificá que el dispositivo esté conectado."}
+    except Exception as e:
+        return {"success": False, "output": "", "error": str(e)}
+
+
+def detect_micropython_repl(port: str, baudrate: int = 115200, timeout: float = 3.0) -> bool:
+    """
+    Detecta si un dispositivo en el puerto dado es una REPL MicroPython.
+    Envía Ctrl+C para interrumpir y busca el prompt '>>>' en la respuesta.
+    """
+    try:
+        import serial as _serial
+        with _serial.Serial(port, baudrate, timeout=timeout) as ser:
+            ser.write(b"\r\n")   # salto de línea para activar el prompt
+            import time
+            time.sleep(0.5)
+            ser.write(b"\x03")   # Ctrl+C para interrumpir cualquier script
+            time.sleep(1.0)
+            data = ser.read(ser.in_waiting or 200).decode("utf-8", errors="ignore")
+            return ">>>" in data
+    except Exception:
+        return False

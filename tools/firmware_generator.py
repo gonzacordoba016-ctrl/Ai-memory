@@ -6,7 +6,7 @@
 import os
 import requests
 from pathlib import Path
-from core.config import LLM_API, LLM_MODEL, get_llm_headers
+from core.config import LLM_API, LLM_MODEL_SMART as LLM_MODEL, get_llm_headers
 from core.logger import logger
 
 FIRMWARE_DIR = os.path.abspath("./agent_files/firmware")
@@ -56,21 +56,35 @@ Generá código de firmware válido para el siguiente requerimiento.
 Devolvé SOLO el código, sin explicaciones ni markdown."""
 
 
-def generate_firmware(description: str, platform: str, device_name: str = "") -> dict:
+def generate_firmware(
+    description:  str,
+    platform:     str,
+    device_name:  str       = "",
+    past_errors:  list[str] = None,
+    compile_error: str      = "",
+) -> dict:
     """
     Genera código de firmware usando el LLM.
 
+    Args:
+        past_errors:   Errores históricos de compilación para este device (de firmware_history).
+        compile_error: Error del intento actual (usado en reintentos).
+
     Returns:
-        {
-            "code": str,
-            "filename": str,
-            "platform": str,
-            "path": str,
-        }
+        { "code", "filename", "platform", "path", "dir" }
     """
     system_prompt = PLATFORM_PROMPTS.get(platform, DEFAULT_PROMPT)
 
     user_message = f"Dispositivo: {device_name}\nRequerimiento: {description}"
+
+    # Inyectar errores históricos como contexto preventivo
+    if past_errors:
+        errors_ctx = "\n".join(f"- {e[:300]}" for e in past_errors[:3])
+        user_message += f"\n\nERRORES PREVIOS A EVITAR (este device falló antes con):\n{errors_ctx}"
+
+    # Inyectar error del intento actual (reintento)
+    if compile_error:
+        user_message += f"\n\nERROR DE COMPILACIÓN DEL INTENTO ANTERIOR:\n{compile_error[:500]}\nCorregí el código para resolver este error específico."
 
     try:
         response = requests.post(
@@ -136,3 +150,89 @@ def _clean_code(code: str) -> str:
             continue
         clean.append(line)
     return "\n".join(clean).strip()
+
+CIRCUIT_PROMPT = """Eres un experto en programación de microcontroladores con conocimiento específico del circuito.
+Genera código de firmware C++ válido para Arduino/ESP32 que implemente exactamente el circuito descrito.
+Reglas estrictas:
+- Usa SOLO los pines y componentes especificados en el circuito
+- Incluye setup() y loop() con la lógica correcta para los componentes
+- Comenta el código indicando qué hace cada parte
+- No uses pines que no estén en el circuito
+- Si hay sensores, lee sus valores correctamente
+- Si hay actuadores, controla según el diseño
+- Devuelve SOLO el código C++, sin explicaciones ni markdown"""
+
+
+def generate_firmware_for_circuit(
+    circuit_description: str,
+    platform:            str,
+    device_name:         str       = "",
+    past_errors:         list[str] = None,
+    compile_error:       str       = "",
+) -> dict:
+    """
+    Genera firmware específico para un circuito dado.
+    Reutiliza la lógica de generate_firmware() con un prompt orientado a circuitos.
+    """
+    user_message = f"""CIRCUITO A IMPLEMENTAR:
+{circuit_description}
+
+DISPOSITIVO: {device_name}
+PLATAFORMA: {platform}
+
+Genera el firmware C++ que controle exactamente este circuito."""
+
+    if past_errors:
+        errors_ctx = "\n".join(f"- {e[:300]}" for e in past_errors[:3])
+        user_message += f"\n\nERRORES PREVIOS A EVITAR:\n{errors_ctx}"
+
+    if compile_error:
+        user_message += f"\n\nERROR DEL INTENTO ANTERIOR:\n{compile_error[:500]}\nCorregí el código."
+
+    try:
+        response = requests.post(
+            LLM_API,
+            headers=get_llm_headers(
+                agent_id="hardware-agent",
+                agent_name="HardwareAgent"
+            ),
+            json={
+                "model":       LLM_MODEL,
+                "messages": [
+                    {"role": "system", "content": CIRCUIT_PROMPT},
+                    {"role": "user",   "content": user_message},
+                ],
+                "temperature": 0.2,
+            },
+            timeout=60
+        )
+        response.raise_for_status()
+        code = response.json()["choices"][0]["message"]["content"].strip()
+        code = _clean_code(code)
+
+        ext      = "ino" if "arduino" in platform or "esp" in platform else "py"
+        filename = f"firmware_{device_name.lower().replace(' ', '_')}.{ext}"
+
+        os.makedirs(FIRMWARE_DIR, exist_ok=True)
+        path = os.path.join(FIRMWARE_DIR, filename)
+
+        if ext == "ino":
+            sketch_dir = os.path.join(FIRMWARE_DIR, filename.replace(".ino", ""))
+            os.makedirs(sketch_dir, exist_ok=True)
+            path = os.path.join(sketch_dir, filename)
+
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(code)
+
+        logger.info(f"[Hardware] Firmware de circuito generado: {filename}")
+        return {
+            "code":     code,
+            "filename": filename,
+            "platform": platform,
+            "path":     path,
+            "dir":      os.path.dirname(path),
+        }
+
+    except Exception as e:
+        logger.error(f"[Hardware] Error generando firmware de circuito: {e}")
+        return {"error": str(e)}

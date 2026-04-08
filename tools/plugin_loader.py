@@ -29,7 +29,11 @@
 #   ]
 
 import importlib.util
+import io
+import json
+import shutil
 import sys
+import zipfile
 from pathlib import Path
 from core.logger import logger
 
@@ -94,6 +98,9 @@ class PluginLoader:
             name  = module.PLUGIN_NAME
             tools = module.PLUGIN_TOOLS
 
+            # Leer plugin.json si existe (manifesto opcional)
+            manifest = self._read_manifest(path)
+
             if not isinstance(tools, list) or not tools:
                 logger.warning(f"[PluginLoader] {path.name} — PLUGIN_TOOLS debe ser una lista no vacía")
                 return False
@@ -129,7 +136,9 @@ class PluginLoader:
                 "file":        path.name,
                 "description": module.PLUGIN_DESCRIPTION,
                 "tools":       registered_tools,
-                "version":     getattr(module, "PLUGIN_VERSION", "1.0"),
+                "version":     manifest.get("version") or getattr(module, "PLUGIN_VERSION", "1.0"),
+                "permissions": manifest.get("permissions", []),
+                "manifest":    bool(manifest),
             }
 
             logger.info(
@@ -166,19 +175,6 @@ class PluginLoader:
         """Retorna lista de JSON Schema para el LLM."""
         return list(self._definitions)
 
-    def get_plugins_info(self) -> list[dict]:
-        """Retorna info de todos los plugins cargados (para la API)."""
-        return [
-            {
-                "name":        name,
-                "description": info["description"],
-                "file":        info["file"],
-                "tools":       info["tools"],
-                "version":     info["version"],
-            }
-            for name, info in self._plugins.items()
-        ]
-
     def execute(self, tool_name: str, args: dict) -> str:
         """Ejecuta una tool de plugin por nombre."""
         fn = self._functions.get(tool_name)
@@ -194,6 +190,165 @@ class PluginLoader:
     def is_plugin_tool(self, tool_name: str) -> bool:
         """Retorna True si el tool_name pertenece a un plugin."""
         return tool_name in self._functions
+
+    # =========================================================================
+    # Manifesto
+    # =========================================================================
+
+    def _read_manifest(self, py_path: Path) -> dict:
+        """
+        Lee el plugin.json junto al .py si existe.
+        Retorna dict vacío si no hay manifesto.
+        """
+        manifest_path = py_path.with_suffix(".json")
+        if not manifest_path.exists():
+            return {}
+        try:
+            return json.loads(manifest_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            logger.warning(f"[PluginLoader] Error leyendo {manifest_path.name}: {e}")
+            return {}
+
+    # =========================================================================
+    # Instalación / desinstalación en caliente
+    # =========================================================================
+
+    def install_from_zip(self, zip_bytes: bytes) -> dict:
+        """
+        Instala un plugin desde un ZIP en memoria.
+
+        Estructura esperada del ZIP:
+          plugin.json          ← manifesto obligatorio
+          mi_plugin.py         ← código del plugin (debe estar en entry o ser el único .py)
+          [otros archivos]     ← recursos opcionales (ignorados)
+
+        Retorna:
+          { "status": "ok"|"error", "name": str, "tools": list, "message": str }
+        """
+        try:
+            zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+        except Exception as e:
+            return {"status": "error", "message": f"ZIP inválido: {e}"}
+
+        names = zf.namelist()
+
+        # Buscar plugin.json
+        json_candidates = [n for n in names if n.endswith("plugin.json") or n == "plugin.json"]
+        if not json_candidates:
+            return {"status": "error", "message": "ZIP no contiene plugin.json"}
+
+        try:
+            manifest = json.loads(zf.read(json_candidates[0]).decode("utf-8"))
+        except Exception as e:
+            return {"status": "error", "message": f"plugin.json inválido: {e}"}
+
+        # Validar campos mínimos del manifesto
+        for field in ("name", "version", "entry"):
+            if field not in manifest:
+                return {"status": "error", "message": f"plugin.json falta campo '{field}'"}
+
+        plugin_name = manifest["name"]
+        entry_file  = manifest["entry"]
+
+        # Buscar el entry .py en el ZIP
+        py_candidates = [n for n in names if n.endswith(entry_file)]
+        if not py_candidates:
+            return {"status": "error", "message": f"Archivo '{entry_file}' no encontrado en el ZIP"}
+
+        # Validar permisos declarados (solo aviso, no bloqueo)
+        permissions = manifest.get("permissions", [])
+        allowed_permissions = {"serial", "filesystem", "network", "hardware"}
+        unknown = set(permissions) - allowed_permissions
+        if unknown:
+            logger.warning(f"[PluginLoader] Plugin '{plugin_name}' declara permisos desconocidos: {unknown}")
+
+        # Copiar archivos al directorio de plugins
+        PLUGINS_DIR.mkdir(parents=True, exist_ok=True)
+        dest_py   = PLUGINS_DIR / entry_file
+        dest_json = PLUGINS_DIR / (Path(entry_file).stem + ".json")
+
+        dest_py.write_bytes(zf.read(py_candidates[0]))
+        dest_json.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        logger.info(f"[PluginLoader] Plugin '{plugin_name}' instalado en {dest_py}")
+
+        # Hot reload: desregistrar si ya existía, cargar la nueva versión
+        if plugin_name in self._plugins:
+            self._unregister(plugin_name)
+
+        success = self._load_plugin(dest_py)
+        if not success:
+            return {
+                "status":  "error",
+                "message": f"Archivos copiados pero el plugin '{plugin_name}' no pasó la validación",
+            }
+
+        info = self._plugins.get(plugin_name, {})
+        return {
+            "status":  "ok",
+            "name":    plugin_name,
+            "tools":   info.get("tools", []),
+            "version": info.get("version", ""),
+            "message": f"Plugin '{plugin_name}' instalado y cargado exitosamente",
+        }
+
+    def uninstall(self, name: str) -> dict:
+        """
+        Desinstala un plugin por nombre.
+        Elimina los archivos .py y .json del directorio de plugins y desregistra las tools.
+
+        Retorna:
+          { "status": "ok"|"error", "message": str }
+        """
+        if name not in self._plugins:
+            return {"status": "error", "message": f"Plugin '{name}' no encontrado"}
+
+        info      = self._plugins[name]
+        py_path   = PLUGINS_DIR / info["file"]
+        json_path = PLUGINS_DIR / (Path(info["file"]).stem + ".json")
+
+        self._unregister(name)
+
+        # Eliminar archivos (sin fallar si no existen)
+        for p in (py_path, json_path):
+            try:
+                if p.exists():
+                    p.unlink()
+                    logger.info(f"[PluginLoader] Eliminado: {p}")
+            except Exception as e:
+                logger.warning(f"[PluginLoader] No se pudo eliminar {p}: {e}")
+
+        logger.info(f"[PluginLoader] Plugin '{name}' desinstalado")
+        return {"status": "ok", "message": f"Plugin '{name}' desinstalado exitosamente"}
+
+    def _unregister(self, name: str):
+        """Elimina del registro en memoria todas las tools de un plugin."""
+        if name not in self._plugins:
+            return
+        tools_to_remove = self._plugins[name].get("tools", [])
+        for tool_name in tools_to_remove:
+            self._functions.pop(tool_name, None)
+            self._definitions = [
+                d for d in self._definitions
+                if d.get("function", {}).get("name") != tool_name
+            ]
+        del self._plugins[name]
+        logger.info(f"[PluginLoader] Plugin '{name}' desregistrado — tools removidas: {tools_to_remove}")
+
+    def get_plugins_info(self) -> list[dict]:
+        """Retorna info de todos los plugins cargados (para la API)."""
+        return [
+            {
+                "name":        name,
+                "description": info["description"],
+                "file":        info["file"],
+                "tools":       info["tools"],
+                "version":     info["version"],
+                "permissions": info.get("permissions", []),
+                "has_manifest": info.get("manifest", False),
+            }
+            for name, info in self._plugins.items()
+        ]
 
 
 # ── Plugin de ejemplo ─────────────────────────────────────────────────────────

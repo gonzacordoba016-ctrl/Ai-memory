@@ -1,0 +1,42 @@
+# Entorno y secretos
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Datos locales (se montan como volúmenes en producción)
+database/*.db
+database/graph_memory.json
+memory_db/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Backups y temporales
+stratum_backup_*.zip
+stratum_pre_reset_*.zip
+tmp_*.py
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Git
+.git/
+.gitignore
+
+# Claude
+.claude/
+
+# Logs
+*.log

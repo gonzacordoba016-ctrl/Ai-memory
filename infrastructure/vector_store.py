@@ -1,9 +1,10 @@
 # infrastructure/vector_store.py
 
+import os
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 from infrastructure.embeddings import embedding_model
-from core.config import VECTOR_DB_PATH, VECTOR_COLLECTION
+from core.config import VECTOR_DB_PATH, VECTOR_COLLECTION, QDRANT_URL
 import uuid as uuid_lib
 
 
@@ -20,7 +21,11 @@ class VectorStore:
     def __init__(self):
         if self._initialized:
             return
-        self.client     = QdrantClient(path=VECTOR_DB_PATH)
+        if QDRANT_URL:
+            qdrant_api_key = os.getenv("QDRANT_API_KEY") or None
+            self.client = QdrantClient(url=QDRANT_URL, api_key=qdrant_api_key)
+        else:
+            self.client = QdrantClient(path=VECTOR_DB_PATH)
         self.collection = VECTOR_COLLECTION
         self._init_collection()
         self._initialized = True

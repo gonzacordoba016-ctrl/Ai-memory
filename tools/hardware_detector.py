@@ -98,6 +98,7 @@ def detect_devices() -> list[dict]:
                     "pid":          hex(pid),
                     "description":  port.description,
                     "install_cmd":  PLATFORM_INSTALL_CMDS.get(info["platform"], ""),
+                    "micropython":  False,
                 }
             else:
                 device = {
@@ -109,12 +110,25 @@ def detect_devices() -> list[dict]:
                     "pid":          hex(pid),
                     "description":  port.description,
                     "install_cmd":  "",
+                    "micropython":  False,
                 }
             devices.append(device)
             logger.info(f"[Hardware] Detectado: {device['name']} en {port.device}")
 
+    # Detectar REPL MicroPython en dispositivos candidatos (Pico, ESP32, ESP8266)
+    _MICROPYTHON_PLATFORMS = {"rp2040:rp2040", "esp32:esp32", "esp8266:esp8266"}
+    for device in devices:
+        if device.get("platform") in _MICROPYTHON_PLATFORMS:
+            try:
+                from tools.firmware_flasher import detect_micropython_repl
+                device["micropython"] = detect_micropython_repl(device["port"])
+                if device["micropython"]:
+                    logger.info(f"[Hardware] REPL MicroPython en {device['port']}")
+            except Exception:
+                pass
+
     if not devices:
-        logger.info("[Hardware] No se detectaron dispositivos")
+        logger.debug("[Hardware] No se detectaron dispositivos")
 
     return devices
 
@@ -135,3 +149,23 @@ def detect_device_str() -> str:
 def get_supported_platforms() -> list[str]:
     """Lista todas las plataformas soportadas."""
     return list(set(v["platform"] for v in DEVICE_SIGNATURES.values() if v.get("platform")))
+
+
+# Alias para reconocimiento de componentes
+COMPONENT_ALIASES = {
+    "arduino uno": "arduino_uno",
+    "arduino nano": "arduino_uno",
+    "resistencia": "resistor",
+    "res": "resistor",
+    "diodo led": "led",
+    "condensador": "capacitor",
+    "cap": "capacitor",
+    "pulsador": "button",
+    "switch": "button"
+}
+
+def resolve_component_type(component_type: str) -> str:
+    """Resuelve el tipo de componente usando los aliases."""
+    if not component_type:
+        return ""
+    return COMPONENT_ALIASES.get(component_type.lower(), component_type.lower())

@@ -35,7 +35,19 @@ class GraphMemory:
         if path.exists():
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
-                self.graph = nx.node_link_graph(data)
+                try:
+                    # NetworkX 3.2+ acepta el kwarg edges= para especificar la clave
+                    # Aseguramos que el dict use "edges" (renombrando "links" si es necesario)
+                    data_new = dict(data)
+                    if "links" in data_new and "edges" not in data_new:
+                        data_new["edges"] = data_new.pop("links")
+                    self.graph = nx.node_link_graph(data_new, edges="edges")
+                except TypeError:
+                    # NetworkX < 3.2: no acepta edges=, espera la clave "links"
+                    data_old = dict(data)
+                    if "edges" in data_old and "links" not in data_old:
+                        data_old["links"] = data_old.pop("edges")
+                    self.graph = nx.node_link_graph(data_old)
                 logger.info(f"Grafo cargado: {self.graph.number_of_nodes()} nodos, "
                             f"{self.graph.number_of_edges()} aristas")
             except Exception as e:
