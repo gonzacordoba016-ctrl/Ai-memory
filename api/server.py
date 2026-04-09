@@ -35,7 +35,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from api.app_state import agent, proactive_engine  # noqa: F401 — inicializa singletons
-from api.routers import memory, hardware, knowledge, circuits, websockets, auth, intelligence, push, hardware_bridge
+from api.routers import memory, hardware, knowledge, circuits, websockets, auth, intelligence, push, hardware_bridge, schematics, stock, decisions
 from api.limiter import limiter
 from core.logger import logger
 
@@ -68,6 +68,13 @@ async def startup_event():
 
     # Inyectar el event loop en el hardware bridge para calls sync desde threads
     hardware_bridge.set_event_loop(asyncio.get_event_loop())
+
+    # Inicializar nuevas tablas SQLite al arrancar
+    from database.design_decisions import get_decisions_db
+    from database.component_stock import get_stock_db
+    get_decisions_db()
+    get_stock_db()
+    logger.info("[Server] Tablas design_decisions y component_stock inicializadas.")
 
     await proactive_engine.start()
     logger.info("[Server] Motor proactivo iniciado.")
@@ -143,6 +150,9 @@ app.include_router(circuits.router)
 app.include_router(websockets.router)
 app.include_router(intelligence.router)
 app.include_router(push.router)
+app.include_router(schematics.router)
+app.include_router(stock.router)
+app.include_router(decisions.router)
 
 
 # ── Arranque directo ─────────────────────────────────────────────────

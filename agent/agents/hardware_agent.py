@@ -31,6 +31,15 @@ Respondé SOLO con una de estas 5 palabras: save_circuit, query, program, signal
 
 # ── KEYWORDS exhaustivas por categoría ───────────────────────────────────────
 
+SAVE_DECISION_KEYWORDS = [
+    "guardá la decisión", "guarda la decisión",
+    "guardá el razonamiento", "guarda el razonamiento",
+    "guardá por qué", "guarda por qué",
+    "registrá la decisión", "registra la decisión",
+    "guardá la razón", "guarda la razón",
+    "anotá que", "anota que",
+]
+
 SAVE_CIRCUIT_KEYWORDS = [
     "guardá el circuito", "guarda el circuito",
     "guardá este circuito", "guarda este circuito",
@@ -132,6 +141,7 @@ class HardwareAgent:
         intent = self._classify_intent(task)
         logger.info(f"[HardwareAgent] Intent: {intent} | Tarea: {task[:60]}")
 
+        if intent == "save_decision": return self._save_decision(task)
         if intent == "save_circuit": return self._save_circuit(task)
         if intent == "query":        return self._query_memory(task)
         if intent == "signal":       return self._start_signal_mode(task)
@@ -169,6 +179,9 @@ class HardwareAgent:
         """Fallback exhaustivo por keywords cuando el LLM no responde."""
         t = task.lower()
 
+        if any(kw in t for kw in SAVE_DECISION_KEYWORDS):
+            return "save_decision"
+
         if any(kw in t for kw in SAVE_CIRCUIT_KEYWORDS):
             return "save_circuit"
 
@@ -187,6 +200,76 @@ class HardwareAgent:
 
         # Default: si mencionan hardware sin contexto claro, asumir programar
         return "program"
+
+    # ======================
+    # GUARDAR DECISIÓN
+    # ======================
+
+    def _save_decision(self, task: str) -> str:
+        """Guarda el razonamiento detrás de una decisión de diseño."""
+        import re
+        from database.design_decisions import get_decisions_db
+
+        # Extraer proyecto (opcional) y decisión del texto
+        # Ej: "guardá la decisión: elegí el LM317 porque necesitaba regulación lineal"
+        # Ej: "guardá que en el proyecto fuente_dc usé LM317 porque tiene bajo ruido"
+        t = task
+
+        # Detectar proyecto
+        project = "general"
+        m_proj = re.search(r'(?:en el proyecto|proyecto)\s+(["\w\s]+?)(?:\s+usé|\s+elegí|\s*:)', t, re.IGNORECASE)
+        if m_proj:
+            project = m_proj.group(1).strip().strip('"')
+
+        # Detectar componente
+        component = None
+        m_comp = re.search(r'(?:elegí|usé|use|elegi)\s+(?:el\s+|la\s+|un\s+|una\s+)?(\w+)', t, re.IGNORECASE)
+        if m_comp:
+            component = m_comp.group(1)
+
+        # Extraer la decisión/razonamiento después de ":" o "porque" o directamente
+        decision = ""
+        reasoning = ""
+        if ":" in t:
+            parts = t.split(":", 1)
+            reasoning = parts[1].strip()
+            decision  = reasoning[:80]
+        elif "porque" in t.lower():
+            idx = t.lower().index("porque")
+            reasoning = t[idx:].strip()
+            decision  = t[:idx].strip()
+            # Limpiar keywords de guardado del inicio
+            for kw in SAVE_DECISION_KEYWORDS:
+                decision = decision.replace(kw, "").strip()
+        else:
+            reasoning = t
+            decision  = t[:80]
+
+        if not reasoning.strip():
+            return (
+                "No entendí el razonamiento. Probá con:\n"
+                "*\"guardá la decisión: elegí el LM317 porque necesitaba regulación lineal con bajo ruido\"*"
+            )
+
+        try:
+            decision_id = get_decisions_db().save(
+                project=project,
+                decision=decision,
+                reasoning=reasoning,
+                component=component,
+            )
+            # También guardar en memoria vectorial para búsqueda semántica
+            store_memory(f"Decisión de diseño [{project}]: {reasoning}", metadata={"type": "decision", "project": project})
+
+            return (
+                f"✓ Decisión guardada (ID {decision_id})\n\n"
+                f"**Proyecto:** {project}\n"
+                f"**Componente:** {component or 'no especificado'}\n"
+                f"**Razonamiento:** {reasoning[:200]}"
+            )
+        except Exception as e:
+            logger.error(f"[HardwareAgent] Error guardando decisión: {e}")
+            return f"No pude guardar la decisión: {e}"
 
     # ======================
     # GUARDAR CIRCUITO
@@ -301,12 +384,29 @@ class HardwareAgent:
             memory_context = f"\nFirmware similar anterior ({similar[0]['device']}):\n{similar[0]['code'][:300]}"
             logger.info("[HardwareAgent] Encontré firmware similar en memoria")
 
+        # Componentes en stock del ingeniero
+        stock_context = ""
+        try:
+            from database.component_stock import get_stock_db
+            in_stock = get_stock_db().get_all(in_stock_only=True)
+            if in_stock:
+                stock_lines = [
+                    f"  - {c['name']} ({c['value'] or ''}) {('pkg:' + c['package']) if c['package'] else ''} × {c['quantity']}"
+                    for c in in_stock[:20]
+                ]
+                stock_context = "\n\n--- COMPONENTES EN STOCK (priorizar estos) ---\n" + "\n".join(stock_lines)
+                logger.info(f"[HardwareAgent] {len(in_stock)} componentes en stock inyectados al prompt")
+        except Exception as e:
+            logger.debug(f"[HardwareAgent] Stock no disponible: {e}")
+
         # Combinar todo el contexto disponible
         full_context = task
         if circuit_context:
             full_context += f"\n\n--- CIRCUITO DEL DISPOSITIVO ---\n{circuit_context}"
         if memory_context:
             full_context += memory_context
+        if stock_context:
+            full_context += stock_context
 
         # Si el usuario dice algo como "programá el Arduino con el circuito guardado"
         if "circuito" in task.lower() and saved_circuit:
@@ -390,10 +490,16 @@ class HardwareAgent:
         self._store_in_vector_memory(task, device, firmware["code"])
         self._update_graph(task, device)
 
+        decision_hint = (
+            "\n\n💡 *¿Querés guardar el razonamiento de este diseño? "
+            "Decime por ejemplo: \"guardá la decisión: elegí el LM317 porque...\"*"
+        )
+
         return (
             f"✓ Firmware subido a {device['name']} en {device['port']}\n\n"
             f"```cpp\n{firmware['code'][:600]}\n```\n\n"
             f"Monitor serial:\n{serial_output}"
+            f"{decision_hint}"
         )
 
     def _program_via_bridge(self, task: str, context: str, call_bridge_sync) -> str:

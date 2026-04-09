@@ -609,9 +609,12 @@ class CircuitDesignManager:
             description = circuit_data.get("description", "")
             components = _json.dumps(circuit_data.get("components", []), ensure_ascii=False)
             nets = _json.dumps(circuit_data.get("nets", []), ensure_ascii=False)
+            # Mergear metadata extra (source_tool, type, etc.) con power/warnings
+            extra_meta = circuit_data.get("metadata", {}) or {}
             metadata = _json.dumps({
-                "power": circuit_data.get("power", ""),
-                "warnings": circuit_data.get("warnings", [])
+                "power":    circuit_data.get("power", extra_meta.get("power", "")),
+                "warnings": circuit_data.get("warnings", extra_meta.get("warnings", [])),
+                **{k: v for k, v in extra_meta.items() if k not in ("power", "warnings")},
             }, ensure_ascii=False)
 
             with self._get_conn() as conn:

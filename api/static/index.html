@@ -265,6 +265,22 @@
         </div>
       </div>
 
+      <!-- Decisiones de diseño -->
+      <div>
+        <div class="flex justify-between items-center mb-2">
+          <div class="text-[8px] opacity-50">DESIGN_DECISIONS</div>
+          <div class="flex gap-2">
+            <input id="web-decisions-search" type="text" placeholder="Buscar..."
+              class="bg-black border border-[#494847]/50 text-[9px] text-white font-mono px-2 py-0.5 w-28 focus:border-secondary/60 outline-none"
+              oninput="webSearchDecisions(this.value)"/>
+            <button onclick="webLoadDecisions()" class="text-[8px] text-secondary hover:text-primary">↻</button>
+          </div>
+        </div>
+        <div id="web-intel-decisions" class="space-y-2">
+          <p class="text-[10px] text-[#adaaaa]">Sin decisiones guardadas</p>
+        </div>
+      </div>
+
       <!-- Form crear fuente (oculto por defecto) -->
       <div id="intel-create-source-form" class="hidden bg-[#131313] p-3 border border-[#8eff71]/20 space-y-2">
         <div class="text-[8px] text-[#8eff71] mb-2">NUEVA_FUENTE</div>
@@ -283,6 +299,52 @@
 
     <!-- SYSTEM PANEL -->
     <div id="panel-system" class="tab-content space-y-4">
+
+      <!-- Importar esquemático -->
+      <div>
+        <div class="text-[8px] opacity-50 mb-2">IMPORT_SCHEMATIC</div>
+        <div class="bg-[#131313] p-3 border border-[#494847]/30 space-y-2">
+          <div class="text-[9px] text-[#adaaaa]">KiCad (.kicad_sch) · LTspice (.asc) · Eagle (.sch)</div>
+          <input type="file" id="web-schematic-file" accept=".kicad_sch,.asc,.sch" class="hidden" onchange="webImportSchematic(this)"/>
+          <button onclick="document.getElementById('web-schematic-file').click()"
+            class="w-full py-2 bg-secondary/10 border border-secondary/40 text-[9px] text-secondary hover:bg-secondary/20 flex items-center justify-center gap-2">
+            <span class="material-symbols-outlined text-sm">upload_file</span> SELECCIONAR ARCHIVO
+          </button>
+          <div id="web-schematic-status" class="text-[9px] hidden"></div>
+        </div>
+      </div>
+
+      <!-- PLC / Lógica Ladder -->
+      <div>
+        <div class="text-[8px] opacity-50 mb-2">PLC_LADDER</div>
+        <div class="bg-[#131313] p-3 border border-[#494847]/30 space-y-2">
+          <input id="web-plc-name" type="text" placeholder="Nombre del programa"
+            class="w-full bg-black border border-[#494847]/50 text-[9px] text-white font-mono px-2 py-1.5 focus:border-secondary/60 outline-none"/>
+          <textarea id="web-plc-input" rows="4" placeholder="Si el sensor S1 está activo Y B2 presionado, activar M1 con TON 5s"
+            class="w-full bg-black border border-[#494847]/50 text-[9px] text-white font-mono px-2 py-1.5 focus:border-primary/60 outline-none resize-none"></textarea>
+          <button onclick="webParsePLC()"
+            class="w-full py-1.5 bg-secondary/10 border border-secondary/40 text-[9px] text-secondary hover:bg-secondary/20">PARSEAR + GUARDAR</button>
+          <pre id="web-plc-result" class="hidden text-[9px] font-mono text-[#adaaaa] max-h-40 overflow-y-auto whitespace-pre-wrap"></pre>
+        </div>
+      </div>
+
+      <!-- Component Stock -->
+      <div>
+        <div class="flex justify-between items-center mb-2">
+          <div class="text-[8px] opacity-50">COMPONENT_STOCK</div>
+          <button onclick="webAddComponent()" class="text-[8px] text-secondary hover:text-primary">+ ADD</button>
+        </div>
+        <div id="web-stock-summary" class="bg-[#131313] p-3 border border-[#494847]/30 text-[9px] space-y-1 mb-2">
+          <div class="flex justify-between"><span class="text-[#adaaaa]">TOTAL</span><span id="web-stock-total" class="text-primary">0</span></div>
+          <div class="flex justify-between"><span class="text-[#adaaaa]">EN STOCK</span><span id="web-stock-in" class="text-secondary">0</span></div>
+          <div class="flex justify-between"><span class="text-[#adaaaa]">CATEGORÍAS</span><span id="web-stock-cats" class="text-[#adaaaa]">0</span></div>
+        </div>
+        <input type="text" placeholder="Buscar componente..." id="web-stock-search"
+          class="w-full bg-black border border-[#494847]/50 text-[9px] text-white font-mono px-2 py-1.5 focus:border-secondary/60 outline-none mb-2"
+          oninput="webSearchStock(this.value)"/>
+        <div id="web-stock-list" class="space-y-1 max-h-40 overflow-y-auto"></div>
+      </div>
+
       <div>
         <div class="flex justify-between items-center mb-2">
           <div class="text-[8px] opacity-50">PLUGINS</div>
@@ -1567,6 +1629,148 @@ if (_offlineQueue.length > 0) {
     });
   }
 }
+
+// ── WEB: DESIGN DECISIONS ────────────────────────────────────────────────────
+async function webLoadDecisions(query = '') {
+  const container = document.getElementById('web-intel-decisions');
+  if (!container) return;
+  try {
+    const url = query
+      ? `${API}decisions?q=${encodeURIComponent(query)}&limit=20`
+      : `${API}decisions?limit=20`;
+    const list = await fetch(url).then(r => r.json());
+    if (!list.length) {
+      container.innerHTML = '<p class="text-[10px] text-[#adaaaa]">Sin decisiones guardadas</p>';
+      return;
+    }
+    container.innerHTML = list.map(d => `
+      <div class="bg-[#131313] border-l-2 border-secondary/40 p-2 text-[9px]">
+        <div class="text-secondary font-mono">${esc(d.project)}${d.component ? ' — ' + esc(d.component) : ''}</div>
+        <div class="text-white mt-1">${esc((d.reasoning||'').slice(0,140))}${(d.reasoning||'').length>140?'…':''}</div>
+        <div class="text-[#494847] mt-0.5">${(d.created_at||'').slice(0,10)}</div>
+      </div>
+    `).join('');
+  } catch(e) {
+    if (container) container.innerHTML = `<p class="text-[10px] text-error">Error: ${e.message}</p>`;
+  }
+}
+
+function webSearchDecisions(q) {
+  clearTimeout(window._webDecisionsTimeout);
+  window._webDecisionsTimeout = setTimeout(() => webLoadDecisions(q), 400);
+}
+
+// ── WEB: COMPONENT STOCK ─────────────────────────────────────────────────────
+async function webLoadStockSummary() {
+  try {
+    const d = await fetch(`${API}stock/summary`).then(r => r.json());
+    document.getElementById('web-stock-total').textContent = d.total_components ?? 0;
+    document.getElementById('web-stock-in').textContent    = d.in_stock ?? 0;
+    document.getElementById('web-stock-cats').textContent  = d.categories ?? 0;
+  } catch {}
+}
+
+async function webSearchStock(q) {
+  const list = document.getElementById('web-stock-list');
+  if (!list) return;
+  try {
+    const url = q ? `${API}stock?q=${encodeURIComponent(q)}` : `${API}stock?in_stock_only=true`;
+    const items = await fetch(url).then(r => r.json());
+    if (!items.length) { list.innerHTML = '<p class="text-[9px] text-[#494847]">Sin resultados</p>'; return; }
+    list.innerHTML = items.slice(0, 15).map(c => `
+      <div class="flex justify-between text-[9px] py-0.5 border-b border-[#494847]/20">
+        <span class="text-white">${esc(c.name)} <span class="text-[#494847]">${esc(c.value||'')}</span></span>
+        <span class="text-secondary">×${c.quantity}</span>
+      </div>
+    `).join('');
+  } catch {}
+}
+
+async function webAddComponent() {
+  const name     = prompt('Nombre del componente:');
+  if (!name) return;
+  const qty      = parseInt(prompt('Cantidad:', '1') || '1');
+  const category = prompt('Categoría (ej: Reguladores, Resistencias):', '') || null;
+  const value    = prompt('Valor (ej: 10k, 100nF, 5V 1A):', '') || null;
+  const supplier = prompt('Proveedor:', '') || null;
+  try {
+    await fetch(`${API}stock`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, quantity: qty, category, value, supplier }),
+    });
+    addLog(`Stock: ${name} ×${qty} agregado`, 'info');
+    webLoadStockSummary();
+    webSearchStock('');
+  } catch(e) { addLog('Error agregando componente: ' + e.message, 'error'); }
+}
+
+// ── WEB: SCHEMATIC IMPORT ────────────────────────────────────────────────────
+async function webImportSchematic(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const statusEl = document.getElementById('web-schematic-status');
+  statusEl.className = 'text-[9px] text-[#adaaaa]';
+  statusEl.textContent = `Importando ${file.name}...`;
+  statusEl.classList.remove('hidden');
+  const formData = new FormData();
+  formData.append('file', file);
+  const name = file.name.replace(/\.[^.]+$/, '');
+  try {
+    const d = await fetch(
+      `${API}schematics/import?project_name=${encodeURIComponent(name)}&save_to_memory=true`,
+      { method: 'POST', body: formData }
+    ).then(r => r.json());
+    if (d.ok) {
+      statusEl.className = 'text-[9px] text-secondary';
+      statusEl.textContent = `✓ ${d.component_count} componentes, ${d.net_count} redes — ID ${d.circuit_id}`;
+      addLog(`Esquemático importado: ${file.name} (${d.component_count} comp.)`, 'info');
+    } else {
+      statusEl.className = 'text-[9px] text-error';
+      statusEl.textContent = `Error: ${d.detail || 'desconocido'}`;
+    }
+  } catch(e) {
+    statusEl.className = 'text-[9px] text-error';
+    statusEl.textContent = `Error: ${e.message}`;
+  }
+  input.value = '';
+}
+
+// ── WEB: PLC PARSER ──────────────────────────────────────────────────────────
+async function webParsePLC() {
+  const text = document.getElementById('web-plc-input').value.trim();
+  const name = document.getElementById('web-plc-name').value.trim() || 'PLC Program';
+  const resultEl = document.getElementById('web-plc-result');
+  if (!text) { addLog('Ingresá la lógica ladder', 'warn'); return; }
+  resultEl.classList.remove('hidden');
+  resultEl.textContent = 'Parseando...';
+  try {
+    const d = await fetch(`${API}schematics/plc/parse`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, name }),
+    }).then(r => r.json());
+    resultEl.textContent = [
+      `Rungs: ${d.rung_count} | Vars: ${(d.variables||[]).join(', ')||'ninguna'}`,
+      d.circuit_id ? `Guardado — ID ${d.circuit_id}` : '',
+      '─── Structured Text ───',
+      d.structured_text || '',
+    ].filter(Boolean).join('\n');
+    if (d.circuit_id) addLog(`PLC guardado — ID ${d.circuit_id}`, 'info');
+  } catch(e) {
+    resultEl.textContent = `Error: ${e.message}`;
+  }
+}
+
+// Cargar al iniciar y al entrar al tab SYSTEM
+const _origSwitchNav = switchNav;
+function switchNav(tab) {
+  _origSwitchNav(tab);
+  if (tab === 'intel')  { webLoadDecisions(); }
+  if (tab === 'system') { webLoadStockSummary(); webSearchStock(''); }
+}
+webLoadDecisions();
+webLoadStockSummary();
 </script>
 </body>
 </html>

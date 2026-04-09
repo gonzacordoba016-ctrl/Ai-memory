@@ -129,6 +129,9 @@
       <div class="flex items-center gap-2 border-b border-[#00cbfe]/30 pb-2">
         <span class="text-secondary font-mono text-sm flex-shrink-0">&gt;</span>
         <input id="prompt" class="cmd-input" placeholder="COMMAND..." type="text"/>
+        <button onclick="openCamera()" class="text-[#adaaaa] active:text-secondary flex-shrink-0 p-1" title="Escanear circuito">
+          <span class="material-symbols-outlined text-xl">photo_camera</span>
+        </button>
         <button id="voice-btn" onclick="toggleVoice()" class="text-[#adaaaa] active:text-primary flex-shrink-0 p-1" title="Voz">
           <span class="material-symbols-outlined text-xl">mic</span>
         </button>
@@ -172,6 +175,18 @@
       </div>
       <div id="intel-sources"><p class="text-[10px] text-[#adaaaa]">Sin fuentes</p></div>
     </div>
+    <!-- Decisiones de diseño -->
+    <div>
+      <div class="flex justify-between items-center mb-2">
+        <span class="text-[9px] text-[#adaaaa] tracking-widest">DESIGN_DECISIONS</span>
+        <button onclick="loadDecisions()" class="text-[9px] text-secondary">↻ RELOAD</button>
+      </div>
+      <div id="intel-decisions"><p class="text-[10px] text-[#adaaaa]">Sin decisiones guardadas</p></div>
+      <input id="decisions-search" type="text" placeholder="Buscar en decisiones..."
+        class="mt-2 w-full bg-black border border-[#494847]/50 text-white text-[9px] font-mono px-2 py-1.5 focus:border-secondary/60 outline-none"
+        oninput="searchDecisions(this.value)"/>
+    </div>
+
     <div id="intel-create-source-form" class="hidden bg-[#131313] p-3 border border-[#8eff71]/20 space-y-2">
       <div class="text-[9px] text-[#8eff71] mb-1">NUEVA_FUENTE</div>
       <input id="intel-src-name" type="text" placeholder="Nombre"
@@ -273,6 +288,50 @@
       <div class="text-[9px] text-[#adaaaa] tracking-widest mb-2">SYSTEM_LOGS</div>
       <div id="logs-list" class="font-mono text-[9px] space-y-0.5 max-h-48 overflow-y-auto"></div>
     </div>
+    <!-- Stock de componentes -->
+    <div>
+      <div class="flex justify-between items-center mb-2">
+        <span class="text-[9px] text-[#adaaaa] tracking-widest">COMPONENT_STOCK</span>
+        <button onclick="showStockModal()" class="text-[9px] text-secondary">+ ADD</button>
+      </div>
+      <div id="stock-summary" class="card text-[10px] text-[#adaaaa] space-y-1">
+        <div class="flex justify-between"><span>TOTAL</span><span id="stock-total" class="text-primary">0</span></div>
+        <div class="flex justify-between"><span>EN STOCK</span><span id="stock-in" class="text-secondary">0</span></div>
+        <div class="flex justify-between"><span>CATEGORÍAS</span><span id="stock-cats" class="text-[#adaaaa]">0</span></div>
+      </div>
+      <button onclick="showStockList()" class="mt-2 w-full py-1 text-[9px] border border-[#494847]/40 text-[#adaaaa] tracking-widest">VER INVENTARIO</button>
+    </div>
+
+    <!-- Importar esquemático -->
+    <div>
+      <div class="text-[9px] text-[#adaaaa] tracking-widest mb-2">IMPORT_SCHEMATIC</div>
+      <div class="card text-xs space-y-2">
+        <div class="text-[9px] text-[#adaaaa]">KiCad / LTspice / Eagle</div>
+        <input type="file" id="schematic-file-input" accept=".kicad_sch,.asc,.sch"
+          class="hidden" onchange="importSchematic(this)"/>
+        <button onclick="document.getElementById('schematic-file-input').click()"
+          class="w-full py-2 bg-secondary/10 border border-secondary/40 text-secondary text-[9px] tracking-widest active:bg-secondary/20">
+          <span class="material-symbols-outlined text-sm align-middle mr-1">upload_file</span>SELECCIONAR ARCHIVO
+        </button>
+        <div id="schematic-import-status" class="text-[9px] hidden"></div>
+      </div>
+    </div>
+
+    <!-- PLC / Lógica Ladder -->
+    <div>
+      <div class="text-[9px] text-[#adaaaa] tracking-widest mb-2">PLC_LADDER</div>
+      <div class="card text-xs space-y-2">
+        <textarea id="plc-input" rows="3" placeholder="Si el sensor S1 está activo Y B2 presionado, activar M1 con TON 5s"
+          class="w-full bg-black border border-[#494847]/50 text-white text-[9px] font-mono px-2 py-1.5 focus:border-primary/60 outline-none resize-none"></textarea>
+        <div class="flex gap-2">
+          <input id="plc-name" type="text" placeholder="Nombre del programa"
+            class="flex-1 bg-black border border-[#494847]/50 text-white text-[9px] font-mono px-2 py-1.5 focus:border-secondary/60 outline-none"/>
+          <button onclick="parsePLC()" class="px-3 py-1 bg-secondary/10 border border-secondary/40 text-secondary text-[9px] tracking-widest">PARSEAR</button>
+        </div>
+        <div id="plc-result" class="hidden text-[9px] font-mono text-[#adaaaa] max-h-32 overflow-y-auto"></div>
+      </div>
+    </div>
+
     <!-- Settings -->
     <div>
       <div class="text-[9px] text-[#adaaaa] tracking-widest mb-2">SETTINGS</div>
@@ -298,10 +357,7 @@
 
 </div><!-- end main area -->
 
-<!-- ── FAB Camera ─────────────────────────────────────────────────────────── -->
-<button id="camera-fab" class="fab active:bg-secondary/20" onclick="openCamera()" title="Escanear circuito">
-  <span class="material-symbols-outlined">photo_camera</span>
-</button>
+<!-- FAB Camera removido — botón integrado en la barra de input del chat -->
 
 <!-- ── BOTTOM NAV ─────────────────────────────────────────────────────────── -->
 <nav class="fixed bottom-0 left-0 right-0 flex bg-black/95 border-t border-[#a4ffb9]/20 z-50" style="padding-bottom: env(safe-area-inset-bottom)">
@@ -459,12 +515,9 @@ function switchPanel(name) {
   document.getElementById(`panel-${name}`)?.classList.add('active');
   document.getElementById(`nav-${name}`)?.classList.add('active');
 
-  const fab = document.getElementById('camera-fab');
-  fab.style.display = name === 'chat' ? 'flex' : 'none';
-
   if (name === 'devices') { loadHardware(); startBridgePoll(); } else { stopBridgePoll(); }
-  if (name === 'intel')   loadIntelligence();
-  if (name === 'menu')    { loadMetrics(); loadJobs(); initSettingsPanel(); }
+  if (name === 'intel')   { loadIntelligence(); loadDecisions(); }
+  if (name === 'menu')    { loadMetrics(); loadJobs(); initSettingsPanel(); loadStockSummary(); }
 }
 
 // ── WEBSOCKET CHAT ─────────────────────────────────────────────────────────
@@ -1344,6 +1397,160 @@ window.saveSettings       = saveSettings;
 window.testConnection     = testConnection;
 window.setPreset          = setPreset;
 window.clearSession       = clearSession;
+
+// ── COMPONENT STOCK ─────────────────────────────────────────────────────────
+async function loadStockSummary() {
+  try {
+    const r = await fetch(`${getBackend()}/api/stock/summary`);
+    if (!r.ok) return;
+    const d = await r.json();
+    document.getElementById('stock-total').textContent = d.total_components ?? 0;
+    document.getElementById('stock-in').textContent    = d.in_stock ?? 0;
+    document.getElementById('stock-cats').textContent  = d.categories ?? 0;
+  } catch {}
+}
+
+async function showStockList() {
+  try {
+    const r   = await fetch(`${getBackend()}/api/stock`);
+    const list = await r.json();
+    if (!list.length) { showToast('Sin componentes en stock'); return; }
+    const lines = list.map(c =>
+      `${c.name} (${c.value||'?'}) ×${c.quantity}${c.category?' ['+c.category+']':''}`
+    ).join('\n');
+    alert(lines);
+  } catch (e) { showToast('Error cargando stock: ' + e.message); }
+}
+
+async function showStockModal() {
+  const name     = prompt('Nombre del componente (ej: LM317, 10kΩ resistor):');
+  if (!name) return;
+  const qty      = parseInt(prompt('Cantidad en stock:', '1') || '1');
+  const category = prompt('Categoría (ej: Reguladores, Resistencias, Capacitores):', '') || null;
+  const value    = prompt('Valor (ej: 10k, 100nF, 5V 1A):', '') || null;
+  const supplier = prompt('Proveedor (ej: MercadoLibre, Mouser):', '') || null;
+
+  try {
+    const r = await fetch(`${getBackend()}/api/stock`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, quantity: qty, category, value, supplier }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      showToast(`✓ ${name} ×${qty} agregado`);
+      loadStockSummary();
+    }
+  } catch (e) { showToast('Error: ' + e.message); }
+}
+
+window.showStockModal = showStockModal;
+window.showStockList  = showStockList;
+
+// ── DESIGN DECISIONS ────────────────────────────────────────────────────────
+async function loadDecisions(query = '') {
+  const container = document.getElementById('intel-decisions');
+  if (!container) return;
+  try {
+    const url = query
+      ? `${getBackend()}/api/decisions?q=${encodeURIComponent(query)}&limit=20`
+      : `${getBackend()}/api/decisions?limit=20`;
+    const r    = await fetch(url);
+    const list = await r.json();
+    if (!list.length) {
+      container.innerHTML = '<p class="text-[10px] text-[#adaaaa]">Sin decisiones guardadas</p>';
+      return;
+    }
+    container.innerHTML = list.map(d => `
+      <div class="card mb-2 text-[9px] border-l-2 border-secondary/40">
+        <div class="text-secondary font-mono">${esc(d.project)} ${d.component ? '— '+esc(d.component) : ''}</div>
+        <div class="text-white mt-1">${esc(d.reasoning.slice(0,120))}${d.reasoning.length>120?'…':''}</div>
+        <div class="text-[#494847] mt-0.5">${(d.created_at||'').slice(0,10)}</div>
+      </div>
+    `).join('');
+  } catch (e) {
+    if (container) container.innerHTML = `<p class="text-[10px] text-error">Error: ${e.message}</p>`;
+  }
+}
+
+function searchDecisions(q) {
+  clearTimeout(window._decisionsTimeout);
+  window._decisionsTimeout = setTimeout(() => loadDecisions(q), 400);
+}
+
+window.loadDecisions   = loadDecisions;
+window.searchDecisions = searchDecisions;
+
+// ── SCHEMATIC IMPORT ────────────────────────────────────────────────────────
+async function importSchematic(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const statusEl = document.getElementById('schematic-import-status');
+  statusEl.className = 'text-[9px] text-[#adaaaa]';
+  statusEl.textContent = `Importando ${file.name}...`;
+  statusEl.classList.remove('hidden');
+
+  const formData = new FormData();
+  formData.append('file', file);
+  const name = file.name.replace(/\.[^.]+$/, '');
+  try {
+    const r = await fetch(
+      `${getBackend()}/api/schematics/import?project_name=${encodeURIComponent(name)}&save_to_memory=true`,
+      { method: 'POST', body: formData }
+    );
+    const d = await r.json();
+    if (d.ok) {
+      statusEl.className = 'text-[9px] text-secondary';
+      statusEl.textContent = `✓ ${d.component_count} componentes, ${d.net_count} redes — ID ${d.circuit_id}`;
+      showToast(`Importado: ${file.name} (${d.component_count} componentes)`);
+    } else {
+      statusEl.className = 'text-[9px] text-error';
+      statusEl.textContent = `Error: ${d.detail || 'desconocido'}`;
+    }
+  } catch (e) {
+    statusEl.className = 'text-[9px] text-error';
+    statusEl.textContent = `Error: ${e.message}`;
+  }
+  input.value = '';
+}
+
+window.importSchematic = importSchematic;
+
+// ── PLC LADDER PARSER ───────────────────────────────────────────────────────
+async function parsePLC() {
+  const text = document.getElementById('plc-input').value.trim();
+  const name = document.getElementById('plc-name').value.trim() || 'PLC Program';
+  const resultEl = document.getElementById('plc-result');
+  if (!text) { showToast('Ingresá la lógica ladder'); return; }
+
+  resultEl.classList.remove('hidden');
+  resultEl.textContent = 'Parseando...';
+  try {
+    const r = await fetch(`${getBackend()}/api/schematics/plc/parse`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, name }),
+    });
+    const d = await r.json();
+    resultEl.textContent = [
+      `Rungs: ${d.rung_count} | Variables: ${d.variables?.join(', ')||'ninguna'}`,
+      d.circuit_id ? `Guardado como circuito ID ${d.circuit_id}` : '',
+      '─── Structured Text ───',
+      d.structured_text || '',
+    ].filter(Boolean).join('\n');
+    if (d.circuit_id) showToast(`PLC guardado — ID ${d.circuit_id}`);
+  } catch (e) {
+    resultEl.textContent = `Error: ${e.message}`;
+  }
+}
+
+window.parsePLC = parsePLC;
+
+// Cargar stock y decisiones al iniciar
+document.addEventListener('DOMContentLoaded', () => {
+  loadStockSummary();
+  loadDecisions();
+});
 </script>
 </body>
 </html>

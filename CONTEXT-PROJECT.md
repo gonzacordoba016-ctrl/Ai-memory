@@ -706,6 +706,98 @@ Esto hacía que `gradlew.bat` interpretara solo `C:\Program` como directorio (in
 
 ## 10. SESIONES DE TRABAJO (Log)
 
+### Sesión 2026-04-08 — Professional Engineering Features (v3.0.0)
+
+**Nuevo posicionamiento:** Stratum ya no es solo "AI para Arduino". Es un **asistente técnico profesional con memoria persistente para ingenieros que trabajan con circuitos** (electrónica, eléctrica, mecatrónica, control, automatización).
+
+**1. Persistencia de datos en Railway (crítico)**
+- `core/config.py`: `SQL_DB_PATH` y `VECTOR_DB_PATH` ahora leen env vars (`MEMORY_DB_PATH`, `VECTOR_DB_PATH`)
+- `railway.toml`: startCommand crea `/data/database` y `/data/memory_db` antes de arrancar
+- **Acción requerida:** Crear Railway Volume montado en `/data` y setear `MEMORY_DB_PATH=/data/database/memory.db`, `VECTOR_DB_PATH=/data/memory_db`, `GRAPH_DB_PATH=/data/database/graph_memory.json`
+
+**2. Fix botones superpuestos en mobile**
+- Cámara integrada en la barra de input (entre input y micrófono): `[>] [COMMAND...] [📷] [🎤] [→]`
+- FAB eliminado (ya no existe el botón flotante que se sobreponía)
+
+**3. Parsers de esquemáticos profesionales**
+- `tools/schematic_parser.py`: parsers para KiCad (.kicad_sch), LTspice (.asc), Eagle (.sch XML + legacy KiCad v5)
+- Extrae: componentes (ref, value, description, footprint, pins), redes (nets), metadata de la herramienta
+- `POST /api/schematics/import` — upload multipart, guarda automáticamente en `circuit_designs`
+
+**4. Memoria de decisiones de diseño**
+- `database/design_decisions.py`: tabla `design_decisions` (project, component, decision, reasoning, tags)
+- `api/routers/decisions.py`: CRUD en `/api/decisions/**`
+- Intent `save_decision` en HardwareAgent: parsea frases como *"guardá la decisión: elegí el LM317 porque..."*
+- Keywords en orchestrator: `"guardá la decisión"`, `"guarda el razonamiento"`, etc.
+- Después de flashear firmware exitoso → sugerencia de guardar razonamiento
+
+**5. Biblioteca de componentes en stock**
+- `database/component_stock.py`: tabla `component_stock` (name, category, value, package, quantity, supplier, datasheet)
+- `api/routers/stock.py`: CRUD completo + `/api/stock/summary`, `/api/stock/categories`, ajuste de cantidad
+- HardwareAgent inyecta componentes en stock al prompt de generación de firmware (prioriza lo que tiene el ingeniero)
+
+**6. Exportar reporte PDF**
+- `tools/pdf_exporter.py`: genera PDF con reportlab (componentes, nets, firmware, decisiones de diseño)
+- `GET /api/circuits/{id}/report.pdf` — descarga directa
+- `requirements.txt`: `reportlab==4.2.5` agregado
+
+**7. Soporte PLC / lógica ladder**
+- `tools/plc_parser.py`: parser de lógica ladder desde texto descriptivo (español/inglés)
+- Detecta: contactos NO/NC, bobinas, temporizadores TON/TOF, contadores CTU/CTD
+- Genera pseudocódigo Structured Text (IEC 61131-3)
+- `POST /api/schematics/plc/parse` — parsea y guarda como circuito de tipo PLC
+
+**8. UI mobile actualizada**
+- MENU panel: secciones `COMPONENT_STOCK`, `IMPORT_SCHEMATIC`, `PLC_LADDER`
+- INTEL panel: sección `DESIGN_DECISIONS` con búsqueda
+- Botones con `switchPanel()` que refresca stock y decisiones al entrar
+
+**9. UI web actualizada**
+- SYSTEM panel: `IMPORT_SCHEMATIC`, `PLC_LADDER`, `COMPONENT_STOCK` (con búsqueda)
+- INTEL panel: `DESIGN_DECISIONS` con búsqueda semántica
+- `switchNav()` recarga datos al cambiar tab
+
+**10. Fixes técnicos**
+- `circuit_design.save_design()`: mergea metadata extra (source_tool, type PLC, etc.) correctamente
+- `orchestrator.py`: keywords ampliados para electrónica general (PLC, ladder, reguladores, transformadores, etc.)
+- `api/server.py` startup: inicializa tablas `design_decisions` y `component_stock` al arrancar
+
+**Nuevas tablas SQLite:**
+
+| Tabla | Campos clave |
+|-------|-------------|
+| `design_decisions` | id, project, component, decision, reasoning, tags, created_at |
+| `component_stock` | id, name, category, value, package, quantity, supplier, supplier_ref, datasheet, notes, tags |
+
+**Nuevos endpoints:**
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| POST | /api/schematics/import | Importar KiCad/LTspice/Eagle |
+| POST | /api/schematics/plc/parse | Parsear lógica ladder |
+| GET  | /api/schematics/supported | Formatos soportados |
+| GET  | /api/circuits/{id}/report.pdf | Descargar reporte PDF |
+| GET/POST/PUT/DELETE | /api/stock/** | CRUD componentes en stock |
+| GET/POST/DELETE | /api/decisions/** | CRUD decisiones de diseño |
+
+---
+
+### Sesión 2026-04-08 — Cloud Deploy, Docker Optimization & Java Fixes (v2.8.1)
+
+**1. Fix: Java JDK para Android (Mobile Build)**
+- **Problema:** Fallaban los builds de Android en el IDE porque `JAVA_HOME` global de Windows tenía un salto de línea oculto, destrozando el wrapper de Gradle y forzando el uso de un antiguo JDK 8.
+- **Solución:** Agregado `org.gradle.java.home=C:/Program Files/Android/Android Studio/jbr` a `stratum-mobile/android/gradle.properties` garantizando localmente el uso del JDK 21 empaquetado de Android Studio. Además se purgaron credenciales ocultas en el OS (via `cmdkey`) que impedían pushear el código al repo nuevo.
+
+**2. Deploy en la Nube (Railway) y Optimización del Docker**
+- **Problema:** Constante error de `Build timed out` en Railway al querer desplegar.
+- **Fix Contexto (~2 GB ahorrados):** Ignorados `venv/`, `stratum-mobile/` e `Imagen/` en `.dockerignore`. Esto redujo el tamaño de subida de 2 Gigabytes a unos pocos Kilobytes.
+- **Fix PyTorch CPU-Only (~2.5 GB ahorrados):** Añadido en el `Dockerfile` pre-instalación específica de PyTorch usando `--index-url https://download.pytorch.org/whl/cpu`. El builder descargaba los binarios completos de NVIDIA CUDA por defecto bloqueando la capacidad límite del servidor de Railway. Con esta inyección, el motor embebido ocupa menos del 10% y el build se completó fugazmente.
+
+**3. Interfaz Móvil**
+- **Integración:** Se configuró como servidor oficial en `stratum-mobile/www/index.html` la URL activa `https://ai-memory-production-d6b1.up.railway.app` como `DEFAULT_BACKEND` para su uso offline e isNative, desatando la dependencia de `localhost`.
+
+---
+
 ### Sesión 2026-04-08 — Firmware Retry + Offline Queue Web (v2.8.0)
 
 **1. Firmware Retry Inteligente con Error Memory**

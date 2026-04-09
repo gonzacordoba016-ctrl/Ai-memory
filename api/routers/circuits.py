@@ -5,8 +5,8 @@ import asyncio
 import uuid as uuid_lib
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import APIRouter, HTTPException, Request, Query
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from api.limiter import limiter
 from pydantic import BaseModel
 
@@ -60,6 +60,33 @@ async def get_schematic_svg(circuit_id: int):
         return JSONResponse(content={"error": "Circuito no encontrado"}, status_code=404)
     svg = SchematicRenderer().render_schematic_svg(circuit_data)
     return HTMLResponse(content=svg, media_type="image/svg+xml")
+
+
+@router.get("/{circuit_id}/report.pdf")
+async def get_circuit_report_pdf(
+    circuit_id: int,
+    include_firmware:  bool = Query(default=True),
+    include_decisions: bool = Query(default=True),
+):
+    """Genera y descarga un reporte PDF del proyecto de ingeniería."""
+    try:
+        from tools.pdf_exporter import generate_project_pdf
+        pdf_bytes = generate_project_pdf(
+            circuit_id=circuit_id,
+            include_firmware=include_firmware,
+            include_decisions=include_decisions,
+        )
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=stratum_circuit_{circuit_id}.pdf"},
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generando PDF: {e}")
 
 
 @router.get("/{circuit_id}/breadboard")

@@ -15,7 +15,7 @@ Agentes disponibles:
 - research: buscar información web, noticias, datos actuales, clima, precios, deportes
 - code: ejecutar código Python, cálculos matemáticos, leer/escribir archivos
 - memory: consultar memoria del usuario, historial, hechos conocidos sobre el usuario
-- hardware: programar Arduino, ESP32, ESP8266, consultar dispositivos registrados, historial de firmware
+- hardware: programar Arduino/ESP32/ESP8266/PIC/STM32, consultar dispositivos, historial de firmware, guardar decisiones de diseño, circuitos de potencia, PLCs, automatización
 - direct: responder directamente sin sub-agentes (saludos, opiniones, conversación general)
 
 Devolvé ÚNICAMENTE un JSON con:
@@ -28,7 +28,7 @@ Reglas estrictas:
 - Si pregunta por eventos actuales, noticias, precios, resultados deportivos → research
 - Si pregunta por cálculos, código Python, archivos → code
 - Si pregunta por datos del usuario, historial de conversación → memory
-- Si menciona Arduino, ESP32, LED, sensor, pin, firmware, microcontrolador, dispositivos registrados → hardware
+- Si menciona Arduino, ESP32, microcontrolador, LED, sensor, pin, firmware, circuito eléctrico, PLC, ladder, automatización, variador, transformador, potencia, relay, contactor, decisión de diseño → hardware
 - Si es saludo, opinión o pregunta general de conocimiento → direct
 
 Consulta: "{query}"
@@ -46,12 +46,24 @@ KEYWORD_ROUTES = {
         "wifi esp", "bluetooth", "mqtt", "firmware", "microcontrolador",
         "guardá el circuito", "guarda el circuito", "guardá este circuito",
         "asociá el circuito", "registrá el circuito",
+        "guardá la decisión", "guarda la decisión", "guardá el razonamiento",
+        "guarda el razonamiento", "guardá por qué", "guarda por qué",
+        "registrá la decisión", "anotá que", "anota que",
         "conecté", "conecte el arduino", "conecte el esp",
         "dispositivos registrados", "qué dispositivos", "que dispositivos",
         "historial de hardware", "último firmware", "ultimo firmware",
         "qué programé", "que programe", "qué tiene cargado",
         "que tiene cargado", "cuántas veces flasheé", "cuantas veces",
         "qué cargué", "que cargue",
+        # Electrónica general
+        "circuito", "esquemático", "esquema eléctrico", "netlist",
+        "resistencia", "capacitor", "inductor", "transistor", "mosfet",
+        "regulador", "fuente de alimentación", "transformador", "relay",
+        "contactor", "variador", "inversor", "plc", "ladder", "automatización",
+        "lm317", "ne555", "555", "opamp", "amplificador operacional",
+        "corriente", "voltaje", "tensión", "potencia eléctrica",
+        "kicad", "ltspice", "eagle", "esquemático",
+        "decisión de diseño", "elegí el", "usé el",
     ],
     "research": [
         "busca", "buscar", "precio", "noticias", "hoy", "actual", "clima",
