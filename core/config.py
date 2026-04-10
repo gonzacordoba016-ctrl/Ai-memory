@@ -120,11 +120,11 @@ MEMORY_DECAY_RATE = float(os.getenv("MEMORY_DECAY_RATE", "0.01"))
 # BASES DE DATOS
 # ==========================
 
-VECTOR_DB_PATH = os.getenv("VECTOR_DB_PATH", "./memory_db")
-SQL_DB_PATH    = os.getenv("MEMORY_DB_PATH", "./database/memory.db")
+VECTOR_DB_PATH = _env("VECTOR_DB_PATH", "./memory_db")
+SQL_DB_PATH    = _env("MEMORY_DB_PATH", "./database/memory.db")
 
 # Qdrant: si QDRANT_URL está definido se usa server mode, si no path local
-QDRANT_URL = os.getenv("QDRANT_URL", "")
+QDRANT_URL = _env("QDRANT_URL", "")
 
 # ==========================
 # MULTI-USUARIO / AUTH
