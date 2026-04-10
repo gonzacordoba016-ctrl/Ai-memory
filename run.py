@@ -52,13 +52,12 @@ def cmd_serve(port: int, reload: bool) -> None:
     # Railway y otros PaaS inyectan PORT como variable de entorno
     port = int(os.getenv("PORT", str(port)))
 
-    # Validar configuración antes de arrancar
+    # Validar configuración antes de arrancar (advertencia, no crash)
     try:
         from core.config import validate_config
         validate_config()
     except (EnvironmentError, ValueError) as e:
-        err(f"Error de configuración:\n{e}")
-        sys.exit(1)
+        warn(f"Config incompleta (el servidor levanta igual): {e}")
 
     print(f"\n{_c('STRATUM — Hardware Memory Engine', 96)}")
     info(f"Servidor en http://localhost:{port}")
