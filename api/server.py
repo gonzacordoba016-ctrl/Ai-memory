@@ -18,8 +18,8 @@ from core.config import validate_config
 try:
     validate_config()
 except (EnvironmentError, ValueError) as e:
-    print(f"\n❌ ERROR DE CONFIGURACIÓN:\n{e}\n")
-    exit(1)
+    print(f"\n[WARNING] CONFIG: {e}\n")
+    # No exit — el servidor levanta igual para poder ver los logs
 
 import asyncio
 from datetime import datetime
