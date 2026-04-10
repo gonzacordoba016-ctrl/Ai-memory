@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Pre-descargar el modelo de embeddings durante el build (evita cold-start lento)
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
 
-# Copiar código fuente
+# Copiar código fuente (cache bust: 2026-04-09)
 COPY . .
 
 # Crear directorios necesarios
