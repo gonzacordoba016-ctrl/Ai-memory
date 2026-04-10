@@ -13,6 +13,7 @@ from core.logger import logger
 from core.config import SQL_DB_PATH
 
 DB_PATH = SQL_DB_PATH
+os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 
 

@@ -10,6 +10,7 @@ logger = get_logger(__name__)
 from core.config import SQL_DB_PATH
 
 DB_PATH = SQL_DB_PATH
+os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 
 # Librería de componentes con símbolos, footprints, pines, modelo 3D

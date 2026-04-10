@@ -1,12 +1,14 @@
 # database/component_stock.py
 # Biblioteca personal de componentes en stock del ingeniero
 
+import os
 import sqlite3
 import json
 from datetime import datetime
 from core.config import SQL_DB_PATH
 
 DB_PATH = SQL_DB_PATH
+os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 
 class ComponentStockDB:
