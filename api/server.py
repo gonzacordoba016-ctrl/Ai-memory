@@ -3,7 +3,7 @@
 # La lógica de cada dominio vive en api/routers/.
 
 from dotenv import load_dotenv
-load_dotenv(override=True)  # override=True: el .env pisa variables de sistema/sesión
+load_dotenv()  # sin override: Railway/sistema tiene prioridad sobre .env local
 
 import os
 os.environ["AETHERMIND_AGENT_ID"] = "56dd50bb-dba1-42fc-b46a-d9cefa170500"
