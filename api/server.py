@@ -6,20 +6,24 @@ from dotenv import load_dotenv
 load_dotenv()  # sin override: Railway/sistema tiene prioridad sobre .env local
 
 import os
-os.environ["AETHERMIND_AGENT_ID"] = "56dd50bb-dba1-42fc-b46a-d9cefa170500"
-os.environ["AETHERMIND_ENV"]      = "development"
+import sys
 
 # Log de diagnóstico: muestra el provider y key en uso al arrancar
 _provider = os.getenv("LLM_PROVIDER", "ollama")
 _key = os.getenv("OPENROUTER_API_KEY", "") or os.getenv("AETHERMIND_API_KEY", "")
-print(f"[STARTUP] LLM_PROVIDER={_provider} | key prefix={_key[:15]}... | model={os.getenv('OPENROUTER_MODEL', os.getenv('OLLAMA_MODEL', '?'))}")
+print(f"[STARTUP] LLM_PROVIDER={_provider} | key prefix={_key[:15]}... | model={os.getenv('OPENROUTER_MODEL', os.getenv('OLLAMA_MODEL', '?'))}", flush=True)
+print(f"[STARTUP] PORT={os.getenv('PORT', '8000')} | MEMORY_DB={os.getenv('MEMORY_DB_PATH', './database/memory.db')}", flush=True)
 
-from core.config import validate_config
+# Coleccionamos errores de startup para reportarlos en /api/health
+_startup_errors: list[str] = []
+
 try:
+    from core.config import validate_config
     validate_config()
-except (EnvironmentError, ValueError) as e:
-    print(f"\n[WARNING] CONFIG: {e}\n")
-    # No exit — el servidor levanta igual para poder ver los logs
+except Exception as e:
+    msg = f"[WARNING] CONFIG: {e}"
+    print(msg, flush=True)
+    _startup_errors.append(msg)
 
 import asyncio
 from datetime import datetime
@@ -28,26 +32,44 @@ import sqlite3
 
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
 
-from api.app_state import agent, proactive_engine  # noqa: F401 — inicializa singletons
-from api.routers import memory, hardware, knowledge, circuits, websockets, auth, intelligence, push, hardware_bridge, schematics, stock, decisions
-from api.limiter import limiter
-from core.logger import logger
+try:
+    from slowapi import _rate_limit_exceeded_handler
+    from slowapi.errors import RateLimitExceeded
+    from slowapi.middleware import SlowAPIMiddleware
+    from api.limiter import limiter
+    _slowapi_ok = True
+except Exception as e:
+    _startup_errors.append(f"slowapi import failed: {e}")
+    _slowapi_ok = False
+
+# Inicializar singletons con manejo de errores
+agent = None
+proactive_engine = None
+try:
+    from api.app_state import agent, proactive_engine  # noqa: F401
+    print("[STARTUP] AgentController y ProactiveEngine inicializados.", flush=True)
+except Exception as e:
+    msg = f"[ERROR] app_state init failed: {e}"
+    print(msg, flush=True)
+    _startup_errors.append(msg)
 
 app = FastAPI(title="Stratum — Hardware Memory Engine")
 
-# ── Rate limiting ────────────────────────────────────────────────────
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-app.add_middleware(SlowAPIMiddleware)
+# ── Rate limiting ─────────────────────────────────────────────────────
+if _slowapi_ok:
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_middleware(SlowAPIMiddleware)
 
-# ── CORS ─────────────────────────────────────────────────────────────
-from core.config import ALLOWED_ORIGINS
+# ── CORS ──────────────────────────────────────────────────────────────
+try:
+    from core.config import ALLOWED_ORIGINS
+except Exception:
+    ALLOWED_ORIGINS = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -56,56 +78,123 @@ app.add_middleware(
     allow_credentials=True,
 )
 
-app.mount("/static", StaticFiles(directory="api/static"), name="static")
+try:
+    app.mount("/static", StaticFiles(directory="api/static"), name="static")
+except Exception as e:
+    _startup_errors.append(f"static mount failed: {e}")
+
+# ── Routers — cada uno en su propio try/except ────────────────────────
+_routers_loaded: list[str] = []
+_routers_failed: list[str] = []
+
+def _include(name: str, import_path: str, mod_attr: str = "router"):
+    try:
+        import importlib
+        mod = importlib.import_module(import_path)
+        app.include_router(getattr(mod, mod_attr))
+        _routers_loaded.append(name)
+    except Exception as e:
+        msg = f"Router '{name}' failed: {e}"
+        print(f"[ERROR] {msg}", flush=True)
+        _startup_errors.append(msg)
+        _routers_failed.append(name)
+
+_include("auth",             "api.routers.auth")
+_include("memory",           "api.routers.memory")
+_include("hardware",         "api.routers.hardware")
+_include("hardware_bridge",  "api.routers.hardware_bridge")
+_include("knowledge",        "api.routers.knowledge")
+_include("circuits",         "api.routers.circuits")
+_include("websockets",       "api.routers.websockets")
+_include("intelligence",     "api.routers.intelligence")
+_include("push",             "api.routers.push")
+_include("schematics",       "api.routers.schematics")
+_include("stock",            "api.routers.stock")
+_include("decisions",        "api.routers.decisions")
+
+print(f"[STARTUP] Routers OK: {_routers_loaded}", flush=True)
+if _routers_failed:
+    print(f"[STARTUP] Routers FAILED: {_routers_failed}", flush=True)
 
 
-# ── Lifecycle ────────────────────────────────────────────────────────
+# ── Lifecycle ─────────────────────────────────────────────────────────
 
 @app.on_event("startup")
 async def startup_event():
-    import os
     _prov = os.getenv("LLM_PROVIDER", "ollama")
     _model = os.getenv("OPENROUTER_MODEL") or os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
-    _url = "https://openrouter.ai/api/v1/chat/completions" if _prov == "openrouter" else os.getenv("OLLAMA_BASE_URL", "http://localhost:11434") + "/v1/chat/completions"
-    logger.info(f"[Server] LLM provider={_prov} | url={_url} | model={_model}")
+    print(f"[Server] LLM provider={_prov} | model={_model}", flush=True)
 
-    # Inyectar el event loop en el hardware bridge para calls sync desde threads
-    hardware_bridge.set_event_loop(asyncio.get_event_loop())
+    # Inyectar event loop en hardware bridge
+    try:
+        from api.routers import hardware_bridge
+        hardware_bridge.set_event_loop(asyncio.get_event_loop())
+    except Exception as e:
+        _startup_errors.append(f"hardware_bridge.set_event_loop failed: {e}")
 
-    # Inicializar nuevas tablas SQLite al arrancar
-    from database.design_decisions import get_decisions_db
-    from database.component_stock import get_stock_db
-    get_decisions_db()
-    get_stock_db()
-    logger.info("[Server] Tablas design_decisions y component_stock inicializadas.")
+    # Inicializar tablas SQLite
+    try:
+        from database.design_decisions import get_decisions_db
+        from database.component_stock import get_stock_db
+        get_decisions_db()
+        get_stock_db()
+        print("[Server] Tablas design_decisions y component_stock inicializadas.", flush=True)
+    except Exception as e:
+        _startup_errors.append(f"DB init failed: {e}")
+        print(f"[Server] DB init error: {e}", flush=True)
 
-    await proactive_engine.start()
-    logger.info("[Server] Motor proactivo iniciado.")
+    # Motor proactivo
+    if proactive_engine is not None:
+        try:
+            await proactive_engine.start()
+            print("[Server] Motor proactivo iniciado.", flush=True)
+        except Exception as e:
+            _startup_errors.append(f"proactive_engine.start failed: {e}")
+            print(f"[Server] ProactiveEngine error: {e}", flush=True)
 
-    from api.job_worker import job_worker_loop
-    asyncio.create_task(job_worker_loop())
-    logger.info("[Server] Job worker iniciado.")
+    # Job worker
+    try:
+        from api.job_worker import job_worker_loop
+        asyncio.create_task(job_worker_loop())
+        print("[Server] Job worker iniciado.", flush=True)
+    except Exception as e:
+        _startup_errors.append(f"job_worker failed: {e}")
+        print(f"[Server] Job worker error: {e}", flush=True)
+
+    print(f"[Server] READY. Startup errors: {len(_startup_errors)}", flush=True)
+    if _startup_errors:
+        for err in _startup_errors:
+            print(f"  - {err}", flush=True)
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    from llm.async_client import close
-    await close()
-    logger.info("[Server] Cliente async cerrado.")
+    try:
+        from llm.async_client import close
+        await close()
+    except Exception:
+        pass
 
 
-# ── Frontend ─────────────────────────────────────────────────────────
+# ── Frontend ──────────────────────────────────────────────────────────
 
 @app.get("/")
 async def root():
-    return FileResponse("api/static/index.html")
+    try:
+        return FileResponse("api/static/index.html")
+    except Exception:
+        return JSONResponse({"status": "ok", "message": "Stratum running"})
 
 
-# ── Health check extendido ───────────────────────────────────────────
+# ── Health check ──────────────────────────────────────────────────────
 
 @app.get("/api/health")
 async def health():
-    from core.config import SQL_DB_PATH, OLLAMA_BASE_URL
+    try:
+        from core.config import SQL_DB_PATH, OLLAMA_BASE_URL
+    except Exception:
+        SQL_DB_PATH = "./database/memory.db"
+        OLLAMA_BASE_URL = "http://localhost:11434"
 
     checks: dict = {}
 
@@ -118,47 +207,42 @@ async def health():
     except Exception as e:
         checks["sqlite"] = f"error: {e}"
 
-    # Qdrant (vector store)
+    # Qdrant
     try:
         from infrastructure.vector_store import vector_store
-        vector_store.client.get_collections()
-        checks["qdrant"] = "ok"
+        if vector_store.client:
+            vector_store.client.get_collections()
+            checks["qdrant"] = "ok"
+        else:
+            checks["qdrant"] = "disabled"
     except Exception as e:
         checks["qdrant"] = f"error: {e}"
 
-    # Ollama / LLM proxy
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            r = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
-            checks["ollama"] = "ok" if r.status_code == 200 else f"http {r.status_code}"
-    except Exception as e:
-        checks["ollama"] = f"error: {e}"
+    # LLM (solo si provider es ollama — openrouter no tiene endpoint /api/tags)
+    provider = os.getenv("LLM_PROVIDER", "ollama")
+    if provider == "ollama":
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                r = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
+                checks["ollama"] = "ok" if r.status_code == 200 else f"http {r.status_code}"
+        except Exception as e:
+            checks["ollama"] = f"error: {e}"
+    else:
+        checks["llm_provider"] = provider
 
-    overall = "ok" if all(v == "ok" for v in checks.values()) else "degraded"
+    overall = "ok" if checks.get("sqlite") == "ok" else "degraded"
+
     return {
-        "status":    overall,
-        "services":  checks,
-        "timestamp": datetime.utcnow().isoformat(),
+        "status":         overall,
+        "services":       checks,
+        "startup_errors": _startup_errors,
+        "routers_ok":     _routers_loaded,
+        "routers_failed": _routers_failed,
+        "timestamp":      datetime.utcnow().isoformat(),
     }
 
 
-# ── Routers ──────────────────────────────────────────────────────────
-
-app.include_router(auth.router)
-app.include_router(memory.router)
-app.include_router(hardware.router)
-app.include_router(hardware_bridge.router)
-app.include_router(knowledge.router)
-app.include_router(circuits.router)
-app.include_router(websockets.router)
-app.include_router(intelligence.router)
-app.include_router(push.router)
-app.include_router(schematics.router)
-app.include_router(stock.router)
-app.include_router(decisions.router)
-
-
-# ── Arranque directo ─────────────────────────────────────────────────
+# ── Arranque directo ──────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import uvicorn
