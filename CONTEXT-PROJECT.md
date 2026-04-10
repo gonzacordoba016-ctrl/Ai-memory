@@ -1,6 +1,6 @@
 # STRATUM — Context & Memory para Agente
-> Última actualización: 2026-04-08
-> Versión del proyecto: v2.8.0
+> Última actualización: 2026-04-09
+> Versión del proyecto: v3.0.0
 > Autor: gonzacba17
 
 ---
@@ -1178,6 +1178,65 @@ Ejecución completa del plan de 3 fases aprobado en la sesión anterior.
 20. **Push notifications:** son opcionales. Sin `FIREBASE_SERVER_KEY` el sistema funciona igual — `push_notifier.py` hace no-op silenciosamente
 21. **App mobile:** en WiFi local, cambiar `server.url` en `capacitor.config.ts` a la IP local del PC. En producción, apuntar al backend Railway. No requiere rebuild si se usa `server.url` (Capacitor carga el remote HTML)
 22. **Puerto 11435:** es el proxy de AetherMind (`@aethermind/setup`). **No** es Ollama. Si `OLLAMA_BASE_URL` apunta ahí, las requests van al gateway cloud de Aethermind. Puerto real de Ollama: **11434**
+
+---
+
+23. **Parsers de esquemáticos:** `tools/schematic_parser.py` — detecta formato por extensión. `.kicad_sch` → KiCad 6+, `.asc` → LTspice, `.sch` → Eagle XML o KiCad legacy. El dispatcher es `parse_schematic(content, filename)`
+24. **Component stock:** `database/component_stock.py` singleton `get_stock_db()`. HardwareAgent inyecta componentes en stock (in_stock_only=True) al prompt de firmware automáticamente
+25. **Design decisions:** `database/design_decisions.py` singleton `get_decisions_db()`. Intent `save_decision` en HardwareAgent — se activa con frases "guardá la decisión:", "guardá por qué..."
+26. **PDF export:** `tools/pdf_exporter.py` usa `reportlab`. Requiere `pip install reportlab==4.2.5`. Si no está instalado retorna `RuntimeError` (no crashea el servidor, solo el endpoint)
+27. **PLC Ladder:** `tools/plc_parser.py` — parsea lógica ladder desde texto natural. Genera Structured Text (IEC 61131-3). Endpoint `POST /api/schematics/plc/parse`
+28. **Railway Volume:** montar en `/data`. Variables: `MEMORY_DB_PATH=/data/database/memory.db`, `VECTOR_DB_PATH=/data/memory_db`, `GRAPH_DB_PATH=/data/database/graph_memory.json`. El startCommand en `railway.toml` crea los dirs automáticamente
+29. **Versión en header web:** texto hardcodeado en `api/static/index.html` — actualizar manualmente al cambiar versión
+30. **CircuitDesignManager:** la clase en `database/circuit_design.py` se llama `CircuitDesignManager`, NO `CircuitDesignDB`
+
+---
+
+## 12. ESTADO ACTUAL (2026-04-09) — v3.0.0
+
+### ✅ Completado en sesión 2026-04-09
+
+| Área | Estado |
+|------|--------|
+| Backend Railway | ✅ Corriendo en `https://ai-memory-production-d6b1.up.railway.app` |
+| Railway Volume | ✅ Configurado por el usuario (montado en `/data`) |
+| Persistencia datos | ✅ SQLite + Qdrant + Grafo apuntan a `/data` via env vars |
+| App mobile | ✅ Conectada a Railway, funcional |
+| Servidor local | ✅ `python run.py` levanta sin errores |
+| Parsers KiCad/LTspice/Eagle | ✅ Implementado en `tools/schematic_parser.py` |
+| Component stock | ✅ DB + API + agente integrado |
+| Design decisions | ✅ DB + API + intent en HardwareAgent + orchestrator |
+| PDF export | ✅ `reportlab` — requiere `pip install reportlab==4.2.5` localmente |
+| PLC Ladder | ✅ Parser + Structured Text + endpoint |
+| UI mobile | ✅ COMPONENT_STOCK, IMPORT_SCHEMATIC, PLC_LADDER en MENU; DESIGN_DECISIONS en INTEL |
+| UI web | ✅ Mismas secciones en SYSTEM e INTEL |
+| Botones superpuestos mobile | ✅ Cámara integrada en barra de input |
+| Fix `save_design` metadata | ✅ Mergea metadata extra correctamente |
+| Orchestrator keywords | ✅ Electrónica general (PLC, relay, transformer, ladder, etc.) |
+| Startup init tablas | ✅ `design_decisions` y `component_stock` al arrancar |
+| Commit pusheado | ✅ `8f3aec9` en `main` |
+
+### ⏳ Pendiente
+
+| Qué | Prioridad | Detalle |
+|-----|-----------|---------|
+| Versión en header web | 🟢 Baja | `api/static/index.html` dice `v2.1.0` — actualizar a `v3.0.0` |
+| Rebuild app mobile | 🟡 Media | `npx cap sync android` + run en Android Studio para ver cambios de UI |
+| `pip install reportlab` | 🟡 Media | Solo para PDF local — en Railway ya se instala desde requirements.txt |
+| Push notifications FCM | 🟡 Media | Falta `google-services.json` de Firebase para habilitar en Android |
+| Test bridge end-to-end | 🟡 Media | `python run.py bridge --url ... --token ...` + programar desde celular en 4G |
+| Qdrant Cloud | 🟢 Baja | Con Railway Volume la persistencia local funciona. Qdrant Cloud solo necesario si se escala |
+| Schematic viewer para imports | 🟢 Baja | Los esquemáticos importados se guardan como `circuit_designs` pero el viewer no muestra el `source_tool` |
+| Importar Eagle con namespace XML | 🟢 Baja | Algunos archivos Eagle modernos usan namespace — el parser puede fallar en edge cases |
+
+### Estado del servidor local
+```
+✅ Application startup complete
+✅ [Server] Tablas design_decisions y component_stock inicializadas
+✅ [Hardware] Detectado: dispositivo en COM3 (Samsung — celular USB)
+✅ [Proactive] Motor proactivo iniciado
+✅ [JobWorker] Worker iniciado
+```
 
 ---
 

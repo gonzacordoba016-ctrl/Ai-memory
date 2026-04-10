@@ -591,9 +591,10 @@ check("_build_summary confirma guardado",
       "EVAL_Arduino" in summary,
       f"summary='{summary[:120]}'")
 
-# Test analyze_circuit con LLaVA mockeado (sin GPU real)
-with patch.object(va, "_check_vision_model", return_value=True), \
-     patch.object(va, "_call_llava", return_value=MOCK_CIRCUIT_JSON):
+# Test analyze_circuit con OpenRouter mockeado (sin llamada real)
+import os as _os
+with patch.dict(_os.environ, {"LLM_PROVIDER": "openrouter"}), \
+     patch.object(va, "_call_openrouter", return_value=MOCK_CIRCUIT_JSON):
 
     result = va.analyze_circuit("fake_base64_image==", device_name="")
     check("analyze_circuit retorna success=True con mock",
@@ -606,10 +607,11 @@ with patch.object(va, "_check_vision_model", return_value=True), \
           not result["saved"],
           f"saved={result['saved']}")
 
-# Test cuando LLaVA no está disponible
-with patch.object(va, "_check_vision_model", return_value=False):
+# Test cuando Ollama no está disponible
+with patch.dict(_os.environ, {"LLM_PROVIDER": "ollama"}), \
+     patch.object(va, "_check_ollama_model", return_value=False):
     result_no_llava = va.analyze_circuit("fake_base64==", device_name="")
-    check("analyze_circuit falla graciosamente sin LLaVA",
+    check("analyze_circuit falla graciosamente sin Ollama",
           not result_no_llava["success"] and "ollama pull" in result_no_llava["message"],
           f"message='{result_no_llava['message'][:60]}'")
 
@@ -1236,7 +1238,7 @@ total  = len(results)
 print(f"\n{'='*40}")
 print(f"Resultado: {passed}/{total} tests pasaron")
 if passed == total:
-    print("✓ Todo OK — memoria real no contaminada\n")
+    print("[OK] Todo OK - memoria real no contaminada\n")
 else:
     print(f"✗ {total - passed} tests fallaron\n")
     sys.exit(1)

@@ -6,7 +6,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from tools.schematic_parser import parse_schematic, SUPPORTED_EXTENSIONS
-from database.circuit_design import CircuitDesignDB
+from database.circuit_design import CircuitDesignManager as CircuitDesignDB
 from database.design_decisions import get_decisions_db
 
 router = APIRouter(prefix="/api/schematics", tags=["schematics"])

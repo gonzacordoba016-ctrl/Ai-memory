@@ -48,7 +48,7 @@ def generate_project_pdf(
             "reportlab no está instalado. Ejecutá: pip install reportlab"
         )
 
-    from database.circuit_design import CircuitDesignDB
+    from database.circuit_design import CircuitDesignManager as CircuitDesignDB
     from database.design_decisions import get_decisions_db
     from database.hardware_memory import hardware_memory
 
