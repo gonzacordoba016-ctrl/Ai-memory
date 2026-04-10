@@ -63,8 +63,11 @@ app.mount("/static", StaticFiles(directory="api/static"), name="static")
 
 @app.on_event("startup")
 async def startup_event():
-    from core.config import LLM_API, LLM_MODEL, PROVIDER
-    logger.info(f"[Server] LLM provider={PROVIDER} | url={LLM_API} | model={LLM_MODEL}")
+    import os
+    _prov = os.getenv("LLM_PROVIDER", "ollama")
+    _model = os.getenv("OPENROUTER_MODEL") or os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
+    _url = "https://openrouter.ai/api/v1/chat/completions" if _prov == "openrouter" else os.getenv("OLLAMA_BASE_URL", "http://localhost:11434") + "/v1/chat/completions"
+    logger.info(f"[Server] LLM provider={_prov} | url={_url} | model={_model}")
 
     # Inyectar el event loop en el hardware bridge para calls sync desde threads
     hardware_bridge.set_event_loop(asyncio.get_event_loop())

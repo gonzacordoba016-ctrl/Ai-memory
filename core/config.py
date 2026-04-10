@@ -19,22 +19,37 @@ VISION_MODEL = os.getenv("VISION_MODEL", "llava:7b")
 # PROVEEDOR LLM
 # ==========================
 
-PROVIDER = os.getenv("LLM_PROVIDER", "ollama")
+def _env(key: str, default: str = "") -> str:
+    """Lee env var y elimina comillas que Railway/shells pueden inyectar."""
+    val = os.getenv(key, default)
+    return val.strip().strip('"').strip("'")
 
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+def _get_provider() -> str:
+    return _env("LLM_PROVIDER", "ollama")
 
-LLM_URLS = {
-    "ollama":     OLLAMA_BASE_URL + "/v1/chat/completions",
-    "lmstudio":   os.getenv("LMSTUDIO_BASE_URL", "http://localhost:1234") + "/v1/chat/completions",
-    "openrouter": "https://openrouter.ai/api/v1/chat/completions",
-}
+def _get_llm_api(provider: str = None) -> str:
+    p = provider or _get_provider()
+    base = _env("OLLAMA_BASE_URL", "http://localhost:11434")
+    urls = {
+        "ollama":     base + "/v1/chat/completions",
+        "lmstudio":   _env("LMSTUDIO_BASE_URL", "http://localhost:1234") + "/v1/chat/completions",
+        "openrouter": "https://openrouter.ai/api/v1/chat/completions",
+    }
+    return urls.get(p, urls["ollama"])
 
-LLM_API   = LLM_URLS.get(PROVIDER, LLM_URLS["ollama"])
-LLM_MODEL = (
-    os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
-    if PROVIDER in ("ollama", "lmstudio")
-    else os.getenv("OPENROUTER_MODEL", "openrouter/openai/gpt-4o-mini")
-)
+def _get_llm_model(provider: str = None) -> str:
+    p = provider or _get_provider()
+    if p in ("ollama", "lmstudio"):
+        return _env("OLLAMA_MODEL", "qwen2.5:3b")
+    return _env("OPENROUTER_MODEL", "openai/gpt-4o-mini")
+
+# Aliases evaluados en runtime para compatibilidad con imports existentes
+PROVIDER  = _get_provider()
+OLLAMA_BASE_URL = _env("OLLAMA_BASE_URL", "http://localhost:11434")
+LLM_API   = _get_llm_api()
+LLM_MODEL = _get_llm_model()
+
+logger.info(f"[Config] PROVIDER={PROVIDER} | LLM_API={LLM_API} | MODEL={LLM_MODEL}")
 
 # Modelo dual: fast para routing/memoria, smart para generación de código/circuitos
 LLM_MODEL_FAST = os.getenv("LLM_MODEL_FAST", LLM_MODEL)
