@@ -771,8 +771,8 @@ function switchNav(tab) {
 
   if (tab === 'devices')   loadHardware();
   if (tab === 'telemetry') { loadFacts(); loadGraph(); }
-  if (tab === 'system')    loadMetrics();
-  if (tab === 'intel')     loadIntelligence();
+  if (tab === 'system')    { loadMetrics(); webLoadStockSummary(); webSearchStock(''); }
+  if (tab === 'intel')     { loadIntelligence(); webLoadDecisions(); }
   if (tab === 'metrics')   loadMetricsPanel();
 }
 
@@ -1952,13 +1952,7 @@ async function webParsePLC() {
   }
 }
 
-// Cargar al iniciar y al entrar al tab SYSTEM
-const _origSwitchNav = switchNav;
-function switchNav(tab) {
-  _origSwitchNav(tab);
-  if (tab === 'intel')  { webLoadDecisions(); }
-  if (tab === 'system') { webLoadStockSummary(); webSearchStock(''); }
-}
+// Cargar al iniciar
 webLoadDecisions();
 webLoadStockSummary();
 </script>
