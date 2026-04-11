@@ -20,13 +20,14 @@ INTENT_PROMPT = """Clasificá esta consulta de hardware en UNA sola palabra:
 
 - save_circuit: guardar, asociar o registrar un circuito/foto para un dispositivo
 - query:        consultar información sobre dispositivos registrados, firmware actual, historial de flashes, qué tiene programado, qué componentes tiene
-- program:      programar, flashear, cargar código, hacer parpadear, encender, controlar, subir firmware
+- program:      programar, flashear, cargar código a un dispositivo YA CONECTADO (blink, servo, sensor, WiFi, MQTT)
 - signal:       leer señal analógica, voltaje, osciloscopio, monitorear pin
 - debug:        corregir error, algo no funciona, falla, arreglar, diagnosticar, el código da error
+- design:       diseñar circuito, asesoramiento técnico, dimensionar componentes, potencia, motor, PLC, regulador, fuente, esquema, cálculos eléctricos, elección de componentes
 
 Consulta: "{task}"
 
-Respondé SOLO con una de estas 5 palabras: save_circuit, query, program, signal, debug"""
+Respondé SOLO con una de estas 6 palabras: save_circuit, query, program, signal, debug, design"""
 
 
 # ── KEYWORDS exhaustivas por categoría ───────────────────────────────────────
@@ -115,20 +116,34 @@ DEBUG_KEYWORDS = [
 ]
 
 PROGRAM_KEYWORDS = [
-    # Acciones de programación
-    "programá", "programa", "programar", "flashear", "flasheá",
-    "cargá", "carga", "cargar", "subí", "subi", "subir",
-    "instalá", "instala", "instalar",
-    # Control de hardware
-    "hacer parpadear", "que parpadee", "que encienda", "que apague",
-    "que lea", "que mida", "que envíe", "que muestre",
-    "controlar", "manejar", "activar", "desactivar",
-    "encender", "apagar", "toggle",
-    # Proyectos
-    "blink", "servo", "motor", "pantalla", "display",
-    "sensor de temperatura", "sensor de humedad",
-    "comunicación serial", "wifi", "bluetooth", "mqtt",
-    "leer sensor", "escribir pin",
+    # Acciones de programación directa sobre dispositivo
+    "flashear", "flasheá",
+    "subí", "subi", "subir firmware",
+    "cargar firmware", "cargá el firmware",
+    # Control de hardware embebido
+    "hacer parpadear", "que parpadee", "que encienda el led", "que apague el led",
+    "que lea el sensor", "que mida el sensor", "que envíe por serial",
+    "blink", "leer sensor", "escribir pin",
+    "comunicación serial", "wifi esp", "bluetooth esp", "mqtt",
+]
+
+DESIGN_KEYWORDS = [
+    # Diseño y asesoramiento técnico
+    "quiero programar mi circuito", "diseñar", "dimensionar", "calcular",
+    "qué componente", "que componente", "qué usar", "que usar",
+    "cómo programar", "como programar", "cómo controlar", "como controlar",
+    "circuito de potencia", "circuito de fuerza", "circuito de control",
+    "motor de", "motor trifásico", "motor monofásico", "15hp", "10hp", "5hp",
+    "variador de frecuencia", "variador", "vfd", "arrancador", "contactor",
+    "relé térmico", "rele termico", "guardamotor",
+    "fuente de alimentación", "fuente switching", "transformador",
+    "regulador de tensión", "lm317", "lm7805",
+    "circuito integrado", "amplificador", "opamp",
+    "automatizar", "automatización industrial", "plc ladder",
+    "cómo funciona", "como funciona", "qué es", "que es",
+    "asesorá", "asesorame", "recomendá", "recomendame",
+    "qué necesito", "que necesito", "qué utilizo", "que utilizo",
+    "explicame", "explicá", "cómo hago", "como hago",
 ]
 
 
@@ -142,10 +157,11 @@ class HardwareAgent:
         logger.info(f"[HardwareAgent] Intent: {intent} | Tarea: {task[:60]}")
 
         if intent == "save_decision": return self._save_decision(task)
-        if intent == "save_circuit": return self._save_circuit(task)
-        if intent == "query":        return self._query_memory(task)
-        if intent == "signal":       return self._start_signal_mode(task)
-        if intent == "debug":        return self._debug_mode(task)
+        if intent == "save_circuit":  return self._save_circuit(task)
+        if intent == "query":         return self._query_memory(task)
+        if intent == "signal":        return self._start_signal_mode(task)
+        if intent == "debug":         return self._debug_mode(task)
+        if intent == "design":        return self._design_consult(task, context)
         return self._program_device(task, context)
 
     # ======================
@@ -167,7 +183,7 @@ class HardwareAgent:
             )
             response.raise_for_status()
             intent = response.json()["choices"][0]["message"]["content"].strip().lower()
-            for valid in ("query", "program", "signal", "debug"):
+            for valid in ("save_circuit", "query", "program", "signal", "debug", "design"):
                 if valid in intent:
                     return valid
         except Exception as e:
@@ -195,11 +211,14 @@ class HardwareAgent:
         if any(kw in t for kw in SIGNAL_KEYWORDS):
             return "signal"
 
+        if any(kw in t for kw in DESIGN_KEYWORDS):
+            return "design"
+
         if any(kw in t for kw in PROGRAM_KEYWORDS):
             return "program"
 
-        # Default: si mencionan hardware sin contexto claro, asumir programar
-        return "program"
+        # Default: si mencionan hardware sin contexto claro, consulta de diseño
+        return "design"
 
     # ======================
     # GUARDAR DECISIÓN
@@ -333,6 +352,88 @@ class HardwareAgent:
             if keyword in t:
                 return keyword.title()
         return ""
+
+    # ======================
+    # DISEÑO / CONSULTA TÉCNICA
+    # ======================
+
+    def _design_consult(self, task: str, context: str = "") -> str:
+        """Asesoramiento técnico de ingeniería eléctrica/electrónica sin necesidad de dispositivo."""
+        logger.info(f"[HardwareAgent] Consulta de diseño: {task[:60]}")
+
+        # Inyectar componentes en stock como contexto
+        stock_context = ""
+        try:
+            from database.component_stock import get_stock_db
+            in_stock = get_stock_db().get_all(in_stock_only=True)
+            if in_stock:
+                stock_lines = [
+                    f"  - {c['name']} ({c['value'] or ''}) {('pkg:'+c['package']) if c['package'] else ''} × {c['quantity']}"
+                    for c in in_stock[:20]
+                ]
+                stock_context = "\n\nComponentes en stock del ingeniero (priorizalos):\n" + "\n".join(stock_lines)
+        except Exception:
+            pass
+
+        # Decisiones de diseño previas como contexto
+        decisions_context = ""
+        try:
+            from database.design_decisions import get_decisions_db
+            recent = get_decisions_db().get_all(limit=5)
+            if recent:
+                lines = [f"  - [{d['project']}] {d['decision']}" for d in recent]
+                decisions_context = "\n\nDecisiones de diseño previas:\n" + "\n".join(lines)
+        except Exception:
+            pass
+
+        system_prompt = (
+            "Sos un ingeniero electrónico y eléctrico senior especializado en circuitos de potencia, "
+            "automatización industrial, microcontroladores y electrónica embebida. "
+            "Respondé en español, de forma técnica y concisa. "
+            "Incluí: componentes recomendados con valores, normas de seguridad relevantes, "
+            "esquema de conexiones si aplica, y código de control si el usuario lo necesita. "
+            "Si el diseño involucra alta tensión o alta potencia, siempre mencioná las consideraciones de seguridad."
+        )
+
+        user_content = task
+        if stock_context:
+            user_content += stock_context
+        if decisions_context:
+            user_content += decisions_context
+        if context:
+            user_content += f"\n\nContexto adicional:\n{context}"
+
+        try:
+            response = requests.post(
+                LLM_API,
+                headers=get_llm_headers("hardware-agent", "HardwareAgent"),
+                json={
+                    "model": LLM_MODEL,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user",   "content": user_content},
+                    ],
+                    "temperature": 0.3,
+                },
+                timeout=60
+            )
+            response.raise_for_status()
+            answer = response.json()["choices"][0]["message"]["content"].strip()
+
+            # Guardar en memoria vectorial para consultas futuras
+            try:
+                store_memory(
+                    f"[Diseño] {task[:120]}",
+                    metadata={"type": "design_consult"}
+                )
+            except Exception:
+                pass
+
+            return answer
+
+        except Exception as e:
+            logger.error(f"[HardwareAgent] Error en design_consult: {e}")
+            return f"No pude procesar la consulta de diseño: {e}"
 
     # ======================
     # PASO 1 — PROGRAMAR
