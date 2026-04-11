@@ -1267,8 +1267,8 @@ async function loadMetricsPanel() {
 
     if (statsR.ok) {
       const s = await statsR.json();
-      document.getElementById('kpi-devices').textContent   = s.hardware?.devices ?? 0;
-      document.getElementById('kpi-firmware').textContent  = s.hardware?.flashes ?? 0;
+      document.getElementById('kpi-devices').textContent   = s.hw_devices ?? 0;
+      document.getElementById('kpi-firmware').textContent  = s.hw_flashes ?? 0;
     }
     if (stockSumR.ok) {
       const s = await stockSumR.json();

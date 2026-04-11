@@ -18,16 +18,17 @@ from datetime import datetime, timezone
 
 INTENT_PROMPT = """Clasificá esta consulta de hardware en UNA sola palabra:
 
-- save_circuit: guardar, asociar o registrar un circuito/foto para un dispositivo
-- query:        consultar información sobre dispositivos registrados, firmware actual, historial de flashes, qué tiene programado, qué componentes tiene
-- program:      programar, flashear, cargar código a un dispositivo YA CONECTADO (blink, servo, sensor, WiFi, MQTT)
-- signal:       leer señal analógica, voltaje, osciloscopio, monitorear pin
-- debug:        corregir error, algo no funciona, falla, arreglar, diagnosticar, el código da error
-- design:       diseñar circuito, asesoramiento técnico, dimensionar componentes, potencia, motor, PLC, regulador, fuente, esquema, cálculos eléctricos, elección de componentes
+- save_decision: guardar una decisión de diseño, razonamiento técnico, por qué elegí un componente
+- save_circuit:  guardar, asociar o registrar un circuito/foto para un dispositivo
+- query:         consultar información sobre dispositivos registrados, firmware actual, historial de flashes, qué tiene programado
+- program:       programar, flashear, cargar código a un dispositivo YA CONECTADO (blink, servo, sensor, WiFi, MQTT)
+- signal:        leer señal analógica, voltaje, osciloscopio, monitorear pin
+- debug:         corregir error, algo no funciona, falla, arreglar, diagnosticar
+- design:        diseñar circuito, asesoramiento técnico, dimensionar componentes, potencia, motor, PLC, regulador, fuente, esquema, cálculos eléctricos, elección de componentes
 
 Consulta: "{task}"
 
-Respondé SOLO con una de estas 6 palabras: save_circuit, query, program, signal, debug, design"""
+Respondé SOLO con una de estas 7 palabras: save_decision, save_circuit, query, program, signal, debug, design"""
 
 
 # ── KEYWORDS exhaustivas por categoría ───────────────────────────────────────
@@ -183,7 +184,7 @@ class HardwareAgent:
             )
             response.raise_for_status()
             intent = response.json()["choices"][0]["message"]["content"].strip().lower()
-            for valid in ("save_circuit", "query", "program", "signal", "debug", "design"):
+            for valid in ("save_decision", "save_circuit", "query", "program", "signal", "debug", "design"):
                 if valid in intent:
                     return valid
         except Exception as e:
