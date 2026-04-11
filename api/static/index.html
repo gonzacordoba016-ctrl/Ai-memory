@@ -388,8 +388,24 @@
       <div>
         <div class="flex justify-between items-center mb-2">
           <div class="text-[8px] opacity-50">COMPONENT_STOCK</div>
-          <button onclick="webAddComponent()" class="text-[8px] text-secondary hover:text-primary">+ ADD</button>
+          <button onclick="webToggleStockForm()" class="text-[8px] text-secondary hover:text-primary">+ ADD</button>
         </div>
+
+        <!-- Formulario inline -->
+        <div id="web-stock-form" class="hidden mb-3 bg-[#131313] border border-secondary/30 p-3 space-y-2">
+          <input id="wsf-name"     type="text"   placeholder="Nombre *"                    class="w-full bg-black border border-[#494847]/50 text-[9px] text-white font-mono px-2 py-1.5 outline-none focus:border-secondary/60"/>
+          <div class="flex gap-2">
+            <input id="wsf-value"  type="text"   placeholder="Valor (10k, 100nF, 5V 1A)"  class="flex-1 bg-black border border-[#494847]/50 text-[9px] text-white font-mono px-2 py-1.5 outline-none focus:border-secondary/60"/>
+            <input id="wsf-qty"    type="number" placeholder="Cant." value="1"             class="w-16 bg-black border border-[#494847]/50 text-[9px] text-white font-mono px-2 py-1.5 outline-none focus:border-secondary/60"/>
+          </div>
+          <input id="wsf-category" type="text"   placeholder="Categoría (Resistencias, Capacitores...)" class="w-full bg-black border border-[#494847]/50 text-[9px] text-white font-mono px-2 py-1.5 outline-none focus:border-secondary/60"/>
+          <input id="wsf-supplier" type="text"   placeholder="Proveedor (LCSC, Mouser, RS...)"         class="w-full bg-black border border-[#494847]/50 text-[9px] text-white font-mono px-2 py-1.5 outline-none focus:border-secondary/60"/>
+          <div class="flex gap-2">
+            <button onclick="webSaveComponent()" class="flex-1 bg-secondary/10 border border-secondary/40 text-secondary text-[9px] py-1.5 hover:bg-secondary/20">GUARDAR</button>
+            <button onclick="webToggleStockForm()" class="px-3 border border-[#494847]/40 text-[#adaaaa] text-[9px] py-1.5 hover:border-primary/40">✕</button>
+          </div>
+        </div>
+
         <div id="web-stock-summary" class="bg-[#131313] p-3 border border-[#494847]/30 text-[9px] space-y-1 mb-2">
           <div class="flex justify-between"><span class="text-[#adaaaa]">TOTAL</span><span id="web-stock-total" class="text-primary">0</span></div>
           <div class="flex justify-between"><span class="text-[#adaaaa]">EN STOCK</span><span id="web-stock-in" class="text-secondary">0</span></div>
@@ -398,7 +414,7 @@
         <input type="text" placeholder="Buscar componente..." id="web-stock-search"
           class="w-full bg-black border border-[#494847]/50 text-[9px] text-white font-mono px-2 py-1.5 focus:border-secondary/60 outline-none mb-2"
           oninput="webSearchStock(this.value)"/>
-        <div id="web-stock-list" class="space-y-1 max-h-40 overflow-y-auto"></div>
+        <div id="web-stock-list" class="space-y-1 max-h-48 overflow-y-auto"></div>
       </div>
 
       <div>
@@ -1876,13 +1892,19 @@ async function webSearchStock(q) {
   } catch {}
 }
 
-async function webAddComponent() {
-  const name     = prompt('Nombre del componente:');
-  if (!name) return;
-  const qty      = parseInt(prompt('Cantidad:', '1') || '1');
-  const category = prompt('Categoría (ej: Reguladores, Resistencias):', '') || null;
-  const value    = prompt('Valor (ej: 10k, 100nF, 5V 1A):', '') || null;
-  const supplier = prompt('Proveedor:', '') || null;
+function webToggleStockForm() {
+  const f = document.getElementById('web-stock-form');
+  f.classList.toggle('hidden');
+  if (!f.classList.contains('hidden')) document.getElementById('wsf-name').focus();
+}
+
+async function webSaveComponent() {
+  const name     = document.getElementById('wsf-name').value.trim();
+  if (!name) { addLog('El nombre es obligatorio', 'warn'); return; }
+  const qty      = parseInt(document.getElementById('wsf-qty').value) || 1;
+  const value    = document.getElementById('wsf-value').value.trim() || null;
+  const category = document.getElementById('wsf-category').value.trim() || null;
+  const supplier = document.getElementById('wsf-supplier').value.trim() || null;
   try {
     await fetch(`${API}stock`, {
       method: 'POST',
@@ -1890,6 +1912,10 @@ async function webAddComponent() {
       body: JSON.stringify({ name, quantity: qty, category, value, supplier }),
     });
     addLog(`Stock: ${name} ×${qty} agregado`, 'info');
+    // Limpiar form y cerrar
+    ['wsf-name','wsf-value','wsf-category','wsf-supplier'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('wsf-qty').value = '1';
+    document.getElementById('web-stock-form').classList.add('hidden');
     webLoadStockSummary();
     webSearchStock('');
   } catch(e) { addLog('Error agregando componente: ' + e.message, 'error'); }
