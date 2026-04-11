@@ -1,5 +1,5 @@
 # STRATUM — Context & Memory para Agente
-> Última actualización: 2026-04-09
+> Última actualización: 2026-04-11
 > Versión del proyecto: v3.0.0
 > Autor: gonzacba17
 
@@ -720,6 +720,59 @@ Esto hacía que `gradlew.bat` interpretara solo `C:\Program` como directorio (in
 ---
 
 ## 10. SESIONES DE TRABAJO (Log)
+
+### Sesión 2026-04-11 — Auditoría E2E, Fixes críticos, Scope ampliado
+
+**Bugs críticos corregidos:**
+
+| Commit | Fix |
+|--------|-----|
+| `87a96bb` | `switchNav` circular reference — stack overflow silencioso al hacer click en tabs |
+| `59c9179` | `INTENT_PROMPT` faltaba `save_decision` como categoría válida (LLM nunca podía retornar ese intent) |
+| `59c9179` | `loadMetricsPanel()` usaba `s.hardware.devices` pero API retorna `s.hw_devices` (KPIs siempre en 0) |
+| `756c8ac` | `_program_device` devolvía "conectá el Arduino" ante cualquier consulta sin dispositivo |
+| `9da424e` | Component Stock en web usaba `prompt()` — reemplazado con formulario inline |
+
+**Nuevas features:**
+
+| Commit | Feature |
+|--------|---------|
+| `4da3688` | Intent `design` en HardwareAgent — asesoramiento técnico sin dispositivo conectado |
+| `4da3688` | `_design_consult()` con system prompt de ingeniero senior, inyecta stock y decisiones previas |
+| `4da3688` | `DESIGN_KEYWORDS` para routing correcto a consultas de ingeniería |
+| `3af77fe` | Formulario inline Design Decisions en web UI (tab INTEL) — + ADD, guardar, eliminar |
+| `91462ff` | Scope ampliado: no solo Arduino sino toda la ingeniería electrónica |
+| `91462ff` | System prompt actualizado con scope completo (potencia, PLCs, sensores, automatización) |
+| `91462ff` | UI web y mobile: títulos y placeholders actualizados a "Engineering Memory Engine" |
+
+**Auditoría E2E completa — estado al cierre:**
+
+| Feature | Estado |
+|---|---|
+| Chat WebSocket / streaming / sesiones | ✓ OK |
+| HardwareAgent 7 intents | ✓ OK |
+| Component Stock web + mobile (formularios inline) | ✓ OK |
+| Design Decisions web (formulario) + mobile | ✓ OK |
+| Metrics Panel KPIs y charts | ✓ OK |
+| PlatformIO Export ZIP | ✓ OK |
+| INTEL perfiles AI (activación, system prompt) | ✓ OK |
+| Hardware Bridge (estructura) | ✓ OK — sin testear con hardware físico |
+| Schematic Import KiCad/LTspice/Eagle | ✓ OK — sin testear con archivos reales |
+| PLC Ladder Parser | ✓ OK — sin testear con lógica real |
+| Mobile UI (stock, decisions, settings, camera) | ✓ OK |
+| Motor Proactivo (background, USB detect, WS) | ✓ OK |
+| Búsqueda semántica vectorial | ✓ OK |
+| CircuitAgent parse-async + job worker | ✓ OK |
+
+**Pendiente:**
+- `git push origin main` → Railway deploy (servidor es estable, push nunca se hizo en estas sesiones)
+- Testear con hardware físico (Arduino/ESP32 real por USB)
+- Testear Hardware Bridge end-to-end
+- `python eval/test_e2e_api.py` — correr suite completa
+- Mobile APK rebuild: `cd stratum-mobile && npx cap sync android`
+- Normalizar tildes en keyword matching HardwareAgent
+
+---
 
 ### Sesión 2026-04-10 — Features Completas: Dashboard, PlatformIO, Mobile UX, E2E Tests
 
