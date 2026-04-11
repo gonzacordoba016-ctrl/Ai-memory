@@ -7,14 +7,29 @@
 
 ## 1. ¿QUÉ ES STRATUM?
 
-Stratum es un **agente de IA local** especializado en programar microcontroladores. Es un "Hardware Memory Engine" — un sistema que recuerda el circuito completo del usuario entre sesiones (componentes, pines, conexiones, fallos anteriores) y puede generar, compilar y flashear firmware desde lenguaje natural.
+Stratum es un **asistente de ingeniería electrónica con memoria persistente**. Es un "Hardware Memory Engine" — un sistema que recuerda todo el contexto técnico del ingeniero entre sesiones (circuitos, componentes, pines, conexiones, decisiones de diseño, fallos anteriores) y actúa como un asistente técnico senior disponible siempre.
 
-**Tagline:** _"Tu Arduino te recuerda. Vos no tenés que repetirlo."_
+**Scope completo:** No es solo para Arduino. Stratum asiste con:
+- **Microcontroladores:** Arduino (Uno/Mega/Nano/Pro Mini), ESP32, ESP8266, STM32, Raspberry Pi Pico (RP2040), PIC, AVR, ARM Cortex-M, MicroPython
+- **Electrónica de potencia:** variadores de frecuencia, contactores, guardamotores, relés, tiristores, IGBT, fuentes switching, transformadores, UPS
+- **Automatización industrial:** PLCs, lógica ladder, Structured Text (IEC 61131-3), SCADA, Modbus
+- **Electrónica analógica/digital:** amplificadores operacionales, filtros, reguladores (LM317, LM78xx), osciladores, NE555, conversores ADC/DAC
+- **Sensores y actuadores:** temperatura (DS18B20, DHT22, PT100, termocuplas), presión, posición, encoders, servos, motores DC/paso a paso, drivers (L298N, DRV8825, A4988)
+- **Comunicaciones:** I2C, SPI, UART, CAN Bus, RS-485, Modbus RTU, WiFi, Bluetooth, MQTT, LoRa
+- **Diseño de circuitos:** esquemáticos, netlists, PCB layout, cálculo de componentes, selección de semiconductores
 
-**Ejemplo de uso:**
+**Tagline:** _"Tu memoria técnica siempre disponible. Nunca más repitas el mismo circuito desde cero."_
+
+**Ejemplos de uso:**
 ```
-Usuario: "Hacé parpadear el LED del sensor de temperatura"
-→ Stratum recuerda el circuito, genera el firmware C++, lo compila con arduino-cli, y lo flashea al dispositivo.
+"Quiero controlar un motor de 15HP trifásico desde un PLC"
+→ Stratum dimensiona el contactor, variador, guardamotor, propone el circuito de potencia y fuerza.
+
+"Hacé parpadear el LED del sensor de temperatura en el pin 5"
+→ Stratum recuerda el circuito, genera el firmware C++, lo compila y lo flashea al dispositivo.
+
+"¿Qué regulador usé en la fuente del proyecto invernadero?"
+→ Stratum recupera las decisiones de diseño guardadas y el historial del proyecto.
 ```
 
 ---
