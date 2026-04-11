@@ -179,12 +179,29 @@
     <div>
       <div class="flex justify-between items-center mb-2">
         <span class="text-[9px] text-[#adaaaa] tracking-widest">DESIGN_DECISIONS</span>
-        <button onclick="loadDecisions()" class="text-[9px] text-secondary">↻ RELOAD</button>
+        <button onclick="toggleDecisionForm()" class="text-[9px] text-secondary">+ ADD</button>
       </div>
-      <div id="intel-decisions"><p class="text-[10px] text-[#adaaaa]">Sin decisiones guardadas</p></div>
+      <!-- Inline add form -->
+      <div id="decision-add-form" class="hidden card card-cyan space-y-2 mb-2">
+        <div class="text-[9px] text-secondary tracking-widest mb-1">NUEVA_DECISIÓN</div>
+        <input id="dec-f-project"   type="text" placeholder="Proyecto (ej: fuente_5V)"
+          class="w-full bg-black border-b border-[#494847] py-1.5 px-1 text-[10px] text-white placeholder-[#494847] focus:outline-none focus:border-secondary font-mono"/>
+        <input id="dec-f-component" type="text" placeholder="Componente (ej: LM317)"
+          class="w-full bg-black border-b border-[#494847] py-1.5 px-1 text-[10px] text-white placeholder-[#494847] focus:outline-none focus:border-secondary font-mono"/>
+        <input id="dec-f-decision"  type="text" placeholder="Decisión tomada"
+          class="w-full bg-black border-b border-[#494847] py-1.5 px-1 text-[10px] text-white placeholder-[#494847] focus:outline-none focus:border-secondary font-mono"/>
+        <textarea id="dec-f-reasoning" rows="3" placeholder="Razonamiento: por qué esta elección..."
+          class="w-full bg-black border border-[#494847]/50 p-1.5 text-[10px] text-white placeholder-[#494847] focus:outline-none focus:border-secondary font-mono resize-none"></textarea>
+        <div class="flex gap-2">
+          <button onclick="toggleDecisionForm()" class="flex-1 py-1.5 border border-[#494847]/30 text-[9px] text-[#adaaaa]">CANCEL</button>
+          <button onclick="saveDecision()"       class="flex-1 py-1.5 bg-secondary/10 border border-secondary/40 text-[9px] text-secondary">GUARDAR</button>
+        </div>
+      </div>
+      <!-- Search + list -->
       <input id="decisions-search" type="text" placeholder="Buscar en decisiones..."
-        class="mt-2 w-full bg-black border border-[#494847]/50 text-white text-[9px] font-mono px-2 py-1.5 focus:border-secondary/60 outline-none"
+        class="w-full bg-black border border-[#494847]/50 text-white text-[9px] font-mono px-2 py-1.5 focus:border-secondary/60 outline-none mb-2"
         oninput="searchDecisions(this.value)"/>
+      <div id="intel-decisions"><p class="text-[10px] text-[#adaaaa]">Sin decisiones guardadas</p></div>
     </div>
 
     <div id="intel-create-source-form" class="hidden bg-[#131313] p-3 border border-[#8eff71]/20 space-y-2">
@@ -292,14 +309,41 @@
     <div>
       <div class="flex justify-between items-center mb-2">
         <span class="text-[9px] text-[#adaaaa] tracking-widest">COMPONENT_STOCK</span>
-        <button onclick="showStockModal()" class="text-[9px] text-secondary">+ ADD</button>
+        <button onclick="toggleStockForm()" class="text-[9px] text-secondary">+ ADD</button>
       </div>
-      <div id="stock-summary" class="card text-[10px] text-[#adaaaa] space-y-1">
+      <!-- Summary -->
+      <div id="stock-summary" class="card text-[10px] text-[#adaaaa] space-y-1 mb-2">
         <div class="flex justify-between"><span>TOTAL</span><span id="stock-total" class="text-primary">0</span></div>
         <div class="flex justify-between"><span>EN STOCK</span><span id="stock-in" class="text-secondary">0</span></div>
         <div class="flex justify-between"><span>CATEGORÍAS</span><span id="stock-cats" class="text-[#adaaaa]">0</span></div>
       </div>
-      <button onclick="showStockList()" class="mt-2 w-full py-1 text-[9px] border border-[#494847]/40 text-[#adaaaa] tracking-widest">VER INVENTARIO</button>
+      <!-- Inline add form -->
+      <div id="stock-add-form" class="hidden card card-cyan space-y-2 mb-2">
+        <div class="text-[9px] text-secondary tracking-widest mb-1">NUEVO_COMPONENTE</div>
+        <input id="stock-f-name"     type="text" placeholder="Nombre (ej: LM317, 10kΩ)"
+          class="w-full bg-black border-b border-[#494847] py-1.5 px-1 text-[10px] text-white placeholder-[#494847] focus:outline-none focus:border-secondary font-mono"/>
+        <div class="grid grid-cols-2 gap-2">
+          <input id="stock-f-value"    type="text" placeholder="Valor (10k, 100nF)"
+            class="bg-black border-b border-[#494847] py-1.5 px-1 text-[10px] text-white placeholder-[#494847] focus:outline-none focus:border-secondary font-mono"/>
+          <input id="stock-f-qty"      type="number" placeholder="Cantidad" min="0" value="1"
+            class="bg-black border-b border-[#494847] py-1.5 px-1 text-[10px] text-white placeholder-[#494847] focus:outline-none focus:border-secondary font-mono"/>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <input id="stock-f-category" type="text" placeholder="Categoría"
+            class="bg-black border-b border-[#494847] py-1.5 px-1 text-[10px] text-white placeholder-[#494847] focus:outline-none focus:border-secondary font-mono"/>
+          <input id="stock-f-supplier" type="text" placeholder="Proveedor"
+            class="bg-black border-b border-[#494847] py-1.5 px-1 text-[10px] text-white placeholder-[#494847] focus:outline-none focus:border-secondary font-mono"/>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="toggleStockForm()" class="flex-1 py-1.5 border border-[#494847]/30 text-[9px] text-[#adaaaa]">CANCEL</button>
+          <button onclick="saveStockItem()"   class="flex-1 py-1.5 bg-secondary/10 border border-secondary/40 text-[9px] text-secondary">GUARDAR</button>
+        </div>
+      </div>
+      <!-- Search + list -->
+      <input id="stock-search" type="text" placeholder="Buscar componente..."
+        class="w-full bg-black border border-[#494847]/50 text-white text-[9px] font-mono px-2 py-1.5 focus:border-secondary/60 outline-none mb-2"
+        oninput="searchStock(this.value)"/>
+      <div id="stock-list" class="space-y-1.5 max-h-72 overflow-y-auto"></div>
     </div>
 
     <!-- Importar esquemático -->
@@ -517,7 +561,7 @@ function switchPanel(name) {
 
   if (name === 'devices') { loadHardware(); startBridgePoll(); } else { stopBridgePoll(); }
   if (name === 'intel')   { loadIntelligence(); loadDecisions(); }
-  if (name === 'menu')    { loadMetrics(); loadJobs(); initSettingsPanel(); loadStockSummary(); }
+  if (name === 'menu')    { loadMetrics(); loadJobs(); initSettingsPanel(); loadStockSummary(); loadStockList(); }
 }
 
 // ── WEBSOCKET CHAT ─────────────────────────────────────────────────────────
@@ -1399,6 +1443,13 @@ window.setPreset          = setPreset;
 window.clearSession       = clearSession;
 
 // ── COMPONENT STOCK ─────────────────────────────────────────────────────────
+
+function toggleStockForm() {
+  const f = document.getElementById('stock-add-form');
+  f.classList.toggle('hidden');
+  if (!f.classList.contains('hidden')) document.getElementById('stock-f-name').focus();
+}
+
 async function loadStockSummary() {
   try {
     const r = await fetch(`${getBackend()}/api/stock/summary`);
@@ -1410,51 +1461,137 @@ async function loadStockSummary() {
   } catch {}
 }
 
-async function showStockList() {
+async function loadStockList(q = '') {
+  const container = document.getElementById('stock-list');
+  if (!container) return;
   try {
-    const r   = await fetch(`${getBackend()}/api/stock`);
-    const list = await r.json();
-    if (!list.length) { showToast('Sin componentes en stock'); return; }
-    const lines = list.map(c =>
-      `${c.name} (${c.value||'?'}) ×${c.quantity}${c.category?' ['+c.category+']':''}`
-    ).join('\n');
-    alert(lines);
-  } catch (e) { showToast('Error cargando stock: ' + e.message); }
+    const url = q
+      ? `${getBackend()}/api/stock/search?q=${encodeURIComponent(q)}&limit=50`
+      : `${getBackend()}/api/stock?limit=50`;
+    const r = await fetch(url);
+    const d = await r.json();
+    const list = d.items ?? d;
+    if (!list.length) {
+      container.innerHTML = '<p class="text-[9px] text-[#adaaaa]">Sin componentes</p>';
+      return;
+    }
+    container.innerHTML = list.map(c => `
+      <div class="card text-[9px] flex items-center gap-2" data-id="${c.id}">
+        <div class="flex-1 min-w-0">
+          <div class="text-white font-mono truncate">${esc(c.name)}${c.value ? ' <span class="text-[#adaaaa]">'+esc(c.value)+'</span>' : ''}</div>
+          ${c.category ? `<div class="text-[#494847]">${esc(c.category)}${c.supplier?' · '+esc(c.supplier):''}</div>` : ''}
+        </div>
+        <div class="flex items-center gap-1 shrink-0">
+          <button onclick="adjustStock(${c.id},-1)" class="w-6 h-6 flex items-center justify-center border border-[#494847]/40 text-[#adaaaa] active:bg-[#494847]/20">−</button>
+          <span class="text-primary font-mono text-[11px] w-7 text-center">${c.quantity}</span>
+          <button onclick="adjustStock(${c.id},+1)" class="w-6 h-6 flex items-center justify-center border border-[#494847]/40 text-[#adaaaa] active:bg-[#494847]/20">+</button>
+          <button onclick="deleteStock(${c.id})" class="w-6 h-6 flex items-center justify-center text-error/60 active:text-error ml-1">
+            <span class="material-symbols-outlined text-sm">delete</span>
+          </button>
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {
+    container.innerHTML = `<p class="text-[9px] text-error">Error: ${e.message}</p>`;
+  }
 }
 
-async function showStockModal() {
-  const name     = prompt('Nombre del componente (ej: LM317, 10kΩ resistor):');
-  if (!name) return;
-  const qty      = parseInt(prompt('Cantidad en stock:', '1') || '1');
-  const category = prompt('Categoría (ej: Reguladores, Resistencias, Capacitores):', '') || null;
-  const value    = prompt('Valor (ej: 10k, 100nF, 5V 1A):', '') || null;
-  const supplier = prompt('Proveedor (ej: MercadoLibre, Mouser):', '') || null;
-
+async function saveStockItem() {
+  const name     = document.getElementById('stock-f-name').value.trim();
+  if (!name) { showToast('Ingresá el nombre del componente'); return; }
+  const qty      = parseInt(document.getElementById('stock-f-qty').value) || 0;
+  const value    = document.getElementById('stock-f-value').value.trim() || null;
+  const category = document.getElementById('stock-f-category').value.trim() || null;
+  const supplier = document.getElementById('stock-f-supplier').value.trim() || null;
   try {
     const r = await fetch(`${getBackend()}/api/stock`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, quantity: qty, category, value, supplier }),
+      body: JSON.stringify({ name, quantity: qty, value, category, supplier }),
     });
     const d = await r.json();
     if (d.ok) {
-      showToast(`✓ ${name} ×${qty} agregado`);
+      showToast(`✓ ${name} ×${qty} guardado`);
+      ['stock-f-name','stock-f-value','stock-f-qty','stock-f-category','stock-f-supplier']
+        .forEach(id => { const el = document.getElementById(id); if(el) el.value = id==='stock-f-qty'?'1':''; });
+      toggleStockForm();
       loadStockSummary();
+      loadStockList();
     }
   } catch (e) { showToast('Error: ' + e.message); }
 }
 
-window.showStockModal = showStockModal;
-window.showStockList  = showStockList;
+async function adjustStock(id, delta) {
+  try {
+    await fetch(`${getBackend()}/api/stock/${id}/adjust?delta=${delta}`, { method: 'POST' });
+    loadStockList(document.getElementById('stock-search')?.value || '');
+    loadStockSummary();
+  } catch {}
+}
+
+async function deleteStock(id) {
+  try {
+    await fetch(`${getBackend()}/api/stock/${id}`, { method: 'DELETE' });
+    loadStockList(document.getElementById('stock-search')?.value || '');
+    loadStockSummary();
+  } catch {}
+}
+
+function searchStock(q) {
+  clearTimeout(window._stockTimeout);
+  window._stockTimeout = setTimeout(() => loadStockList(q), 350);
+}
+
+window.toggleStockForm = toggleStockForm;
+window.saveStockItem   = saveStockItem;
+window.adjustStock     = adjustStock;
+window.deleteStock     = deleteStock;
+window.searchStock     = searchStock;
 
 // ── DESIGN DECISIONS ────────────────────────────────────────────────────────
+
+function toggleDecisionForm() {
+  const f = document.getElementById('decision-add-form');
+  f.classList.toggle('hidden');
+  if (!f.classList.contains('hidden')) document.getElementById('dec-f-project').focus();
+}
+
+async function saveDecision() {
+  const project   = document.getElementById('dec-f-project').value.trim();
+  const decision  = document.getElementById('dec-f-decision').value.trim();
+  const reasoning = document.getElementById('dec-f-reasoning').value.trim();
+  if (!project || !reasoning) { showToast('Proyecto y razonamiento son requeridos'); return; }
+  const component = document.getElementById('dec-f-component').value.trim() || null;
+  try {
+    const r = await fetch(`${getBackend()}/api/decisions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project, decision, reasoning, component, tags: [] }),
+    });
+    if (r.ok) {
+      showToast('✓ Decisión guardada');
+      ['dec-f-project','dec-f-component','dec-f-decision','dec-f-reasoning']
+        .forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
+      toggleDecisionForm();
+      loadDecisions();
+    }
+  } catch (e) { showToast('Error: ' + e.message); }
+}
+
+async function deleteDecision(id) {
+  try {
+    await fetch(`${getBackend()}/api/decisions/${id}`, { method: 'DELETE' });
+    loadDecisions(document.getElementById('decisions-search')?.value || '');
+  } catch {}
+}
+
 async function loadDecisions(query = '') {
   const container = document.getElementById('intel-decisions');
   if (!container) return;
   try {
     const url = query
-      ? `${getBackend()}/api/decisions?q=${encodeURIComponent(query)}&limit=20`
-      : `${getBackend()}/api/decisions?limit=20`;
+      ? `${getBackend()}/api/decisions?q=${encodeURIComponent(query)}&limit=30`
+      : `${getBackend()}/api/decisions?limit=30`;
     const r    = await fetch(url);
     const list = await r.json();
     if (!list.length) {
@@ -1463,8 +1600,14 @@ async function loadDecisions(query = '') {
     }
     container.innerHTML = list.map(d => `
       <div class="card mb-2 text-[9px] border-l-2 border-secondary/40">
-        <div class="text-secondary font-mono">${esc(d.project)} ${d.component ? '— '+esc(d.component) : ''}</div>
-        <div class="text-white mt-1">${esc(d.reasoning.slice(0,120))}${d.reasoning.length>120?'…':''}</div>
+        <div class="flex justify-between items-start">
+          <div class="text-secondary font-mono">${esc(d.project)}${d.component ? ' — '+esc(d.component) : ''}</div>
+          <button onclick="deleteDecision(${d.id})" class="text-error/50 active:text-error ml-2 shrink-0">
+            <span class="material-symbols-outlined text-sm">close</span>
+          </button>
+        </div>
+        ${d.decision ? `<div class="text-white mt-0.5 font-medium">${esc(d.decision)}</div>` : ''}
+        <div class="text-[#adaaaa] mt-1">${esc((d.reasoning||'').slice(0,140))}${(d.reasoning||'').length>140?'…':''}</div>
         <div class="text-[#494847] mt-0.5">${(d.created_at||'').slice(0,10)}</div>
       </div>
     `).join('');
@@ -1478,8 +1621,11 @@ function searchDecisions(q) {
   window._decisionsTimeout = setTimeout(() => loadDecisions(q), 400);
 }
 
-window.loadDecisions   = loadDecisions;
-window.searchDecisions = searchDecisions;
+window.toggleDecisionForm = toggleDecisionForm;
+window.saveDecision       = saveDecision;
+window.deleteDecision     = deleteDecision;
+window.loadDecisions      = loadDecisions;
+window.searchDecisions    = searchDecisions;
 
 // ── SCHEMATIC IMPORT ────────────────────────────────────────────────────────
 async function importSchematic(input) {

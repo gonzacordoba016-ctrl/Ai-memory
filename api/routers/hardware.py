@@ -3,6 +3,7 @@
 
 import asyncio
 from fastapi import APIRouter, Request
+from fastapi.responses import Response
 from core.logger import logger
 from api.limiter import limiter
 
@@ -128,6 +129,38 @@ async def vision_status():
         "model":       os.getenv("VISION_MODEL", "llava:7b"),
         "install_cmd": "ollama pull llava:7b",
     }
+
+
+# ── PlatformIO Export ───────────────────────────────────────────────
+
+@router.get("/firmware/{device_name}/platformio.zip")
+async def export_platformio(device_name: str):
+    """
+    Descarga un ZIP con el último firmware del dispositivo como proyecto PlatformIO.
+    Abrí la carpeta en VS Code con la extensión PlatformIO instalada.
+    """
+    from tools.platformio_exporter import export_platformio_zip
+
+    current = hardware_memory.get_current_firmware(device_name)
+    if not current or not current.get("code"):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"No hay firmware guardado para '{device_name}'")
+
+    device_info = hardware_memory.get_device_info(device_name) or {}
+    fqbn        = device_info.get("fqbn", "")
+    task        = current.get("task", "Firmware generado por Stratum")
+    code        = current.get("code", "")
+
+    zip_bytes = await asyncio.to_thread(
+        export_platformio_zip, device_name, code, task, fqbn
+    )
+
+    safe_name = device_name.replace(" ", "_")
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename={safe_name}_platformio.zip"},
+    )
 
 
 # ── Señal ────────────────────────────────────────────────────────────

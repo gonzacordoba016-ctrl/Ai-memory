@@ -706,6 +706,93 @@ Esto hacía que `gradlew.bat` interpretara solo `C:\Program` como directorio (in
 
 ## 10. SESIONES DE TRABAJO (Log)
 
+### Sesión 2026-04-10 — Features Completas: Dashboard, PlatformIO, Mobile UX, E2E Tests
+
+**Implementado en esta sesión:**
+
+**1. Dashboard de Métricas (web UI — `api/static/index.html`)**
+- Nuevo tab `METRICS` con ícono `bar_chart`
+- 4 KPI cards: firmware flashes, devices registrados, componentes en stock, decisiones guardadas
+- Bar chart Chart.js: historial de firmware por dispositivo (usa `/api/hardware/devices`)
+- Doughnut chart Chart.js: componentes por categoría (usa `/api/stock/categories`)
+- Lista de últimas decisiones de diseño (usa `/api/decisions?limit=5`)
+- `loadMetricsPanel()` se dispara automáticamente al hacer `switchNav('metrics')`
+- Charts se destruyen y recrean en cada llamada (evita duplicados)
+
+**2. PlatformIO Export (`tools/platformio_exporter.py` + `api/routers/hardware.py`)**
+- `tools/platformio_exporter.py`: nueva herramienta que genera un ZIP con `platformio.ini`, `src/main.cpp`, `README.md`
+- 18+ mappings fqbn → board/platform/framework (Arduino Uno, Mega, Nano, ESP32, ESP8266, STM32, RP2040, etc.)
+- `_ino_to_cpp()`: convierte `.ino` a `.cpp` agregando `#include <Arduino.h>` y validando setup/loop
+- `GET /api/hardware/firmware/{device_name}/platformio.zip` — descarga directa como `application/zip`
+
+**3. Component Stock en Mobile (`stratum-mobile/www/index.html`)**
+- Reemplazados `prompt()` y `alert()` (inaceptable en mobile) por formulario inline Cyberpunk
+- Toggle form con campos: nombre, valor, cantidad, categoría, proveedor
+- Lista inline con +/- por ítem y botón delete (sin modales)
+- Búsqueda con debounce 400ms
+- Nuevo endpoint alias `GET /api/stock/search?q=` para búsqueda explícita
+- Nuevo endpoint alias `POST /api/stock/{id}/adjust?delta=N` para ajuste sin body JSON
+
+**4. Design Decisions en Mobile (`stratum-mobile/www/index.html`)**
+- Formulario inline toggle para nueva decisión: project, component, decision, reasoning
+- Cards con botón delete (×) por decisión
+- Carga automática al entrar al panel INTEL
+
+**5. Suite E2E (`eval/test_e2e_api.py`)**
+- 11 secciones: health, stats, hardware, stock, decisions, circuits, schematics, intelligence, memory/search, WebSocket chat, PlatformIO export
+- Colores en Windows, contadores pass/fail
+- CLI: `python eval/test_e2e_api.py --url http://localhost:8000`
+
+**Fixes técnicos:**
+- `database/component_stock.py` → `get_categories()` retorna `list[dict]` con `{category, count}` (Chart.js lo requería)
+- `database/component_stock.py` → `search()` acepta parámetro `limit` (ya no hardcoded `LIMIT 50`)
+- `api/routers/stock.py` → endpoints `/search` y `/{id}/adjust` definidos ANTES de `/{component_id}` para evitar conflicto de rutas FastAPI
+- `eval/test_e2e_api.py` → test de GET /api/stock espera `list` directa (no `{"items": [...]}`)
+
+**Estado al cierre de sesión:**
+- Todo committed localmente. Push pendiente (user debe hacer `git push origin main`)
+- Railway sigue pausado — se puede retomar con push + chequear `/api/health`
+
+---
+
+### Sesión 2026-04-10 — Railway Deploy Pausado
+
+**Estado:** Railway deploy **pausado intencionalmente** por el usuario. Se retoma cuando sea necesario.
+
+**Problema:** El healthcheck (`/api/health`) nunca respondía en fresh builds de v3.0.0. El container arrancaba pero el servidor no llegaba a bindear el puerto. Railway mataba el container tras 11 intentos (~5 min).
+
+**Causa raíz:** No confirmada — sin acceso a runtime logs de Railway no se pudo ver el traceback exacto.
+
+**Fixes aplicados (todos en `main`, listos para push):**
+
+| Commit | Fix |
+|--------|-----|
+| `50a9297` | `_env()` helper en config.py — stripea comillas que Railway inyecta en vars |
+| `20f68a1` | `validate_config()` → warning, nunca `sys.exit(1)` |
+| `3d9d8c6` | `os.makedirs(exist_ok=True)` en todos los módulos DB |
+| `bb13955` | VectorStore con try/except — no crashea si Qdrant falla |
+| `37d10f2` | `run.py` — elimina `sys.exit(1)` en validate_config |
+| `645002a` | `server.py` — cada router en try/except individual, health siempre HTTP 200, logs flush=True, Ollama check omitido si provider=openrouter |
+
+**Para retomar Railway:**
+1. `git push origin main` desde terminal del usuario (Claude Code no puede autenticar GitHub)
+2. Visitar `https://ai-memory-production-d6b1.up.railway.app/api/health`
+3. La respuesta incluye `startup_errors`, `routers_ok`, `routers_failed` — diagnóstico inmediato sin necesidad de ver logs
+
+**Variables Railway (ya configuradas y correctas):**
+```
+MEMORY_DB_PATH=/data/database/memory.db
+VECTOR_DB_PATH=/data/memory_db
+GRAPH_DB_PATH=/data/database/graph_memory.json
+LLM_PROVIDER=openrouter
+OPENROUTER_API_KEY=sk-or-v1-0ff7...
+LLM_MODEL_FAST=openai/gpt-4o-mini
+LLM_MODEL_SMART=openai/gpt-4o
+OPENROUTER_MODEL=openai/gpt-4o-mini
+```
+
+---
+
 ### Sesión 2026-04-08 — Professional Engineering Features (v3.0.0)
 
 **Nuevo posicionamiento:** Stratum ya no es solo "AI para Arduino". Es un **asistente técnico profesional con memoria persistente para ingenieros que trabajan con circuitos** (electrónica, eléctrica, mecatrónica, control, automatización).

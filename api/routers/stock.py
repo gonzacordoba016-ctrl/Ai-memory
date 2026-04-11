@@ -67,6 +67,26 @@ async def list_categories():
     return get_stock_db().get_categories()
 
 
+@router.get("/search")
+async def search_components(
+    q:            str   = Query(...),
+    in_stock_only: bool = Query(default=False),
+    limit:        int   = Query(default=50),
+):
+    """Alias de búsqueda explícito para clientes mobile."""
+    return get_stock_db().search(q, in_stock_only=in_stock_only, limit=limit)
+
+
+@router.post("/{component_id}/adjust")
+async def adjust_quantity_qs(component_id: int, delta: int = Query(...)):
+    """Ajusta cantidad via query param (conveniente para mobile)."""
+    db = get_stock_db()
+    if not db.get(component_id):
+        raise HTTPException(status_code=404, detail="Componente no encontrado")
+    new_qty = db.update_quantity(component_id, delta)
+    return {"ok": True, "quantity": new_qty}
+
+
 @router.post("", status_code=201)
 async def add_component(data: ComponentIn):
     """Agrega un nuevo componente al stock."""

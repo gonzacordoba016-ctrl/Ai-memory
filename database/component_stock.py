@@ -122,7 +122,7 @@ class ComponentStockDB:
             rows = c.execute(query, params).fetchall()
         return [self._row(r) for r in rows]
 
-    def search(self, query: str, in_stock_only: bool = False) -> list[dict]:
+    def search(self, query: str, in_stock_only: bool = False, limit: int = 50) -> list[dict]:
         q = f"%{query}%"
         stock_filter = "AND quantity > 0" if in_stock_only else ""
         with self._conn() as c:
@@ -133,17 +133,20 @@ class ComponentStockDB:
                 WHERE (name LIKE ? OR category LIKE ? OR value LIKE ? OR notes LIKE ?)
                 {stock_filter}
                 ORDER BY quantity DESC, name
-                LIMIT 50
-            """, (q, q, q, q)).fetchall()
+                LIMIT ?
+            """, (q, q, q, q, limit)).fetchall()
         return [self._row(r) for r in rows]
 
-    def get_categories(self) -> list[str]:
+    def get_categories(self) -> list[dict]:
+        """Retorna categorías con conteo de componentes."""
         with self._conn() as c:
             rows = c.execute("""
-                SELECT DISTINCT category FROM component_stock
-                WHERE category IS NOT NULL ORDER BY category
+                SELECT COALESCE(category, 'Sin categoría'), COUNT(*) as cnt
+                FROM component_stock
+                GROUP BY COALESCE(category, 'Sin categoría')
+                ORDER BY cnt DESC
             """).fetchall()
-        return [r[0] for r in rows]
+        return [{"category": r[0], "count": r[1]} for r in rows]
 
     def get_summary(self) -> dict:
         with self._conn() as c:
