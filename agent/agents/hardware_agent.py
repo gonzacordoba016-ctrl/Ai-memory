@@ -453,9 +453,12 @@ class HardwareAgent:
 
         devices = detect_devices()
         if not devices:
+            # Sin dispositivo → asesoramiento técnico en vez de error genérico
+            logger.info("[HardwareAgent] Sin dispositivo — derivando a design_consult")
+            advice = self._design_consult(task, context)
             return (
-                "No detecté ningún dispositivo conectado. "
-                "Conectá tu Arduino/ESP32 por USB y volvé a intentarlo."
+                advice + "\n\n---\n"
+                "*Si querés flashear el firmware, conectá el Arduino/ESP32 por USB y repetí el comando.*"
             )
 
         device = next((d for d in devices if d["platform"]), devices[0])
