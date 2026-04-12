@@ -365,9 +365,11 @@
         // Actualizar información del circuito
         function updateCircuitInfo() {
             if (!currentCircuit) return;
-            
+
             circuitName.textContent = currentCircuit.name;
-            circuitDescription.textContent = currentCircuit.description;
+            const sourceTool = currentCircuit.metadata?.source_tool;
+            circuitDescription.textContent = currentCircuit.description +
+                (sourceTool ? ` [${sourceTool.toUpperCase()}]` : '');
         }
         
         // Renderizar esquemático
@@ -399,7 +401,15 @@
             draw.text(currentCircuit.description)
                 .move(20, 50)
                 .font({ size: 14, family: 'Arial', fill: '#cccccc' });
-            
+
+            // Badge source_tool si el circuito fue importado
+            const sourceTool = currentCircuit.metadata?.source_tool;
+            if (sourceTool) {
+                draw.text(`⬡ Importado desde: ${sourceTool.toUpperCase()}`)
+                    .move(20, 75)
+                    .font({ size: 11, family: 'Arial', fill: '#00d4ff' });
+            }
+
             // Posiciones: usar guardadas si existen, si no calcular
             const savedPos = currentCircuit.positions || {};
             currentCircuit.components.forEach((comp, index) => {

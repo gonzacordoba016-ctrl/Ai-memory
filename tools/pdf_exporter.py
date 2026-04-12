@@ -188,6 +188,81 @@ def generate_project_pdf(
                 ))
                 story.append(Spacer(1, 2*mm))
 
+    # ── DRC Report ───────────────────────────────────────────────────────────
+    try:
+        from tools.electrical_drc import run_drc
+        drc = design.get("drc") or run_drc(design)
+        story.append(Paragraph("VERIFICACIÓN DRC", style_h2))
+        story.append(Paragraph(drc.get("summary", ""), style_normal))
+        story.append(Spacer(1, 2*mm))
+        all_issues = drc.get("errors", []) + drc.get("warnings", []) + drc.get("info", [])
+        if all_issues:
+            drc_data = [["Severidad", "Código", "Componente", "Mensaje"]]
+            for issue in all_issues:
+                drc_data.append([
+                    issue.get("severity", "").upper(),
+                    issue.get("code", ""),
+                    issue.get("component") or issue.get("net") or "",
+                    issue.get("message", "")[:80],
+                ])
+            dt = Table(drc_data, colWidths=[20*mm, 40*mm, 25*mm, 75*mm])
+            dt.setStyle(TableStyle([
+                ("BACKGROUND",   (0, 0), (-1, 0), COLOR_DARK),
+                ("TEXTCOLOR",    (0, 0), (-1, 0), COLOR_GREEN),
+                ("FONTNAME",     (0, 0), (-1, 0), "Courier-Bold"),
+                ("FONTSIZE",     (0, 0), (-1, -1), 7),
+                ("FONTNAME",     (0, 1), (-1, -1), "Courier"),
+                ("GRID",         (0, 0), (-1, -1), 0.5, COLOR_GRAY),
+                ("TOPPADDING",   (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING",(0, 0), (-1, -1), 2),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [COLOR_WHITE, colors.HexColor("#fff8f0")]),
+            ]))
+            story.append(dt)
+        else:
+            story.append(Paragraph("Sin problemas detectados.", style_normal))
+        story.append(Spacer(1, 4*mm))
+    except Exception:
+        pass
+
+    # ── BOM ───────────────────────────────────────────────────────────────────
+    try:
+        from tools.bom_generator import generate_bom
+        from database.component_stock import get_stock_db
+        bom = generate_bom(design, get_stock_db().get_all())
+        story.append(Paragraph(f"BILL OF MATERIALS — {bom['summary']}", style_h2))
+        bom_table_data = [["Ref", "Nombre", "Valor", "Package", "Stock", "Proveedor", "Costo"]]
+        for line in bom.get("lines", []):
+            bom_table_data.append([
+                line["ref"],
+                str(line["name"])[:25],
+                str(line.get("value") or ""),
+                str(line.get("package") or ""),
+                str(line["stock_qty"]),
+                str(line.get("supplier") or "—")[:15],
+                f"${line['unit_cost']:.2f}" if line["unit_cost"] else "—",
+            ])
+        # Fila de total
+        bom_table_data.append(["", "", "", "", "", "TOTAL",
+                                f"${bom['total_cost']:.2f}"])
+        bt = Table(bom_table_data, colWidths=[15*mm, 45*mm, 25*mm, 22*mm, 15*mm, 28*mm, 18*mm])
+        bt.setStyle(TableStyle([
+            ("BACKGROUND",   (0, 0), (-1, 0), COLOR_DARK),
+            ("TEXTCOLOR",    (0, 0), (-1, 0), COLOR_BLUE),
+            ("FONTNAME",     (0, 0), (-1, 0), "Courier-Bold"),
+            ("FONTSIZE",     (0, 0), (-1, -1), 7),
+            ("FONTNAME",     (0, 1), (-1, -1), "Courier"),
+            ("GRID",         (0, 0), (-1, -1), 0.5, COLOR_GRAY),
+            ("TOPPADDING",   (0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING",(0, 0), (-1, -1), 2),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -2), [COLOR_WHITE, colors.HexColor("#f0f8ff")]),
+            ("BACKGROUND",   (0, -1), (-1, -1), colors.HexColor("#e8ffe8")),
+            ("FONTNAME",     (0, -1), (-1, -1), "Courier-Bold"),
+        ]))
+        story.append(bt)
+        story.append(Spacer(1, 4*mm))
+    except Exception:
+        pass
+
     # ── Footer ────────────────────────────────────────────────────────────────
     story.append(HRFlowable(width="100%", thickness=0.5, color=COLOR_GRAY))
     story.append(Spacer(1, 2*mm))

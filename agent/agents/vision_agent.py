@@ -10,7 +10,7 @@ import json as _json
 import os
 import requests
 from core.logger import logger
-from core.config import get_llm_headers, LLM_URLS
+from core.config import get_llm_headers
 from database.hardware_memory import hardware_memory
 
 # Modelo de visión para Ollama

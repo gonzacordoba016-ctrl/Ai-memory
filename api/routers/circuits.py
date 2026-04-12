@@ -300,3 +300,60 @@ async def parse_circuit_async(request: Request, description: str, mcu: str = "Ar
     })
 
     return JSONResponse(content={"job_id": job_id, "status": "pending"})
+
+
+# ── DRC ───────────────────────────────────────────────────────────────────────
+
+@router.get("/{circuit_id}/drc")
+async def run_circuit_drc(circuit_id: int):
+    """Ejecuta el DRC (Design Rule Check) eléctrico sobre un circuito."""
+    from tools.electrical_drc import run_drc
+
+    agent        = _get_circuit_agent()
+    circuit_data = agent.get_circuit_by_id(circuit_id)
+    if not circuit_data:
+        raise HTTPException(status_code=404, detail="Circuito no encontrado")
+
+    result = run_drc(circuit_data)
+    result["circuit_id"]   = circuit_id
+    result["circuit_name"] = circuit_data.get("name", "")
+    return JSONResponse(content=result)
+
+
+# ── BOM ───────────────────────────────────────────────────────────────────────
+
+@router.get("/{circuit_id}/bom")
+async def get_circuit_bom(circuit_id: int):
+    """Genera el BOM con costos del stock."""
+    from tools.bom_generator import generate_bom
+    from database.component_stock import get_stock_db
+
+    agent        = _get_circuit_agent()
+    circuit_data = agent.get_circuit_by_id(circuit_id)
+    if not circuit_data:
+        raise HTTPException(status_code=404, detail="Circuito no encontrado")
+
+    bom = generate_bom(circuit_data, get_stock_db().get_all())
+    bom["circuit_id"] = circuit_id
+    return JSONResponse(content=bom)
+
+
+@router.get("/{circuit_id}/bom.csv")
+async def get_circuit_bom_csv(circuit_id: int):
+    """Descarga el BOM como CSV."""
+    from tools.bom_generator import generate_bom, bom_to_csv
+    from database.component_stock import get_stock_db
+
+    agent        = _get_circuit_agent()
+    circuit_data = agent.get_circuit_by_id(circuit_id)
+    if not circuit_data:
+        raise HTTPException(status_code=404, detail="Circuito no encontrado")
+
+    bom = generate_bom(circuit_data, get_stock_db().get_all())
+    csv_content = bom_to_csv(bom)
+    cname = (circuit_data.get("name") or "circuit").replace(" ", "_")
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=bom_{cname}_{circuit_id}.csv"},
+    )

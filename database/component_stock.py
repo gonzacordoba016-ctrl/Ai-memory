@@ -35,10 +35,16 @@ class ComponentStockDB:
                     datasheet    TEXT,
                     notes        TEXT,
                     tags         TEXT DEFAULT '[]',
+                    unit_cost    REAL DEFAULT 0.0,
                     created_at   TEXT NOT NULL,
                     updated_at   TEXT NOT NULL
                 )
             """)
+            # Migración segura: agregar unit_cost si no existe (bases existentes)
+            try:
+                c.execute("ALTER TABLE component_stock ADD COLUMN unit_cost REAL DEFAULT 0.0")
+            except Exception:
+                pass  # Ya existe
             c.execute("""
                 CREATE INDEX IF NOT EXISTS idx_stock_name
                 ON component_stock(name)
@@ -51,20 +57,28 @@ class ComponentStockDB:
     def add(self, name: str, quantity: int = 0, category: str = None,
             value: str = None, package: str = None, supplier: str = None,
             supplier_ref: str = None, datasheet: str = None,
-            notes: str = None, tags: list = None) -> int:
+            notes: str = None, tags: list = None, unit_cost: float = 0.0) -> int:
         now = datetime.utcnow().isoformat()
         with self._conn() as c:
             cur = c.execute("""
                 INSERT INTO component_stock
-                (name, category, value, package, quantity, supplier, supplier_ref, datasheet, notes, tags, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (name, category, value, package, quantity, supplier, supplier_ref,
+                 datasheet, notes, tags, unit_cost, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (name, category, value, package, quantity, supplier,
-                  supplier_ref, datasheet, notes, json.dumps(tags or []), now, now))
+                  supplier_ref, datasheet, notes, json.dumps(tags or []),
+                  unit_cost, now, now))
             return cur.lastrowid
+
+    def update_cost(self, component_id: int, unit_cost: float) -> bool:
+        with self._conn() as c:
+            c.execute("UPDATE component_stock SET unit_cost = ?, updated_at = ? WHERE id = ?",
+                      (unit_cost, datetime.utcnow().isoformat(), component_id))
+        return True
 
     def update(self, component_id: int, **kwargs) -> bool:
         allowed = {"name", "category", "value", "package", "quantity",
-                   "supplier", "supplier_ref", "datasheet", "notes", "tags"}
+                   "supplier", "supplier_ref", "datasheet", "notes", "tags", "unit_cost"}
         fields = {k: v for k, v in kwargs.items() if k in allowed}
         if not fields:
             return False
@@ -97,7 +111,7 @@ class ComponentStockDB:
         with self._conn() as c:
             row = c.execute("""
                 SELECT id, name, category, value, package, quantity, supplier,
-                       supplier_ref, datasheet, notes, tags, created_at, updated_at
+                       supplier_ref, datasheet, notes, tags, unit_cost, created_at, updated_at
                 FROM component_stock WHERE id = ?
             """, (component_id,)).fetchone()
         return self._row(row) if row else None
@@ -105,7 +119,7 @@ class ComponentStockDB:
     def get_all(self, category: str = None, in_stock_only: bool = False) -> list[dict]:
         query = """
             SELECT id, name, category, value, package, quantity, supplier,
-                   supplier_ref, datasheet, notes, tags, created_at, updated_at
+                   supplier_ref, datasheet, notes, tags, unit_cost, created_at, updated_at
             FROM component_stock
         """
         params = []
@@ -128,7 +142,7 @@ class ComponentStockDB:
         with self._conn() as c:
             rows = c.execute(f"""
                 SELECT id, name, category, value, package, quantity, supplier,
-                       supplier_ref, datasheet, notes, tags, created_at, updated_at
+                       supplier_ref, datasheet, notes, tags, unit_cost, created_at, updated_at
                 FROM component_stock
                 WHERE (name LIKE ? OR category LIKE ? OR value LIKE ? OR notes LIKE ?)
                 {stock_filter}
@@ -168,8 +182,9 @@ class ComponentStockDB:
             "datasheet":    r[8],
             "notes":        r[9],
             "tags":         json.loads(r[10]) if r[10] else [],
-            "created_at":   r[11],
-            "updated_at":   r[12],
+            "unit_cost":    r[11] or 0.0,
+            "created_at":   r[12],
+            "updated_at":   r[13],
         }
 
 

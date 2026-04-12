@@ -1,0 +1,8 @@
+{
+  "name": "homeassistant",
+  "version": "1.0",
+  "description": "Integración con Home Assistant via HTTP webhooks — sincroniza dispositivos Stratum como entidades HA",
+  "entry": "homeassistant_plugin.py",
+  "permissions": ["network"],
+  "author": "Stratum"
+}

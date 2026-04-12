@@ -23,6 +23,12 @@ import os
 import sys
 import argparse
 
+# ── Fix encoding Windows (cp1252 no soporta → ✓ ✗) ──────────────────────────
+if sys.platform == "win32":
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
 # ── Colores ANSI ─────────────────────────────────────────────────────────────
 
 _WIN = sys.platform == "win32"
@@ -30,10 +36,10 @@ _WIN = sys.platform == "win32"
 def _c(text, code):
     return text if _WIN else f"\033[{code}m{text}\033[0m"
 
-def ok(msg):   print(f"  {_c('✓', 92)} {msg}")
+def ok(msg):   print(f"  {_c('OK', 92)} {msg}")
 def warn(msg): print(f"  {_c('!', 93)} {msg}")
-def err(msg):  print(f"  {_c('✗', 91)} {msg}")
-def info(msg): print(f"  {_c('→', 96)} {msg}")
+def err(msg):  print(f"  {_c('X', 91)} {msg}")
+def info(msg): print(f"  {_c('->', 96)} {msg}")
 def step(msg): print(f"\n{_c(msg, 1)}")
 
 

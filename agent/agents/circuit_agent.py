@@ -92,6 +92,19 @@ class CircuitAgent:
             if warnings:
                 circuit_data.setdefault("warnings", []).extend(warnings)
 
+            # DRC eléctrico automático
+            try:
+                from tools.electrical_drc import run_drc
+                drc_result = run_drc(circuit_data)
+                circuit_data["drc"] = drc_result
+                if not drc_result["passed"]:
+                    for err in drc_result["errors"]:
+                        circuit_data.setdefault("warnings", []).append(
+                            f"[DRC] {err['code']}: {err['message']}"
+                        )
+            except Exception as drc_err:
+                logger.warning(f"DRC falló silenciosamente: {drc_err}")
+
             # Guardar diseño en DB
             design_id = self.circuit_manager.save_design(circuit_data)
 

@@ -22,7 +22,8 @@
   ::-webkit-scrollbar-thumb:hover { background: #a4ffb9; }
   .blinking-cursor::after { content: '█'; animation: blink 1s step-start infinite; }
   @keyframes blink { 50% { opacity: 0; } }
-  .nav-item.active { color: #a4ffb9; background: #131313; border-left: 2px solid #a4ffb9; }
+  .nav-item.active { color: #a4ffb9 !important; background: #131313; border-left: 2px solid #a4ffb9; }
+  .session-item.active-session { border-left-color: #a4ffb9 !important; background: #131313; }
   .tab-content { display: none; }
   .tab-content.active { display: flex; flex-direction: column; flex: 1; overflow-y: auto; }
   .signal-bar { transition: height 0.15s steps(4, end); }
@@ -30,6 +31,13 @@
   @keyframes voice-pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
   .msg-queued { background: #131313; border-right: 2px solid #494847; padding: 12px 16px; opacity: 0.55; margin-bottom: 8px; }
   .queue-badge { font-size:8px; padding:1px 5px; background:#494847; color:#adaaaa; letter-spacing:.08em; margin-left:6px; }
+  .calc-input { background:#0d0d0d; border:1px solid #494847/40; color:#e0e0e0; font-family:monospace; font-size:9px; padding:4px 6px; outline:none; width:100%; }
+  .calc-input:focus { border-color:#a4ffb9; }
+  .calc-kv { display:flex; justify-content:space-between; padding:1px 0; }
+  .calc-kv span:first-child { opacity:0.5; }
+  .calc-kv span:last-child { color:#a4ffb9; font-weight:bold; }
+  .calc-warn { color:#ffd700; font-size:8px; margin-top:2px; }
+  .calc-stock { color:#00cbfe; font-size:8px; margin-top:4px; border-top:1px solid #494847/30; padding-top:4px; }
 </style>
 <script id="tailwind-config">
   tailwind.config = {
@@ -69,97 +77,133 @@
 
 <!-- ── HEADER ──────────────────────────────────────────────────────────── -->
 <header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-6 h-14 bg-black/90 border-b border-[#a4ffb9]/20 shadow-[0_0_15px_rgba(164,255,185,0.1)]">
-  <div class="flex items-center gap-8">
-    <span class="text-2xl font-black text-[#a4ffb9] tracking-[-0.05em]">STRATUM</span>
-    <div class="hidden md:flex gap-4 font-mono text-[10px] tracking-widest items-center opacity-80">
-      <div class="flex items-center gap-1.5">
-        <span id="svc-sqlite-dot" class="w-1.5 h-1.5 bg-outline rounded-full"></span>
-        <span id="svc-sqlite">SQLite: —</span>
-      </div>
-      <div class="flex items-center gap-1.5">
-        <span id="svc-qdrant-dot" class="w-1.5 h-1.5 bg-outline rounded-full"></span>
-        <span id="svc-qdrant">Qdrant: —</span>
-      </div>
-      <div class="flex items-center gap-1.5">
-        <span id="svc-ollama-dot" class="w-1.5 h-1.5 bg-outline rounded-full animate-pulse"></span>
-        <span id="svc-ollama">Ollama: —</span>
-      </div>
-      <div class="flex items-center gap-1.5">
-        <span class="material-symbols-outlined text-[10px] text-[#494847]">memory</span>
-        <span id="svc-cache">Cache: —</span>
-      </div>
-      <div class="flex items-center gap-1.5 border-l border-[#a4ffb9]/20 pl-4">
-        <span id="conn-dot" class="w-1.5 h-1.5 bg-gray-500 rounded-full"></span>
-        <span id="conn-label" class="text-gray-500">CONNECTING...</span>
-      </div>
+  <div class="flex items-center gap-6">
+    <span class="text-2xl font-black text-[#a4ffb9] tracking-[-0.05em] cursor-pointer" onclick="switchView('chat')">STRATUM</span>
+    <div class="hidden md:flex items-center gap-1.5 font-mono text-[9px]">
+      <span id="conn-dot" class="w-1.5 h-1.5 bg-gray-500 rounded-full"></span>
+      <span id="conn-label" class="text-gray-500 tracking-widest">CONNECTING...</span>
     </div>
+    <!-- Hidden legacy IDs for JS compatibility -->
+    <span id="svc-sqlite-dot" class="hidden"></span>
+    <span id="svc-qdrant-dot" class="hidden"></span>
+    <span id="svc-ollama-dot" class="hidden"></span>
+    <span id="svc-cache" class="hidden"></span>
   </div>
   <div class="flex items-center gap-4">
-    <div class="hidden md:flex gap-3 font-mono text-[10px] tracking-widest text-[#adaaaa]">
-      <div class="flex flex-col items-center">
+    <div class="hidden md:flex gap-4 font-mono text-[10px] tracking-widest text-[#adaaaa]">
+      <div class="flex items-center gap-1.5">
         <span class="text-[8px] opacity-50">FACTS</span>
         <span id="h-facts" class="text-primary font-bold">0</span>
       </div>
-      <div class="flex flex-col items-center">
+      <div class="flex items-center gap-1.5 ml-1">
         <span class="text-[8px] opacity-50">MSGS</span>
         <span id="h-msgs" class="text-primary font-bold">0</span>
       </div>
-      <div class="flex flex-col items-center">
+      <div class="flex items-center gap-1.5 ml-1">
         <span class="text-[8px] opacity-50">NODES</span>
         <span id="h-nodes" class="text-secondary font-bold">0</span>
       </div>
     </div>
-    <!-- Active profile badge -->
     <div class="hidden md:flex items-center gap-1.5 border-l border-[#a4ffb9]/20 pl-4">
       <span class="material-symbols-outlined text-[10px] text-[#adaaaa]">psychology</span>
       <span id="h-active-profile" class="text-[9px] font-mono tracking-widest text-[#adaaaa]">—</span>
     </div>
-    <div class="flex gap-2 ml-4">
+    <div class="flex gap-1 ml-2">
       <button onclick="openVisionModal()" class="p-1.5 text-[#adaaaa] hover:text-[#8eff71] transition-colors" title="Analizar circuito con IA visual">
         <span class="material-symbols-outlined text-sm">photo_camera</span>
       </button>
-      <a href="/static/graph3d.html" target="_blank" class="p-1.5 text-[#adaaaa] hover:text-[#8eff71] transition-colors" title="Grafo 3D">
-        <span class="material-symbols-outlined text-sm">hub</span>
-      </a>
       <a href="/api/circuits/viewer" target="_blank" class="p-1.5 text-[#adaaaa] hover:text-[#8eff71] transition-colors" title="Circuit Viewer">
         <span class="material-symbols-outlined text-sm">schema</span>
       </a>
+      <button onclick="switchView('metrics')" class="p-1.5 text-[#adaaaa] hover:text-[#8eff71] transition-colors" title="Métricas">
+        <span class="material-symbols-outlined text-sm">bar_chart</span>
+      </button>
     </div>
   </div>
 </header>
 
-<!-- ── LEFT SIDEBAR ─────────────────────────────────────────────────────── -->
-<aside class="fixed left-0 top-14 h-[calc(100vh-3.5rem)] flex flex-col z-40 bg-[#0e0e0e] w-64 border-r border-[#a4ffb9]/10 font-mono text-[0.6875rem] tracking-widest overflow-y-auto">
-  <div class="p-4 border-b border-[#a4ffb9]/10">
-    <div class="text-[#a4ffb9] font-bold">ENGINE_v2.0.0</div>
-    <div id="engine-status" class="text-[#adaaaa] text-[9px]">STATUS: INITIALIZING</div>
+<!-- ── LEFT SIDEBAR — sessions + module nav ─────────────────────────────── -->
+<aside class="fixed left-0 top-14 h-[calc(100vh-3.5rem)] flex flex-col z-40 bg-[#0a0a0a] w-72 border-r border-[#a4ffb9]/10 font-mono text-[0.6875rem] tracking-widest overflow-hidden">
+  <!-- CONVERSACIONES — sección colapsable, ocupa el espacio mayor -->
+  <div id="chats-section" class="flex flex-col flex-1 min-h-0 transition-all duration-200">
+
+    <!-- Header colapsable -->
+    <div class="flex items-center justify-between px-4 py-2.5 border-b border-[#a4ffb9]/10 flex-shrink-0 cursor-pointer hover:bg-[#0f0f0f] transition-colors"
+         onclick="toggleChatsSection()">
+      <div class="flex items-center gap-2">
+        <span id="chats-chevron" class="material-symbols-outlined text-sm text-[#494847] transition-transform duration-200">expand_more</span>
+        <div>
+          <div class="text-[10px] text-[#a4ffb9] font-bold tracking-widest">CONVERSACIONES</div>
+          <div id="engine-status" class="text-[8px] text-[#494847]">STATUS: INITIALIZING</div>
+        </div>
+      </div>
+      <button onclick="event.stopPropagation(); newSession()"
+        class="flex items-center gap-1 text-[9px] text-[#adaaaa] hover:text-primary border border-[#494847]/40 hover:border-primary/50 px-2 py-1 transition-all">
+        <span class="material-symbols-outlined text-xs">add</span>NUEVA
+      </button>
+    </div>
+
+    <!-- Lista de sesiones (colapsa cuando se cierra la sección) -->
+    <div id="sessions-list-wrap" class="flex-1 flex flex-col min-h-0 overflow-hidden">
+      <div id="sessions-list" class="flex-1 overflow-y-auto py-1 min-h-0">
+        <div class="px-4 py-6 text-center text-[9px] text-[#494847]">Sin conversaciones</div>
+      </div>
+    </div>
   </div>
 
-  <!-- Nav -->
-  <nav class="py-4">
-    <div class="px-4 mb-2 text-[#adaaaa] text-[8px] opacity-50">CORE_MODULES</div>
-    <button onclick="switchNav('telemetry')" id="nav-telemetry" class="nav-item active flex items-center gap-3 py-2 pl-4 w-full text-left stepped-transition">
-      <span class="material-symbols-outlined text-sm">analytics</span> TELEMETRY
-    </button>
-    <button onclick="switchNav('devices')" id="nav-devices" class="nav-item flex items-center gap-3 py-2 pl-4 w-full text-left text-[#adaaaa] hover:bg-[#201f1f] hover:text-[#00cbfe] transition-all">
-      <span class="material-symbols-outlined text-sm">router</span> DEVICES
-    </button>
-    <button onclick="switchNav('search')" id="nav-search" class="nav-item flex items-center gap-3 py-2 pl-4 w-full text-left text-[#adaaaa] hover:bg-[#201f1f] hover:text-[#00cbfe] transition-all">
-      <span class="material-symbols-outlined text-sm">search</span> SEARCH
-    </button>
-    <button onclick="switchNav('intel')" id="nav-intel" class="nav-item flex items-center gap-3 py-2 pl-4 w-full text-left text-[#adaaaa] hover:bg-[#201f1f] hover:text-[#00cbfe] transition-all">
-      <span class="material-symbols-outlined text-sm">psychology</span> INTEL
-    </button>
-    <button onclick="switchNav('metrics')" id="nav-metrics" class="nav-item flex items-center gap-3 py-2 pl-4 w-full text-left text-[#adaaaa] hover:bg-[#201f1f] hover:text-[#00cbfe] transition-all">
-      <span class="material-symbols-outlined text-sm">bar_chart</span> METRICS
-    </button>
-    <button onclick="switchNav('system')" id="nav-system" class="nav-item flex items-center gap-3 py-2 pl-4 w-full text-left text-[#adaaaa] hover:bg-[#201f1f] hover:text-[#00cbfe] transition-all">
-      <span class="material-symbols-outlined text-sm">settings</span> SYSTEM
-    </button>
-  </nav>
+  <!-- MÓDULOS — siempre visible, compacto -->
+  <div id="modules-section" class="border-t border-[#a4ffb9]/10 flex-shrink-0">
 
-  <!-- Dynamic panels inside sidebar -->
-  <div class="flex-1 overflow-y-auto px-4 py-2">
+    <!-- Header colapsable de módulos -->
+    <div class="flex items-center justify-between px-4 py-2 cursor-pointer hover:bg-[#0f0f0f] transition-colors"
+         onclick="toggleModulesSection()">
+      <div class="flex items-center gap-2">
+        <span id="modules-chevron" class="material-symbols-outlined text-xs text-[#494847] transition-transform duration-200">expand_less</span>
+        <span class="text-[8px] text-[#494847] tracking-widest">MÓDULOS</span>
+      </div>
+    </div>
+
+    <nav id="modules-nav" class="pb-1">
+      <button onclick="switchView('devices')"  id="nav-devices"  class="nav-item flex items-center gap-3 py-1.5 pl-4 w-full text-left text-[#adaaaa] hover:bg-[#131313] hover:text-[#00cbfe] transition-all text-[10px]">
+        <span class="material-symbols-outlined text-sm">router</span> DEVICES
+      </button>
+      <button onclick="switchView('intel')"    id="nav-intel"    class="nav-item flex items-center gap-3 py-1.5 pl-4 w-full text-left text-[#adaaaa] hover:bg-[#131313] hover:text-[#00cbfe] transition-all text-[10px]">
+        <span class="material-symbols-outlined text-sm">psychology</span> INTEL
+      </button>
+      <button onclick="switchView('calc')"     id="nav-calc"     class="nav-item flex items-center gap-3 py-1.5 pl-4 w-full text-left text-[#adaaaa] hover:bg-[#131313] hover:text-[#00cbfe] transition-all text-[10px]">
+        <span class="material-symbols-outlined text-sm">calculate</span> CALC
+      </button>
+      <button onclick="switchView('metrics')"  id="nav-metrics"  class="nav-item flex items-center gap-3 py-1.5 pl-4 w-full text-left text-[#adaaaa] hover:bg-[#131313] hover:text-[#00cbfe] transition-all text-[10px]">
+        <span class="material-symbols-outlined text-sm">bar_chart</span> METRICS
+      </button>
+      <button onclick="switchView('system')"   id="nav-system"   class="nav-item flex items-center gap-3 py-1.5 pl-4 w-full text-left text-[#adaaaa] hover:bg-[#131313] hover:text-[#00cbfe] transition-all text-[10px]">
+        <span class="material-symbols-outlined text-sm">settings</span> SYSTEM
+      </button>
+    </nav>
+  </div>
+
+  <!-- Sidebar footer: service status + bridge -->
+  <div class="border-t border-[#a4ffb9]/10 px-4 py-2 flex-shrink-0 space-y-1">
+    <div class="flex flex-wrap gap-x-3 gap-y-0.5 text-[8px] text-[#494847]">
+      <span id="svc-sqlite">SQLite —</span>
+      <span id="svc-qdrant">Qdrant —</span>
+      <span id="svc-ollama">LLM —</span>
+    </div>
+    <div class="flex items-center justify-between text-[8px]">
+      <div class="flex items-center gap-1.5">
+        <span id="bridge-dot-web" class="w-1.5 h-1.5 bg-[#494847] rounded-full inline-block"></span>
+        <span id="bridge-status-web" class="text-[#494847]">BRIDGE —</span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <span id="status-dot" class="w-1.5 h-1.5 bg-[#494847]"></span>
+        <span id="status-text" class="tracking-widest">OFFLINE</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden legacy containers kept so JS doesn't break -->
+  <div class="hidden">
+    <div id="panel-telemetry">
 
     <!-- TELEMETRY PANEL -->
     <div id="panel-telemetry" class="tab-content active space-y-4">
@@ -185,34 +229,6 @@
         <div id="graph-list" class="space-y-1">
           <p class="text-[10px] text-[#adaaaa]">Sin relaciones</p>
         </div>
-      </div>
-    </div>
-
-    <!-- DEVICES PANEL -->
-    <div id="panel-devices" class="tab-content space-y-4">
-      <div class="flex justify-between items-center">
-        <div class="text-[8px] opacity-50">CONNECTED_DEVICES</div>
-        <button onclick="loadHardware()" class="text-[8px] text-secondary hover:text-primary">↻ SCAN</button>
-      </div>
-      <div id="devices-list" class="space-y-2">
-        <p class="text-[10px] text-[#adaaaa]">Escaneando...</p>
-      </div>
-      <div>
-        <div class="text-[8px] opacity-50 mb-2">HW_STATS</div>
-        <div class="bg-surface-container-low p-3 space-y-1.5 border-l border-secondary/20">
-          <div class="flex justify-between"><span>REGISTERED</span><span id="hw-devices" class="text-secondary">0</span></div>
-          <div class="flex justify-between"><span>TOTAL FLASHES</span><span id="hw-flashes" class="text-secondary">0</span></div>
-          <div class="flex justify-between"><span>SUCCESSFUL</span><span id="hw-success" class="text-primary">0</span></div>
-          <div class="flex justify-between"><span>FAILED</span><span id="hw-failed" class="text-[#ff716c]">0</span></div>
-        </div>
-      </div>
-      <!-- Vision results -->
-      <div id="vision-results-panel" class="hidden">
-        <div class="flex justify-between items-center mb-2">
-          <div class="text-[8px] opacity-50 text-secondary">LAST_CIRCUIT_ANALYSIS</div>
-          <button onclick="openVisionModal()" class="text-[8px] text-secondary">+ NEW</button>
-        </div>
-        <div id="vision-results-content" class="space-y-1"></div>
       </div>
     </div>
 
@@ -363,11 +379,280 @@
         <div id="metrics-decisions-list" class="space-y-1.5 max-h-48 overflow-y-auto"></div>
       </div>
 
+      <!-- Timeline actividad reciente -->
+      <div>
+        <div class="text-[8px] opacity-50 mb-2">ACTIVIDAD_RECIENTE</div>
+        <div id="metrics-activity" class="space-y-1 max-h-56 overflow-y-auto"></div>
+      </div>
+
       <!-- Refresh -->
       <button onclick="loadMetricsPanel()" class="w-full py-1.5 text-[8px] border border-[#494847]/40 text-[#adaaaa] hover:border-primary/40 hover:text-primary tracking-widest">
         ↻ REFRESH METRICS
       </button>
     </div>
+
+    <!-- CALC PANEL -->
+    <div id="panel-calc" class="tab-content space-y-4">
+      <div class="text-[8px] opacity-50 mb-1">ENGINEERING_CALCULATOR</div>
+
+      <!-- Selector de calculadora -->
+      <div>
+        <select id="calc-selector" onchange="calcSwitchForm(this.value)"
+          class="w-full bg-[#131313] border border-[#494847]/40 text-[9px] text-[#adaaaa] p-2 font-mono tracking-widest">
+          <option value="resistor_for_led">RESISTOR PARA LED</option>
+          <option value="resistor_voltage_divider">DIVISOR DE TENSIÓN</option>
+          <option value="buck_converter">BUCK CONVERTER</option>
+          <option value="boost_converter">BOOST CONVERTER</option>
+          <option value="battery_autonomy">AUTONOMÍA BATERÍA</option>
+          <option value="fuse_rating">FUSIBLE</option>
+          <option value="heat_sink_required">DISIPADOR TÉRMICO</option>
+          <option value="transformer_turns_ratio">TRANSFORMADOR</option>
+          <option value="low_pass_rc">FILTRO PASO BAJO RC</option>
+          <option value="high_pass_rc">FILTRO PASO ALTO RC</option>
+          <option value="inverting_amp">AMP INVERSOR</option>
+          <option value="non_inverting_amp">AMP NO INVERSOR</option>
+          <option value="motor_power">POTENCIA MOTOR</option>
+          <option value="vfd_frequency_for_rpm">FRECUENCIA VFD</option>
+          <option value="ohms_law">LEY DE OHM</option>
+          <option value="resistor_power">POTENCIA EN RESISTENCIA</option>
+          <option value="capacitor_filter">CAPACITOR FILTRO RC</option>
+          <option value="rc_time_constant">CONSTANTE RC</option>
+          <option value="capacitor_energy">ENERGÍA EN CAPACITOR</option>
+          <option value="power_dissipation">POTENCIA DISIPADA P=VI</option>
+          <option value="efficiency">EFICIENCIA ENERGÉTICA</option>
+          <option value="lc_filter">FILTRO LC 2do ORDEN</option>
+          <option value="voltage_follower">BUFFER / SEGUIDOR</option>
+          <option value="charge_time">TIEMPO DE CARGA BATERÍA</option>
+          <option value="motor_torque">TORQUE DE MOTOR</option>
+        </select>
+      </div>
+
+      <!-- Formularios por calculadora -->
+      <div id="calc-forms">
+
+        <div id="calcf-resistor_for_led" class="calc-form space-y-2">
+          <div class="text-[8px] opacity-50">R = (Vcc − Vled) / Iled</div>
+          <div class="grid grid-cols-3 gap-1">
+            <div><div class="text-[7px] opacity-50 mb-0.5">Vcc (V)</div><input id="cf-vcc" type="number" value="5" step="0.1" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">Vled (V)</div><input id="cf-vled" type="number" value="2.0" step="0.1" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">Iled (mA)</div><input id="cf-iled" type="number" value="20" step="1" class="calc-input w-full"></div>
+          </div>
+        </div>
+
+        <div id="calcf-resistor_voltage_divider" class="calc-form space-y-2 hidden">
+          <div class="text-[8px] opacity-50">R2 = R1 × Vout / (Vin − Vout)</div>
+          <div class="grid grid-cols-3 gap-1">
+            <div><div class="text-[7px] opacity-50 mb-0.5">Vin (V)</div><input id="cf-vin" type="number" value="12" step="0.1" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">Vout (V)</div><input id="cf-vout" type="number" value="3.3" step="0.1" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">R1 (Ω)</div><input id="cf-r1" type="number" value="10000" step="100" class="calc-input w-full"></div>
+          </div>
+        </div>
+
+        <div id="calcf-buck_converter" class="calc-form space-y-2 hidden">
+          <div class="text-[8px] opacity-50">BUCK: L y C de salida</div>
+          <div class="grid grid-cols-2 gap-1">
+            <div><div class="text-[7px] opacity-50 mb-0.5">Vin (V)</div><input id="cf-bvin" type="number" value="12" step="0.1" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">Vout (V)</div><input id="cf-bvout" type="number" value="5" step="0.1" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">Iout (A)</div><input id="cf-biout" type="number" value="1" step="0.1" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">Frec (kHz)</div><input id="cf-bfreq" type="number" value="100" step="10" class="calc-input w-full"></div>
+          </div>
+        </div>
+
+        <div id="calcf-boost_converter" class="calc-form space-y-2 hidden">
+          <div class="text-[8px] opacity-50">BOOST: L y C de salida</div>
+          <div class="grid grid-cols-2 gap-1">
+            <div><div class="text-[7px] opacity-50 mb-0.5">Vin (V)</div><input id="cf-bovin" type="number" value="5" step="0.1" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">Vout (V)</div><input id="cf-bovout" type="number" value="12" step="0.1" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">Iout (A)</div><input id="cf-boiout" type="number" value="0.5" step="0.1" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">Frec (kHz)</div><input id="cf-bofreq" type="number" value="100" step="10" class="calc-input w-full"></div>
+          </div>
+        </div>
+
+        <div id="calcf-battery_autonomy" class="calc-form space-y-2 hidden">
+          <div class="text-[8px] opacity-50">t = (C × η) / I</div>
+          <div class="grid grid-cols-3 gap-1">
+            <div><div class="text-[7px] opacity-50 mb-0.5">Cap (mAh)</div><input id="cf-cap" type="number" value="2000" step="100" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">I (mA)</div><input id="cf-ima" type="number" value="100" step="10" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">η (0-1)</div><input id="cf-eta" type="number" value="0.85" step="0.05" min="0" max="1" class="calc-input w-full"></div>
+          </div>
+        </div>
+
+        <div id="calcf-fuse_rating" class="calc-form space-y-2 hidden">
+          <div class="text-[8px] opacity-50">Ifuse = Imax × factor seguridad</div>
+          <div class="grid grid-cols-2 gap-1">
+            <div><div class="text-[7px] opacity-50 mb-0.5">Imax (A)</div><input id="cf-imax" type="number" value="2" step="0.1" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">Factor seg.</div><input id="cf-fsaf" type="number" value="1.25" step="0.05" class="calc-input w-full"></div>
+          </div>
+        </div>
+
+        <div id="calcf-heat_sink_required" class="calc-form space-y-2 hidden">
+          <div class="text-[8px] opacity-50">θsa = (Tjmax − Ta) / P − θjc</div>
+          <div class="grid grid-cols-2 gap-1">
+            <div><div class="text-[7px] opacity-50 mb-0.5">P (W)</div><input id="cf-pw" type="number" value="5" step="0.5" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">Ta (°C)</div><input id="cf-tamb" type="number" value="25" step="5" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">θjc (°C/W)</div><input id="cf-tjc" type="number" value="5" step="0.5" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">Tjmax (°C)</div><input id="cf-tjmax" type="number" value="125" step="5" class="calc-input w-full"></div>
+          </div>
+        </div>
+
+        <div id="calcf-transformer_turns_ratio" class="calc-form space-y-2 hidden">
+          <div class="text-[8px] opacity-50">n = Vp / Vs</div>
+          <div class="grid grid-cols-2 gap-1">
+            <div><div class="text-[7px] opacity-50 mb-0.5">Vp (V)</div><input id="cf-vp" type="number" value="220" step="1" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">Vs (V)</div><input id="cf-vs" type="number" value="12" step="1" class="calc-input w-full"></div>
+          </div>
+        </div>
+
+        <div id="calcf-low_pass_rc" class="calc-form space-y-2 hidden">
+          <div class="text-[8px] opacity-50">C = 1/(2π·f·R)</div>
+          <div class="grid grid-cols-2 gap-1">
+            <div><div class="text-[7px] opacity-50 mb-0.5">fc (Hz)</div><input id="cf-fcl" type="number" value="1000" step="100" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">R (Ω)</div><input id="cf-rl" type="number" value="10000" step="100" class="calc-input w-full"></div>
+          </div>
+        </div>
+
+        <div id="calcf-high_pass_rc" class="calc-form space-y-2 hidden">
+          <div class="text-[8px] opacity-50">R = 1/(2π·f·C)</div>
+          <div class="grid grid-cols-2 gap-1">
+            <div><div class="text-[7px] opacity-50 mb-0.5">fc (Hz)</div><input id="cf-fch" type="number" value="1000" step="100" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">C (µF)</div><input id="cf-ch" type="number" value="0.1" step="0.01" class="calc-input w-full"></div>
+          </div>
+        </div>
+
+        <div id="calcf-inverting_amp" class="calc-form space-y-2 hidden">
+          <div class="text-[8px] opacity-50">G = −Rf / Rin</div>
+          <div class="grid grid-cols-2 gap-1">
+            <div><div class="text-[7px] opacity-50 mb-0.5">Rin (Ω)</div><input id="cf-rin" type="number" value="1000" step="100" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">Rf (Ω)</div><input id="cf-rf" type="number" value="10000" step="100" class="calc-input w-full"></div>
+          </div>
+        </div>
+
+        <div id="calcf-non_inverting_amp" class="calc-form space-y-2 hidden">
+          <div class="text-[8px] opacity-50">G = 1 + R2/R1</div>
+          <div class="grid grid-cols-2 gap-1">
+            <div><div class="text-[7px] opacity-50 mb-0.5">R1 (Ω)</div><input id="cf-nir1" type="number" value="1000" step="100" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">R2 (Ω)</div><input id="cf-nir2" type="number" value="9000" step="100" class="calc-input w-full"></div>
+          </div>
+        </div>
+
+        <div id="calcf-motor_power" class="calc-form space-y-2 hidden">
+          <div class="text-[8px] opacity-50">P_mec = V × I × η</div>
+          <div class="grid grid-cols-3 gap-1">
+            <div><div class="text-[7px] opacity-50 mb-0.5">V (V)</div><input id="cf-mv" type="number" value="220" step="1" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">I (A)</div><input id="cf-mi" type="number" value="5" step="0.5" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">η (0-1)</div><input id="cf-meta" type="number" value="0.85" step="0.05" class="calc-input w-full"></div>
+          </div>
+        </div>
+
+        <div id="calcf-vfd_frequency_for_rpm" class="calc-form space-y-2 hidden">
+          <div class="text-[8px] opacity-50">f = RPM × P / 120</div>
+          <div class="grid grid-cols-2 gap-1">
+            <div><div class="text-[7px] opacity-50 mb-0.5">RPM</div><input id="cf-rpm" type="number" value="1450" step="50" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">Polos</div><input id="cf-poles" type="number" value="4" step="2" class="calc-input w-full"></div>
+          </div>
+        </div>
+
+        <div id="calcf-ohms_law" class="calc-form space-y-2 hidden">
+          <div class="text-[8px] opacity-50">V = I × R — dejá vacío el que querés calcular</div>
+          <div class="grid grid-cols-3 gap-1">
+            <div><div class="text-[7px] opacity-50 mb-0.5">V (V)</div><input id="cf-ohv" type="number" placeholder="?" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">I (mA)</div><input id="cf-ohi" type="number" placeholder="?" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">R (Ω)</div><input id="cf-ohr" type="number" placeholder="?" class="calc-input w-full"></div>
+          </div>
+        <div id="calcf-resistor_power" class="calc-form space-y-2 hidden">
+          <div class="text-[8px] opacity-50">P = I²×R ó P = V²/R</div>
+          <div class="grid grid-cols-3 gap-1">
+            <div><div class="text-[7px] opacity-50 mb-0.5">R (Ω)</div><input id="cf-rpr" type="number" value="470" step="1" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">I (mA) ó vacío</div><input id="cf-rpima" type="number" placeholder="?" step="1" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">V (V) ó vacío</div><input id="cf-rpv" type="number" placeholder="?" step="0.1" class="calc-input w-full"></div>
+          </div>
+        </div>
+
+        <div id="calcf-capacitor_filter" class="calc-form space-y-2 hidden">
+          <div class="text-[8px] opacity-50">C = 1 / (2π·f·R)</div>
+          <div class="grid grid-cols-2 gap-1">
+            <div><div class="text-[7px] opacity-50 mb-0.5">fc (Hz)</div><input id="cf-cff" type="number" value="1000" step="100" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">R (Ω)</div><input id="cf-cfr" type="number" value="10000" step="100" class="calc-input w-full"></div>
+          </div>
+        </div>
+
+        <div id="calcf-rc_time_constant" class="calc-form space-y-2 hidden">
+          <div class="text-[8px] opacity-50">τ = R × C</div>
+          <div class="grid grid-cols-2 gap-1">
+            <div><div class="text-[7px] opacity-50 mb-0.5">R (Ω)</div><input id="cf-rcr" type="number" value="10000" step="100" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">C (µF)</div><input id="cf-rcc" type="number" value="10" step="1" class="calc-input w-full"></div>
+          </div>
+        </div>
+
+        <div id="calcf-capacitor_energy" class="calc-form space-y-2 hidden">
+          <div class="text-[8px] opacity-50">E = ½ × C × V²</div>
+          <div class="grid grid-cols-2 gap-1">
+            <div><div class="text-[7px] opacity-50 mb-0.5">C (µF)</div><input id="cf-cec" type="number" value="100" step="10" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">V (V)</div><input id="cf-cev" type="number" value="12" step="1" class="calc-input w-full"></div>
+          </div>
+        </div>
+
+        <div id="calcf-power_dissipation" class="calc-form space-y-2 hidden">
+          <div class="text-[8px] opacity-50">P = V × I</div>
+          <div class="grid grid-cols-2 gap-1">
+            <div><div class="text-[7px] opacity-50 mb-0.5">V (V)</div><input id="cf-pdv" type="number" value="5" step="0.1" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">I (mA)</div><input id="cf-pdi" type="number" value="200" step="10" class="calc-input w-full"></div>
+          </div>
+        </div>
+
+        <div id="calcf-efficiency" class="calc-form space-y-2 hidden">
+          <div class="text-[8px] opacity-50">η = Pout / Pin × 100%</div>
+          <div class="grid grid-cols-2 gap-1">
+            <div><div class="text-[7px] opacity-50 mb-0.5">Pout (W)</div><input id="cf-effout" type="number" value="10" step="0.5" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">Pin (W)</div><input id="cf-effin" type="number" value="12" step="0.5" class="calc-input w-full"></div>
+          </div>
+        </div>
+
+        <div id="calcf-lc_filter" class="calc-form space-y-2 hidden">
+          <div class="text-[8px] opacity-50">L y C para filtro LC 2do orden</div>
+          <div class="grid grid-cols-2 gap-1">
+            <div><div class="text-[7px] opacity-50 mb-0.5">fc (Hz)</div><input id="cf-lcf" type="number" value="1000" step="100" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">Z (Ω)</div><input id="cf-lcz" type="number" value="50" step="1" class="calc-input w-full"></div>
+          </div>
+        </div>
+
+        <div id="calcf-voltage_follower" class="calc-form space-y-2 hidden">
+          <div class="text-[8px] opacity-50">Buffer unity gain — G = 1, Zin alta, Zout baja</div>
+          <div class="text-[8px] text-[#a4ffb9] py-2">Sin parámetros. El seguidor de tensión tiene ganancia unitaria.</div>
+        </div>
+
+        <div id="calcf-charge_time" class="calc-form space-y-2 hidden">
+          <div class="text-[8px] opacity-50">t = C / (Ic × η)</div>
+          <div class="grid grid-cols-3 gap-1">
+            <div><div class="text-[7px] opacity-50 mb-0.5">Cap (mAh)</div><input id="cf-ctcap" type="number" value="2000" step="100" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">Ic (mA)</div><input id="cf-ctic" type="number" value="500" step="50" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">η (0-1)</div><input id="cf-cteta" type="number" value="0.9" step="0.05" min="0" max="1" class="calc-input w-full"></div>
+          </div>
+        </div>
+
+        <div id="calcf-motor_torque" class="calc-form space-y-2 hidden">
+          <div class="text-[8px] opacity-50">T = P × 9549 / RPM</div>
+          <div class="grid grid-cols-2 gap-1">
+            <div><div class="text-[7px] opacity-50 mb-0.5">P (W)</div><input id="cf-mtpw" type="number" value="750" step="50" class="calc-input w-full"></div>
+            <div><div class="text-[7px] opacity-50 mb-0.5">RPM</div><input id="cf-mtrpm" type="number" value="1450" step="50" class="calc-input w-full"></div>
+          </div>
+        </div>
+
+      </div><!-- /calc-forms -->
+
+      <!-- Botón calcular -->
+      <button onclick="calcCompute()" class="w-full py-2 text-[9px] border border-primary/40 text-primary hover:bg-primary/10 tracking-widest font-mono">
+        ⚡ CALCULAR
+      </button>
+
+      <!-- Resultado -->
+      <div id="calc-result" class="hidden">
+        <div class="text-[8px] opacity-50 mb-1">RESULTADO</div>
+        <div id="calc-result-body" class="bg-[#0a1a0a] border-l-2 border-primary p-3 text-[9px] font-mono space-y-1"></div>
+      </div>
+
+    </div>
+    <!-- /CALC PANEL -->
 
     <!-- SYSTEM PANEL -->
     <div id="panel-system" class="tab-content space-y-4">
@@ -460,23 +745,15 @@
       </div>
     </div>
 
-  </div><!-- end dynamic panels -->
-
-  <!-- Bottom -->
-  <div class="p-4 border-t border-[#a4ffb9]/10 space-y-2">
-    <a href="/api/circuits/viewer" target="_blank"
-       class="w-full flex items-center justify-center gap-2 py-2 border border-secondary/30 text-secondary hover:bg-secondary/10 transition-colors text-[10px]">
-      <span class="material-symbols-outlined text-sm">schema</span> CIRCUIT VIEWER
-    </a>
-    <button onclick="if(confirm('Terminar sesión?'))window.close()"
-       class="w-full flex items-center justify-center gap-2 py-2 border border-error/30 text-error hover:bg-error/10 transition-colors text-[10px]">
-      <span class="material-symbols-outlined text-sm">power_settings_new</span> TERMINATE
-    </button>
+    </div><!-- end hidden legacy panels -->
   </div>
 </aside>
 
 <!-- ── MAIN CONTENT ─────────────────────────────────────────────────────── -->
-<main class="ml-64 mr-80 pt-14 h-screen flex flex-col relative z-10">
+<main class="ml-72 pt-14 h-screen flex relative z-10 overflow-hidden">
+
+<!-- ═══ VIEW: CHAT ════════════════════════════════════════════════════════ -->
+<div id="view-chat" class="flex flex-col flex-1 h-full overflow-hidden">
 
   <!-- Chat messages -->
   <div id="messages" class="flex-1 overflow-y-auto p-6 space-y-6 scroll-smooth">
@@ -513,10 +790,6 @@
       </button>
     </div>
     <div class="flex gap-4 mt-2">
-      <span class="text-[8px] text-[#adaaaa] tracking-widest flex items-center gap-1">
-        <span id="status-dot" class="w-1 h-1 bg-[#494847]"></span>
-        <span id="status-text">ENGINE_OFFLINE</span>
-      </span>
       <span id="agents-label" class="text-[8px] text-[#adaaaa] tracking-widest hidden"></span>
     </div>
   </div>
@@ -531,95 +804,169 @@
       </div>
       <span class="material-symbols-outlined text-sm text-[#adaaaa] transition-transform peer-checked:rotate-180">expand_less</span>
     </label>
-    <div class="h-0 overflow-hidden transition-all duration-300 bg-black peer-checked:h-40 border-t border-[#a4ffb9]/20 flex items-center justify-center">
-      <a href="/api/circuits/viewer" target="_blank"
-         class="text-[10px] font-mono text-[#adaaaa] hover:text-primary flex items-center gap-2 transition-colors">
-        <span class="material-symbols-outlined">open_in_new</span>
-        ABRIR CIRCUIT VIEWER →
-      </a>
-    </div>
-  </div>
-</main>
-
-<!-- ── RIGHT SIDEBAR ─────────────────────────────────────────────────────── -->
-<aside class="fixed right-0 top-14 h-[calc(100vh-3.5rem)] w-80 bg-[#0e0e0e] border-l border-[#a4ffb9]/10 p-6 flex flex-col font-mono z-40 overflow-hidden">
-
-  <!-- Bridge Status -->
-  <div class="mb-4 bg-[#131313] border-l-2 border-[#494847] p-3" id="bridge-card-web">
-    <div class="flex items-center justify-between">
+    <div class="h-0 overflow-hidden transition-all duration-300 bg-[#0a0a0a] peer-checked:h-auto border-t border-[#a4ffb9]/20 p-3 space-y-3">
+      <!-- Circuit ID input + viewer link -->
       <div class="flex items-center gap-2">
-        <span class="material-symbols-outlined text-sm text-[#494847]" id="bridge-icon-web">router</span>
+        <input id="circuit-id-input" type="number" min="1" placeholder="Circuit ID"
+               class="flex-1 bg-[#131313] border border-[#494847]/50 text-[10px] font-mono text-[#adaaaa] px-2 py-1 focus:outline-none focus:border-primary/50"/>
+        <a href="/api/circuits/viewer" target="_blank"
+           class="text-[9px] font-mono text-[#adaaaa] hover:text-primary flex items-center gap-1 transition-colors border border-[#494847]/50 px-2 py-1">
+          <span class="material-symbols-outlined text-xs">open_in_new</span>VIEWER
+        </a>
+      </div>
+      <!-- Action buttons -->
+      <div class="flex gap-2">
+        <button onclick="runCircuitDRC()" class="flex-1 text-[9px] font-mono bg-[#131313] border border-[#494847]/50 text-[#adaaaa] hover:border-[#ff6b6b]/60 hover:text-[#ff6b6b] px-2 py-1 transition-colors flex items-center justify-center gap-1">
+          <span class="material-symbols-outlined text-xs">rule</span>DRC
+        </button>
+        <button onclick="runCircuitBOM()" class="flex-1 text-[9px] font-mono bg-[#131313] border border-[#494847]/50 text-[#adaaaa] hover:border-[#00cbfe]/60 hover:text-[#00cbfe] px-2 py-1 transition-colors flex items-center justify-center gap-1">
+          <span class="material-symbols-outlined text-xs">receipt_long</span>BOM
+        </button>
+        <button onclick="downloadCircuitBOMcsv()" class="flex-1 text-[9px] font-mono bg-[#131313] border border-[#494847]/50 text-[#adaaaa] hover:border-[#a4ffb9]/60 hover:text-primary px-2 py-1 transition-colors flex items-center justify-center gap-1">
+          <span class="material-symbols-outlined text-xs">download</span>CSV
+        </button>
+      </div>
+      <!-- Results panel -->
+      <div id="circuit-result-panel" class="hidden text-[9px] font-mono bg-[#131313] border border-[#494847]/30 p-2 max-h-48 overflow-y-auto space-y-1"></div>
+    </div>
+  </div>
+</div><!-- end view-chat -->
+
+<!-- ═══ VIEW: DEVICES ═════════════════════════════════════════════════════ -->
+<div id="view-devices" class="hidden flex-col flex-1 h-full overflow-hidden">
+  <div class="flex items-center justify-between px-8 py-4 border-b border-[#a4ffb9]/10 flex-shrink-0">
+    <div class="flex items-center gap-3">
+      <span class="material-symbols-outlined text-secondary">router</span>
+      <span class="font-mono text-[11px] tracking-widest text-[#adaaaa]">DEVICES</span>
+    </div>
+    <button onclick="switchView('chat')" class="text-[9px] font-mono text-[#494847] hover:text-primary flex items-center gap-1">
+      <span class="material-symbols-outlined text-xs">arrow_back</span>VOLVER AL CHAT
+    </button>
+  </div>
+  <div class="flex-1 overflow-y-auto p-8">
+    <div id="panel-devices" class="max-w-3xl space-y-6">
+      <div class="flex justify-between items-center">
+        <div class="text-[8px] text-[#494847] tracking-widest">CONNECTED_DEVICES</div>
+        <button onclick="loadHardware()" class="text-[8px] text-secondary hover:text-primary">↻ SCAN</button>
+      </div>
+      <div id="devices-list" class="space-y-2"><p class="text-[10px] text-[#adaaaa]">Escaneando...</p></div>
+      <div class="grid grid-cols-2 gap-4">
         <div>
-          <div class="text-[8px] text-[#adaaaa] tracking-widest">HARDWARE_BRIDGE</div>
-          <div id="bridge-status-web" class="text-[9px] text-[#494847] font-mono">CHECKING...</div>
+          <div class="text-[8px] text-[#494847] tracking-widest mb-2">HW_STATS</div>
+          <div class="bg-[#131313] p-3 space-y-1.5 border-l border-secondary/20">
+            <div class="flex justify-between font-mono text-[10px]"><span class="text-[#adaaaa]">REGISTERED</span><span id="hw-devices" class="text-secondary">0</span></div>
+            <div class="flex justify-between font-mono text-[10px]"><span class="text-[#adaaaa]">TOTAL FLASHES</span><span id="hw-flashes" class="text-secondary">0</span></div>
+            <div class="flex justify-between font-mono text-[10px]"><span class="text-[#adaaaa]">SUCCESSFUL</span><span id="hw-success" class="text-primary">0</span></div>
+            <div class="flex justify-between font-mono text-[10px]"><span class="text-[#adaaaa]">FAILED</span><span id="hw-failed" class="text-error">0</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="text-[8px] text-[#494847] tracking-widest mb-2">ACTIVE_JOBS</div>
+          <div class="bg-[#131313] p-3 border-l border-secondary/20">
+            <div class="flex justify-between font-mono text-[10px] mb-2"><span class="text-[#adaaaa]">JOBS</span><span id="jobs-count" class="text-secondary">0</span></div>
+            <div id="jobs-list" class="space-y-2 max-h-32 overflow-y-auto">
+              <div class="text-[9px] text-[#494847] opacity-40">NO_ACTIVE_JOBS</div>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="text-right">
-        <span id="bridge-dot-web" class="w-2 h-2 bg-[#494847] rounded-full inline-block"></span>
-        <div id="bridge-since-web" class="text-[8px] text-[#494847] mt-0.5"></div>
+      <div id="vision-results-panel" class="hidden">
+        <div class="flex justify-between items-center mb-2">
+          <div class="text-[8px] text-[#494847] tracking-widest">LAST_CIRCUIT_ANALYSIS</div>
+          <button onclick="openVisionModal()" class="text-[8px] text-secondary">+ NEW</button>
+        </div>
+        <div id="vision-results-content" class="space-y-1"></div>
       </div>
     </div>
   </div>
+</div>
 
-  <!-- Jobs -->
-  <div class="mb-6">
-    <div class="text-[10px] text-[#adaaaa] mb-3 flex justify-between items-center">
-      <span>ACTIVE_JOBS</span>
-      <span id="jobs-count" class="text-secondary">0</span>
+<!-- ═══ VIEW: INTEL ═══════════════════════════════════════════════════════ -->
+<div id="view-intel" class="hidden flex-col flex-1 h-full overflow-hidden">
+  <div class="flex items-center justify-between px-8 py-4 border-b border-[#a4ffb9]/10 flex-shrink-0">
+    <div class="flex items-center gap-3">
+      <span class="material-symbols-outlined text-secondary">psychology</span>
+      <span class="font-mono text-[11px] tracking-widest text-[#adaaaa]">INTEL</span>
     </div>
-    <div id="jobs-list" class="space-y-3">
-      <div class="bg-[#131313] border-l border-[#494847]/50 p-3 opacity-40">
-        <div class="text-[10px] text-[#adaaaa]">NO_ACTIVE_JOBS</div>
-      </div>
-    </div>
+    <button onclick="switchView('chat')" class="text-[9px] font-mono text-[#494847] hover:text-primary flex items-center gap-1">
+      <span class="material-symbols-outlined text-xs">arrow_back</span>VOLVER AL CHAT
+    </button>
   </div>
-
-  <!-- Live signal -->
-  <div class="flex-1 flex flex-col overflow-hidden">
-    <div class="text-[10px] text-[#adaaaa] mb-3 flex justify-between items-center">
-      <span>LIVE_SIGNAL // SERIAL</span>
-      <span id="osc-status-dot" class="w-2 h-2 bg-[#494847] rounded-full"></span>
-    </div>
-
-    <!-- Hex readout -->
-    <div id="osc-hex" class="flex-none bg-black border border-[#494847]/20 p-2 font-mono text-[9px] text-secondary/80 leading-tight mb-2 space-y-0.5">
-      <div class="flex gap-2 opacity-40"><span>0x4A</span><span>0x22</span><span>0xF1</span><span>0x00</span><span>0x1A</span><span>0xBC</span></div>
-      <div class="flex gap-2"><span>0x4B</span><span class="text-primary">0x33</span><span>0xF1</span><span>0x01</span><span class="text-primary">0x1B</span><span>0xBD</span></div>
-      <div class="flex gap-2 opacity-70"><span>0x4C</span><span>0x44</span><span>0xF1</span><span>0x00</span><span>0x1C</span><span>0xBE</span></div>
-    </div>
-
-    <!-- Waveform -->
-    <div class="flex-1 bg-black border border-[#494847]/20 p-2 flex flex-col overflow-hidden">
-      <div class="flex-1 relative" style="min-height:80px">
-        <canvas id="osc-chart"></canvas>
-      </div>
-      <div class="mt-2 grid grid-cols-2 gap-2 flex-none">
-        <div class="bg-[#201f1f] p-1.5">
-          <span class="text-[8px] block text-[#adaaaa]">PEAK_VOLT</span>
-          <span id="osc-volt" class="text-xs font-bold">—</span>
-        </div>
-        <div class="bg-[#201f1f] p-1.5">
-          <span class="text-[8px] block text-[#adaaaa]">A0_RAW</span>
-          <span id="osc-a0" class="text-xs font-bold">—</span>
-        </div>
-      </div>
-      <div id="osc-label" class="mt-2 text-[8px] text-[#494847] italic">AWAITING_SIGNAL_DATA...</div>
-    </div>
+  <div class="flex-1 overflow-y-auto p-8">
+    <div class="view-panel-slot max-w-4xl space-y-6" data-panel="intel"></div>
   </div>
+</div>
 
-  <!-- Auth status -->
-  <div class="mt-4 pt-4 border-t border-[#494847]/20">
-    <div id="auth-panel" class="bg-[#201f1f] p-3 border border-secondary/20">
-      <div class="flex items-center gap-3">
-        <span class="material-symbols-outlined text-secondary text-sm">lock_open</span>
-        <div class="flex flex-col">
-          <span class="text-[10px] text-secondary">SECURITY_PROTOCOL</span>
-          <span id="auth-label" class="text-[8px] text-[#adaaaa]">SINGLE_USER_MODE</span>
-        </div>
-      </div>
+<!-- ═══ VIEW: CALC ════════════════════════════════════════════════════════ -->
+<div id="view-calc" class="hidden flex-col flex-1 h-full overflow-hidden">
+  <div class="flex items-center justify-between px-8 py-4 border-b border-[#a4ffb9]/10 flex-shrink-0">
+    <div class="flex items-center gap-3">
+      <span class="material-symbols-outlined text-secondary">calculate</span>
+      <span class="font-mono text-[11px] tracking-widest text-[#adaaaa]">ENGINEERING CALCULATOR</span>
     </div>
+    <button onclick="switchView('chat')" class="text-[9px] font-mono text-[#494847] hover:text-primary flex items-center gap-1">
+      <span class="material-symbols-outlined text-xs">arrow_back</span>VOLVER AL CHAT
+    </button>
   </div>
-</aside>
+  <div class="flex-1 overflow-y-auto p-8">
+    <div class="view-panel-slot max-w-2xl space-y-4" data-panel="calc"></div>
+  </div>
+</div>
+
+<!-- ═══ VIEW: METRICS ═════════════════════════════════════════════════════ -->
+<div id="view-metrics" class="hidden flex-col flex-1 h-full overflow-hidden">
+  <div class="flex items-center justify-between px-8 py-4 border-b border-[#a4ffb9]/10 flex-shrink-0">
+    <div class="flex items-center gap-3">
+      <span class="material-symbols-outlined text-secondary">bar_chart</span>
+      <span class="font-mono text-[11px] tracking-widest text-[#adaaaa]">METRICS</span>
+    </div>
+    <button onclick="switchView('chat')" class="text-[9px] font-mono text-[#494847] hover:text-primary flex items-center gap-1">
+      <span class="material-symbols-outlined text-xs">arrow_back</span>VOLVER AL CHAT
+    </button>
+  </div>
+  <div class="flex-1 overflow-y-auto p-8">
+    <div class="view-panel-slot max-w-4xl space-y-6" data-panel="metrics"></div>
+  </div>
+</div>
+
+<!-- ═══ VIEW: SYSTEM ══════════════════════════════════════════════════════ -->
+<div id="view-system" class="hidden flex-col flex-1 h-full overflow-hidden">
+  <div class="flex items-center justify-between px-8 py-4 border-b border-[#a4ffb9]/10 flex-shrink-0">
+    <div class="flex items-center gap-3">
+      <span class="material-symbols-outlined text-secondary">settings</span>
+      <span class="font-mono text-[11px] tracking-widest text-[#adaaaa]">SYSTEM</span>
+    </div>
+    <button onclick="switchView('chat')" class="text-[9px] font-mono text-[#494847] hover:text-primary flex items-center gap-1">
+      <span class="material-symbols-outlined text-xs">arrow_back</span>VOLVER AL CHAT
+    </button>
+  </div>
+  <div class="flex-1 overflow-y-auto p-8">
+    <div class="view-panel-slot max-w-5xl space-y-6" data-panel="system"></div>
+  </div>
+</div>
+
+<!-- Hidden legacy IDs kept for JS compatibility -->
+<div class="hidden">
+  <span id="bridge-since-web"></span>
+  <span id="bridge-icon-web"></span>
+  <span id="bridge-card-web"></span>
+  <span id="auth-panel"></span>
+  <span id="auth-label"></span>
+  <span id="osc-chart"></span>
+  <span id="osc-volt"></span>
+  <span id="osc-a0"></span>
+  <span id="osc-label"></span>
+  <span id="osc-hex"></span>
+  <span id="osc-status-dot"></span>
+</div>
+
+<!-- Jobs floating badge (visible when jobs > 0) -->
+<div id="jobs-badge" class="hidden fixed bottom-6 right-6 z-50 bg-[#131313] border border-secondary/40 font-mono text-[9px] text-secondary px-3 py-2 cursor-pointer shadow-lg" onclick="switchView('devices')">
+  <span class="material-symbols-outlined text-xs align-middle mr-1">work</span>
+  <span id="jobs-badge-count">0</span> JOBS ACTIVOS
+</div>
+
+</main>
 
 <!-- Corner accents -->
 <div class="fixed top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-primary z-[200]"></div>
@@ -699,6 +1046,8 @@ let signalBuffer = [];
 let _session_id   = localStorage.getItem('stratum_session_id') || null;
 let _wsRetryDelay = 2000;
 let _offlineQueue = JSON.parse(localStorage.getItem('stratum_web_offline_queue') || '[]');
+let _sessions     = [];   // list of session objects from API
+let _activeView   = 'chat';
 
 // ── VOICE INPUT ───────────────────────────────────────────────────────────
 let _voiceRec = null, _voiceOn = false;
@@ -789,23 +1138,213 @@ async function drainOfflineQueue() {
 }
 
 // ── NAVIGATION ──────────────────────────────────────────────────────────
-function switchNav(tab) {
+function switchView(name) {
+  _activeView = name;
+
+  // Hide all views
+  document.querySelectorAll('[id^="view-"]').forEach(el => {
+    el.classList.add('hidden');
+    el.classList.remove('flex');
+  });
+
+  // Show selected view
+  const view = document.getElementById(`view-${name}`);
+  if (view) { view.classList.remove('hidden'); view.classList.add('flex'); }
+
+  // Update module nav active state
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.remove('active');
     el.classList.add('text-[#adaaaa]');
   });
-  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  const navEl = document.getElementById(`nav-${name}`);
+  if (navEl) { navEl.classList.add('active'); navEl.classList.remove('text-[#adaaaa]'); }
 
-  const navEl   = document.getElementById(`nav-${tab}`);
-  const panelEl = document.getElementById(`panel-${tab}`);
-  if (navEl)   { navEl.classList.add('active');   navEl.classList.remove('text-[#adaaaa]'); }
-  if (panelEl)   panelEl.classList.add('active');
+  // On first activation, reparent panel into its view slot
+  const slot = document.querySelector(`[data-panel="${name}"]`);
+  if (slot && slot.children.length === 0) {
+    const panel = document.getElementById(`panel-${name}`);
+    if (panel) {
+      slot.appendChild(panel);
+      panel.classList.remove('tab-content', 'hidden');
+      panel.style.display = '';
+    }
+  }
 
-  if (tab === 'devices')   loadHardware();
-  if (tab === 'telemetry') { loadFacts(); loadGraph(); }
-  if (tab === 'system')    { loadMetrics(); webLoadStockSummary(); webSearchStock(''); }
-  if (tab === 'intel')     { loadIntelligence(); webLoadDecisions(); }
-  if (tab === 'metrics')   loadMetricsPanel();
+  // Trigger data loads
+  if (name === 'devices')  loadHardware();
+  if (name === 'system')   { loadMetrics(); webLoadStockSummary(); webSearchStock(''); }
+  if (name === 'intel')    { loadIntelligence(); webLoadDecisions(); }
+  if (name === 'metrics')  loadMetricsPanel();
+  if (name === 'calc')     calcSwitchForm(document.getElementById('calc-selector')?.value || 'resistor_for_led');
+  if (name === 'chat')     document.getElementById('prompt')?.focus();
+}
+
+// Legacy alias used in some places
+function switchNav(tab) { switchView(tab); }
+
+// ── SIDEBAR COLLAPSE ──────────────────────────────────────────────────────
+
+let _chatsOpen   = true;
+let _modulesOpen = true;
+
+function toggleChatsSection() {
+  _chatsOpen = !_chatsOpen;
+  const wrap    = document.getElementById('sessions-list-wrap');
+  const chevron = document.getElementById('chats-chevron');
+  const section = document.getElementById('chats-section');
+
+  if (_chatsOpen) {
+    wrap.classList.remove('hidden');
+    section.classList.add('flex-1');
+    section.classList.remove('flex-shrink-0');
+    if (chevron) chevron.style.transform = 'rotate(0deg)';
+  } else {
+    wrap.classList.add('hidden');
+    section.classList.remove('flex-1');
+    section.classList.add('flex-shrink-0');
+    if (chevron) chevron.style.transform = 'rotate(-90deg)';
+  }
+}
+
+function toggleModulesSection() {
+  _modulesOpen = !_modulesOpen;
+  const nav     = document.getElementById('modules-nav');
+  const chevron = document.getElementById('modules-chevron');
+
+  if (_modulesOpen) {
+    nav.classList.remove('hidden');
+    if (chevron) chevron.style.transform = 'rotate(0deg)';
+  } else {
+    nav.classList.add('hidden');
+    if (chevron) chevron.style.transform = 'rotate(-180deg)';
+  }
+}
+
+// ── SESSION MANAGEMENT ────────────────────────────────────────────────────
+
+async function loadSessions() {
+  try {
+    const data = await fetch(`${API}/sessions`).then(r => r.json());
+    _sessions = data.sessions || [];
+    renderSessionsList();
+  } catch(e) { /* ignore */ }
+}
+
+function renderSessionsList() {
+  const el = document.getElementById('sessions-list');
+  if (!el) return;
+  if (_sessions.length === 0) {
+    el.innerHTML = '<div class="px-4 py-6 text-center text-[9px] text-[#494847]">Sin conversaciones</div>';
+    return;
+  }
+
+  // Group by Today / Yesterday / Anterior
+  const now   = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+
+  const groups = { 'Hoy': [], 'Ayer': [], 'Anterior': [] };
+  for (const s of _sessions) {
+    const d = new Date(s.last_msg_at || s.created_at);
+    if (d >= today) groups['Hoy'].push(s);
+    else if (d >= yesterday) groups['Ayer'].push(s);
+    else groups['Anterior'].push(s);
+  }
+
+  let html = '';
+  for (const [label, list] of Object.entries(groups)) {
+    if (list.length === 0) continue;
+    html += `<div class="px-4 pt-3 pb-1 text-[8px] text-[#494847] tracking-widest uppercase">${label}</div>`;
+    for (const s of list) {
+      const isActive = s.id === _session_id;
+      const titleSafe = escHtml(s.title || 'Nueva conversación');
+      const timeAgo = _relTime(s.last_msg_at || s.created_at);
+      html += `
+        <div class="group flex items-center px-3 py-2 cursor-pointer transition-colors session-item ${isActive ? 'bg-[#131313] border-l-2 border-primary' : 'hover:bg-[#0f0f0f] border-l-2 border-transparent'}"
+             onclick="switchSession('${escHtml(s.id)}')" id="sess-${escHtml(s.id)}">
+          <div class="flex-1 min-w-0 mr-2">
+            <div class="text-[10px] ${isActive ? 'text-primary' : 'text-[#adaaaa]'} truncate leading-tight">${titleSafe}</div>
+            <div class="text-[8px] text-[#494847] mt-0.5">${timeAgo}</div>
+          </div>
+          <button onclick="deleteSession('${escHtml(s.id)}', event)"
+            class="opacity-0 group-hover:opacity-100 text-[#494847] hover:text-error p-0.5 transition-all flex-shrink-0">
+            <span class="material-symbols-outlined text-xs">delete</span>
+          </button>
+        </div>`;
+    }
+  }
+  el.innerHTML = html;
+}
+
+function _relTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const diff = Date.now() - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1)  return 'ahora';
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24)  return `${hrs}h`;
+  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+}
+
+async function newSession() {
+  try {
+    const res = await fetch(`${API}/sessions`, { method: 'POST',
+      headers: {'Content-Type':'application/json'}, body: JSON.stringify({title:'Nueva conversación'}) });
+    const s = await res.json();
+    _session_id = s.id;
+    localStorage.setItem('stratum_session_id', _session_id);
+    // Reconnect WS with new session
+    if (ws) ws.close();
+    // Clear messages area
+    const msgs = document.getElementById('messages');
+    if (msgs) msgs.innerHTML = `
+      <div class="flex items-center gap-4 text-[#494847] text-[9px] uppercase tracking-widest">
+        <div class="h-[1px] flex-1 bg-[#494847]/30"></div>
+        <span id="session-time">NUEVA SESIÓN</span>
+        <div class="h-[1px] flex-1 bg-[#494847]/30"></div>
+      </div>
+      <div class="flex flex-col items-start">
+        <div class="bg-[#131313] border-l-2 border-primary p-4 max-w-2xl">
+          <div class="text-[9px] mb-2 opacity-50 text-primary">STRATUM_ENGINE // SYSTEM</div>
+          <p class="text-sm font-mono tracking-tight">Sesión nueva. Engineering Memory Engine listo.</p>
+        </div>
+      </div>`;
+    switchView('chat');
+    await loadSessions();
+    setTimeout(connectWS, 200);
+  } catch(e) { console.error(e); }
+}
+
+async function switchSession(sessionId) {
+  if (_session_id === sessionId) { switchView('chat'); return; }
+  _session_id = sessionId;
+  localStorage.setItem('stratum_session_id', sessionId);
+  // Clear & reload messages
+  const msgs = document.getElementById('messages');
+  if (msgs) msgs.innerHTML = `<div class="flex items-center gap-4 text-[#494847] text-[9px] uppercase tracking-widest"><div class="h-[1px] flex-1 bg-[#494847]/30"></div><span>CARGANDO...</span><div class="h-[1px] flex-1 bg-[#494847]/30"></div></div>`;
+  switchView('chat');
+  if (ws) ws.close();
+  setTimeout(connectWS, 200);
+  renderSessionsList(); // update active indicator
+}
+
+async function deleteSession(sessionId, event) {
+  event?.stopPropagation();
+  if (!confirm('¿Eliminar esta conversación?')) return;
+  await fetch(`${API}/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
+  if (_session_id === sessionId) {
+    // Switch to newest remaining session or create new
+    await loadSessions();
+    if (_sessions.length > 0) {
+      await switchSession(_sessions[0].id);
+    } else {
+      await newSession();
+    }
+  } else {
+    await loadSessions();
+  }
 }
 
 // ── WEBSOCKET CHAT ───────────────────────────────────────────────────────
@@ -822,9 +1361,10 @@ function connectWS() {
   };
   ws.onclose = () => {
     setConnected(false);
-    addLog('WS desconectado — reconectando...', 'warn');
-    setTimeout(connectWS, _wsRetryDelay);
-    _wsRetryDelay = Math.min(_wsRetryDelay * 2, 30000);
+    const delay = _wsRetryDelay;
+    _wsRetryDelay = Math.min(_wsRetryDelay * 2, 8000); // máximo 8s, no 30s
+    addLog(`WS desconectado — reintentando en ${delay/1000}s...`, 'warn');
+    setTimeout(connectWS, delay);
   };
   ws.onerror = () => addLog('Error de WebSocket', 'error');
   ws.onmessage = (e) => {
@@ -833,6 +1373,7 @@ function connectWS() {
       _session_id = data.session_id;
       localStorage.setItem('stratum_session_id', _session_id);
       if (data.resumed) loadSessionHistory(_session_id);
+      loadSessions();
       return;
     }
     if (data.type === 'token') {
@@ -841,6 +1382,7 @@ function connectWS() {
       finishStreaming(data);
       if (data.facts) updateFacts(data.facts);
       loadStats();
+      loadSessions();
     } else if (data.type === 'error') {
       finishStreaming(null);
       addMessage('agent', `Error: ${data.content}`, []);
@@ -903,9 +1445,12 @@ async function loadHealth() {
 function setServiceDot(name, ok) {
   const dot  = document.getElementById(`svc-${name}-dot`);
   const span = document.getElementById(`svc-${name}`);
-  if (!dot || !span) return;
-  dot.className = `w-1.5 h-1.5 rounded-full ${ok ? 'bg-primary' : 'bg-error'}`;
-  span.textContent = `${name.charAt(0).toUpperCase() + name.slice(1)}: ${ok ? 'OK' : 'ERR'}`;
+  if (dot)  dot.className = `w-1.5 h-1.5 rounded-full ${ok ? 'bg-primary' : 'bg-error'}`;
+  if (span) {
+    const label = name === 'ollama' ? 'LLM' : name.charAt(0).toUpperCase() + name.slice(1);
+    span.textContent = `${label} ${ok ? '●' : '○'}`;
+    span.style.color = ok ? '#a4ffb9' : '#ff716c';
+  }
 }
 
 // ── BRIDGE STATUS ─────────────────────────────────────────────────────────
@@ -1173,9 +1718,15 @@ async function loadJobs() {
     const el = document.getElementById('jobs-list');
     const countEl = document.getElementById('jobs-count');
     if (countEl) countEl.textContent = d.total || 0;
+    // Floating badge
+    const badge = document.getElementById('jobs-badge');
+    const badgeCount = document.getElementById('jobs-badge-count');
+    const activeJobs = (d.jobs || []).filter(j => j.status === 'running' || j.status === 'pending').length;
+    if (badge) badge.classList.toggle('hidden', activeJobs === 0);
+    if (badgeCount) badgeCount.textContent = activeJobs;
 
     if (!jobs.length) {
-      el.innerHTML = '<div class="bg-[#131313] border-l border-[#494847]/50 p-3 opacity-40"><div class="text-[10px] text-[#adaaaa]">NO_ACTIVE_JOBS</div></div>';
+      if (el) el.innerHTML = '<div class="text-[9px] text-[#494847] opacity-40">NO_ACTIVE_JOBS</div>';
       return;
     }
 
@@ -1277,7 +1828,7 @@ async function loadMetricsPanel() {
     const [statsR, stockSumR, decisionsR, hardwareR] = await Promise.all([
       fetch(`${API}/stats`),
       fetch(`${API}/stock/summary`),
-      fetch(`${API}/decisions?limit=5`),
+      fetch(`${API}/decisions?limit=10`),
       fetch(`${API}/hardware/stats`),
     ]);
 
@@ -1292,8 +1843,15 @@ async function loadMetricsPanel() {
     }
 
     // Decisions count + list
+    let allDecisionItems = [];
     if (decisionsR.ok) {
       const decs = await decisionsR.json();
+      allDecisionItems = decs.map(d => ({
+        type: 'DECISION',
+        date: d.created_at || '',
+        label: d.project + (d.component ? ' — ' + d.component : ''),
+        text: d.decision || '',
+      }));
       document.getElementById('kpi-decisions').textContent = decs.length;
       const dl = document.getElementById('metrics-decisions-list');
       if (dl) {
@@ -1312,18 +1870,32 @@ async function loadMetricsPanel() {
 
     // ── Firmware chart (bar por dispositivo) ─────────────────────────────
     const fwR = await fetch(`${API}/hardware/devices`);
+    const allFirmwareItems = [];   // acumular para el timeline
     if (fwR.ok) {
       const fwData = await fwR.json();
       const devices  = (fwData.registered || []).slice(0, 8);
       const labels   = devices.map(d => d.device_name?.slice(0, 10) || '?');
-      const counts   = await Promise.all(devices.map(async d => {
+      const fwHistories = await Promise.all(devices.map(async d => {
         try {
           const r = await fetch(`${API}/hardware/firmware/${encodeURIComponent(d.device_name)}`);
-          if (!r.ok) return 0;
+          if (!r.ok) return { device: d.device_name, history: [] };
           const j = await r.json();
-          return (j.history || []).length;
-        } catch { return 0; }
+          return { device: d.device_name, history: j.history || [] };
+        } catch { return { device: d.device_name, history: [] }; }
       }));
+      const counts = fwHistories.map(h => h.history.length);
+      // Recopilar items para el timeline
+      fwHistories.forEach(({ device, history }) => {
+        history.slice(0, 3).forEach(fw => {
+          allFirmwareItems.push({
+            type: 'FLASH',
+            date: fw.timestamp || '',
+            label: device,
+            text: fw.task || 'firmware',
+            success: fw.success,
+          });
+        });
+      });
 
       const ctx = document.getElementById('chart-firmware');
       if (ctx) {
@@ -1385,6 +1957,39 @@ async function loadMetricsPanel() {
           </div>`).join('');
       }
     }
+
+    // ── Timeline actividad reciente ───────────────────────────────────────
+    const activityEl = document.getElementById('metrics-activity');
+    if (activityEl) {
+      const items = [
+        ...allDecisionItems,
+        ...allFirmwareItems,
+      ].filter(i => i.date).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 12);
+
+      if (!items.length) {
+        activityEl.innerHTML = '<p class="text-[8px] opacity-40">Sin actividad registrada</p>';
+      } else {
+        const BADGE = {
+          FLASH:    { color: '#a4ffb9', bg: 'rgba(164,255,185,0.08)' },
+          DECISION: { color: '#00cbfe', bg: 'rgba(0,203,254,0.08)'   },
+        };
+        activityEl.innerHTML = items.map(item => {
+          const { color, bg } = BADGE[item.type] || BADGE.DECISION;
+          const dateStr = (item.date || '').slice(0, 16).replace('T', ' ');
+          const statusDot = item.type === 'FLASH'
+            ? `<span style="color:${item.success ? '#8eff71' : '#ff716c'}">●</span> `
+            : '';
+          return `
+            <div class="flex items-start gap-2 px-2 py-1.5 text-[8px]" style="background:${bg};border-left:2px solid ${color}20">
+              <span class="font-mono shrink-0" style="color:${color}">${item.type}</span>
+              <span class="opacity-40 shrink-0">${dateStr}</span>
+              <span class="opacity-70 truncate">${statusDot}${esc(item.label)}</span>
+              <span class="opacity-50 truncate flex-1">${esc((item.text||'').slice(0,50))}</span>
+            </div>`;
+        }).join('');
+      }
+    }
+
   } catch (e) {
     console.error('[Metrics]', e);
   }
@@ -1811,6 +2416,7 @@ async function saveNewSource() {
 function escHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+const esc = escHtml;
 
 // ── INIT ──────────────────────────────────────────────────────────────────
 document.getElementById('session-time').textContent =
@@ -1824,17 +2430,19 @@ document.getElementById('search-input').addEventListener('keydown', e => {
 });
 
 renderIdleOscilloscope();
+switchView('chat');   // start in chat view
+loadSessions();       // load session list
 connectWS();
 connectSignalWS();
 connectProactiveWS();
 loadHealth();
 loadAuthStatus();
-loadIntelligence();
 loadBridgeStatus();
 setInterval(loadStats,        10000);
 setInterval(loadJobs,          5000);
 setInterval(loadHealth,       30000);
 setInterval(loadBridgeStatus, 10000);
+setInterval(loadSessions,     30000);
 
 // Mostrar mensajes encolados de sesiones anteriores
 if (_offlineQueue.length > 0) {
@@ -2031,6 +2639,234 @@ async function webParsePLC() {
 // Cargar al iniciar
 webLoadDecisions();
 webLoadStockSummary();
+
+// ── PANEL CALC ────────────────────────────────────────────────────────────────
+
+function calcSwitchForm(formula) {
+  document.querySelectorAll('.calc-form').forEach(el => el.classList.add('hidden'));
+  const f = document.getElementById(`calcf-${formula}`);
+  if (f) f.classList.remove('hidden');
+  document.getElementById('calc-result')?.classList.add('hidden');
+}
+
+const _CALC_PARAMS = {
+  resistor_for_led:         () => ({ vcc: +v('cf-vcc'), vled: +v('cf-vled'), iled_ma: +v('cf-iled') }),
+  resistor_voltage_divider: () => ({ vin: +v('cf-vin'), vout: +v('cf-vout'), r1: +v('cf-r1') }),
+  buck_converter:           () => ({ vin: +v('cf-bvin'), vout: +v('cf-bvout'), iout: +v('cf-biout'), freq_khz: +v('cf-bfreq') }),
+  boost_converter:          () => ({ vin: +v('cf-bovin'), vout: +v('cf-bovout'), iout: +v('cf-boiout'), freq_khz: +v('cf-bofreq') }),
+  battery_autonomy:         () => ({ capacity_mah: +v('cf-cap'), current_ma: +v('cf-ima'), efficiency: +v('cf-eta') }),
+  fuse_rating:              () => ({ i_max: +v('cf-imax'), safety_factor: +v('cf-fsaf') }),
+  heat_sink_required:       () => ({ p_w: +v('cf-pw'), t_ambient: +v('cf-tamb'), theta_jc: +v('cf-tjc'), t_junction_max: +v('cf-tjmax') }),
+  transformer_turns_ratio:  () => ({ vp: +v('cf-vp'), vs: +v('cf-vs') }),
+  low_pass_rc:              () => ({ cutoff_hz: +v('cf-fcl'), r: +v('cf-rl') }),
+  high_pass_rc:             () => ({ cutoff_hz: +v('cf-fch'), c_uf: +v('cf-ch') }),
+  inverting_amp:            () => ({ r_in: +v('cf-rin'), r_feedback: +v('cf-rf') }),
+  non_inverting_amp:        () => ({ r1: +v('cf-nir1'), r2: +v('cf-nir2') }),
+  motor_power:              () => ({ voltage: +v('cf-mv'), current: +v('cf-mi'), efficiency: +v('cf-meta') }),
+  vfd_frequency_for_rpm:    () => ({ rpm: +v('cf-rpm'), poles: +v('cf-poles') }),
+  ohms_law: () => {
+    const ohv = v('cf-ohv'), ohi = v('cf-ohi'), ohr = v('cf-ohr');
+    const p = {};
+    if (ohv) p.v = +ohv;
+    if (ohi) p.i_ma = +ohi;
+    if (ohr) p.r = +ohr;
+    return p;
+  },
+  resistor_power: () => {
+    const p = { r: +v('cf-rpr') };
+    const ima = v('cf-rpima'), rpv = v('cf-rpv');
+    if (ima) p.i_ma = +ima;
+    if (rpv) p.v = +rpv;
+    return p;
+  },
+  capacitor_filter:   () => ({ freq_hz: +v('cf-cff'), resistance: +v('cf-cfr') }),
+  rc_time_constant:   () => ({ r: +v('cf-rcr'), c_uf: +v('cf-rcc') }),
+  capacitor_energy:   () => ({ c_uf: +v('cf-cec'), v: +v('cf-cev') }),
+  power_dissipation:  () => ({ v: +v('cf-pdv'), i_ma: +v('cf-pdi') }),
+  efficiency:         () => ({ p_out: +v('cf-effout'), p_in: +v('cf-effin') }),
+  lc_filter:          () => ({ cutoff_hz: +v('cf-lcf'), impedance: +v('cf-lcz') }),
+  voltage_follower:   () => ({}),
+  charge_time:        () => ({ capacity_mah: +v('cf-ctcap'), charge_current_ma: +v('cf-ctic'), efficiency: +v('cf-cteta') }),
+  motor_torque:       () => ({ power_w: +v('cf-mtpw'), rpm: +v('cf-mtrpm') }),
+};
+
+function v(id) { return document.getElementById(id)?.value || ''; }
+
+async function calcCompute() {
+  const formula = document.getElementById('calc-selector')?.value;
+  if (!formula) return;
+  const paramsFn = _CALC_PARAMS[formula];
+  if (!paramsFn) return;
+  const params = paramsFn();
+
+  const btn = document.querySelector('#panel-calc button[onclick="calcCompute()"]');
+  if (btn) btn.textContent = '⏳ CALCULANDO...';
+
+  try {
+    const r = await fetch(`${API}/calc/compute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ formula, params }),
+    });
+    if (!r.ok) {
+      const err = await r.json();
+      calcShowError(err.detail || 'Error de cálculo');
+      return;
+    }
+    const data = await r.json();
+    calcShowResult(data);
+  } catch (e) {
+    calcShowError(String(e));
+  } finally {
+    if (btn) btn.textContent = '⚡ CALCULAR';
+  }
+}
+
+function calcShowResult(data) {
+  const res = data.result;
+  const el = document.getElementById('calc-result-body');
+  if (!el) return;
+
+  const SKIP = ['formula', 'warnings', 'std_value'];
+  let html = '';
+
+  // Valor principal
+  html += `<div class="calc-kv"><span>RESULTADO</span><span>${res.value} ${res.unit}</span></div>`;
+  if (res.std_value != null) {
+    html += `<div class="calc-kv"><span>VALOR ESTÁNDAR</span><span>${res.std_value} ${res.unit}</span></div>`;
+  }
+  // Fórmula
+  html += `<div class="text-[7px] opacity-40 mt-1">${escHtml(res.formula || '')}</div>`;
+
+  // Campos extra
+  if (res.extra) {
+    Object.entries(res.extra).forEach(([k, val]) => {
+      if (k === 'note') {
+        html += `<div class="text-[7px] opacity-50 mt-1">${escHtml(String(val))}</div>`;
+      } else {
+        html += `<div class="calc-kv"><span>${k.toUpperCase().replace(/_/g,' ')}</span><span>${val}</span></div>`;
+      }
+    });
+  }
+
+  // Advertencias
+  (res.warnings || []).forEach(w => {
+    html += `<div class="calc-warn">⚠ ${escHtml(w)}</div>`;
+  });
+
+  // Stock match
+  if (data.stock_match) {
+    const s = data.stock_match;
+    html += `<div class="calc-stock">📦 EN STOCK: ${escHtml(s.name)} — ${escHtml(s.value || '')} ${escHtml(s.package || '')} (qty: ${s.quantity})</div>`;
+  }
+
+  el.innerHTML = html;
+  document.getElementById('calc-result')?.classList.remove('hidden');
+}
+
+function calcShowError(msg) {
+  const el = document.getElementById('calc-result-body');
+  if (el) el.innerHTML = `<div class="text-[#ff716c] text-[9px]">❌ ${escHtml(msg)}</div>`;
+  document.getElementById('calc-result')?.classList.remove('hidden');
+}
+
+// ── Circuit DRC + BOM ─────────────────────────────────────────────────────────
+
+function _getCircuitId() {
+  const val = document.getElementById('circuit-id-input')?.value;
+  if (!val || isNaN(val) || parseInt(val) < 1) {
+    alert('Ingresá un Circuit ID válido.');
+    return null;
+  }
+  return parseInt(val);
+}
+
+function _showCircuitResult(html) {
+  const panel = document.getElementById('circuit-result-panel');
+  if (!panel) return;
+  panel.innerHTML = html;
+  panel.classList.remove('hidden');
+}
+
+async function runCircuitDRC() {
+  const id = _getCircuitId();
+  if (!id) return;
+  _showCircuitResult('<div class="text-[#adaaaa]">⏳ Ejecutando DRC...</div>');
+  try {
+    const r = await fetch(`/api/circuits/${id}/drc`);
+    const data = await r.json();
+    if (!r.ok) { _showCircuitResult(`<div class="text-[#ff716c]">❌ ${escHtml(data.detail || 'Error')}</div>`); return; }
+
+    const passedColor = data.passed ? '#a4ffb9' : '#ff716c';
+    const passedIcon  = data.passed ? '✓' : '✗';
+    let html = `<div class="font-bold mb-1" style="color:${passedColor}">${passedIcon} DRC: ${escHtml(data.summary)}</div>`;
+
+    const allIssues = [...(data.errors||[]), ...(data.warnings||[]), ...(data.info||[])];
+    if (allIssues.length === 0) {
+      html += `<div class="text-[#a4ffb9] text-[8px]">Sin problemas detectados.</div>`;
+    } else {
+      for (const issue of allIssues) {
+        const color = issue.severity === 'error' ? '#ff716c' : issue.severity === 'warning' ? '#ffd700' : '#adaaaa';
+        html += `<div class="text-[8px]" style="color:${color}">
+          [${escHtml(issue.severity?.toUpperCase())}] <b>${escHtml(issue.code)}</b>
+          ${issue.component ? `<span class="text-[#adaaaa]">(${escHtml(issue.component)})</span>` : ''}
+          — ${escHtml(issue.message)}
+        </div>`;
+      }
+    }
+    _showCircuitResult(html);
+  } catch(e) {
+    _showCircuitResult(`<div class="text-[#ff716c]">❌ ${escHtml(String(e))}</div>`);
+  }
+}
+
+async function runCircuitBOM() {
+  const id = _getCircuitId();
+  if (!id) return;
+  _showCircuitResult('<div class="text-[#adaaaa]">⏳ Generando BOM...</div>');
+  try {
+    const r = await fetch(`/api/circuits/${id}/bom`);
+    const data = await r.json();
+    if (!r.ok) { _showCircuitResult(`<div class="text-[#ff716c]">❌ ${escHtml(data.detail || 'Error')}</div>`); return; }
+
+    let html = `<div class="text-[#00cbfe] font-bold mb-1">BOM — ${escHtml(data.summary)}</div>`;
+    html += `<table class="w-full text-[8px] border-collapse">
+      <thead><tr class="text-[#494847]">
+        <th class="text-left pr-2">REF</th>
+        <th class="text-left pr-2">NOMBRE</th>
+        <th class="text-right pr-2">STOCK</th>
+        <th class="text-right pr-2">PROVEEDOR</th>
+        <th class="text-right">COSTO</th>
+      </tr></thead><tbody>`;
+    for (const line of (data.lines || [])) {
+      const stockColor = line.in_stock ? '#a4ffb9' : '#ff716c';
+      html += `<tr class="border-t border-[#494847]/20">
+        <td class="pr-2 text-[#adaaaa]">${escHtml(line.ref)}</td>
+        <td class="pr-2 text-[#adaaaa]">${escHtml((line.name||'').slice(0,22))}</td>
+        <td class="pr-2 text-right" style="color:${stockColor}">${line.stock_qty}</td>
+        <td class="pr-2 text-right text-[#adaaaa]">${escHtml((line.supplier||'—').slice(0,12))}</td>
+        <td class="text-right text-[#adaaaa]">${line.unit_cost ? '$'+line.unit_cost.toFixed(2) : '—'}</td>
+      </tr>`;
+    }
+    html += `</tbody><tfoot><tr class="border-t border-[#494847]/40">
+      <td colspan="4" class="text-right text-[#adaaaa] pt-1">TOTAL:</td>
+      <td class="text-right text-[#a4ffb9] font-bold pt-1">$${(data.total_cost||0).toFixed(2)}</td>
+    </tr></tfoot></table>`;
+
+    if ((data.missing_components||[]).length > 0) {
+      html += `<div class="text-[#ffd700] text-[8px] mt-1">⚠ Faltantes: ${escHtml(data.missing_components.join(', '))}</div>`;
+    }
+    _showCircuitResult(html);
+  } catch(e) {
+    _showCircuitResult(`<div class="text-[#ff716c]">❌ ${escHtml(String(e))}</div>`);
+  }
+}
+
+function downloadCircuitBOMcsv() {
+  const id = _getCircuitId();
+  if (!id) return;
+  window.open(`/api/circuits/${id}/bom.csv`, '_blank');
+}
 </script>
 </body>
 </html>

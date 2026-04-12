@@ -1375,14 +1375,11 @@ Ejecución completa del plan de 3 fases aprobado en la sesión anterior.
 
 | Qué | Prioridad | Detalle |
 |-----|-----------|---------|
-| Versión en header web | 🟢 Baja | `api/static/index.html` dice `v2.1.0` — actualizar a `v3.0.0` |
 | Rebuild app mobile | 🟡 Media | `npx cap sync android` + run en Android Studio para ver cambios de UI |
-| `pip install reportlab` | 🟡 Media | Solo para PDF local — en Railway ya se instala desde requirements.txt |
 | Push notifications FCM | 🟡 Media | Falta `google-services.json` de Firebase para habilitar en Android |
 | Test bridge end-to-end | 🟡 Media | `python run.py bridge --url ... --token ...` + programar desde celular en 4G |
 | Qdrant Cloud | 🟢 Baja | Con Railway Volume la persistencia local funciona. Qdrant Cloud solo necesario si se escala |
-| Schematic viewer para imports | 🟢 Baja | Los esquemáticos importados se guardan como `circuit_designs` pero el viewer no muestra el `source_tool` |
-| Importar Eagle con namespace XML | 🟢 Baja | Algunos archivos Eagle modernos usan namespace — el parser puede fallar en edge cases |
+| Home Assistant config | 🟢 Baja | Plugin implementado, usuario no tiene domótica aún. Variables en `.env` desactivadas |
 
 ### Estado del servidor local
 ```
@@ -1395,5 +1392,90 @@ Ejecución completa del plan de 3 fases aprobado en la sesión anterior.
 
 ---
 
+## 13. ESTADO ACTUAL (2026-04-11) — v3.0.0
+
+### ✅ Completado en sesión 2026-04-11
+
+| Área | Estado | Detalle |
+|------|--------|---------|
+| Versión header web | ✅ | `api/static/index.html` actualizado a `ENGINE_v3.0.0` |
+| Eagle XML namespace | ✅ | `tools/schematic_parser.py` — `parse_eagle()` detecta `xmlns` del root tag automáticamente |
+| Circuit viewer source_tool | ✅ | `api/static/circuit_viewer.html` — badge "Importado desde: EAGLE/KICAD/LTSPICE" en SVG y panel lateral |
+| Timeline ACTIVIDAD_RECIENTE | ✅ | `api/static/index.html` — panel METRICS agrega lista cronológica de firmware flashes + decisiones mezclados |
+| Plugin Home Assistant | ✅ | `tools/plugins/homeassistant_plugin.py/.json` — tools: `ha_send_state`, `ha_get_devices`, `ha_sync_all` via HTTP |
+| Variables HA en .env | ✅ | `.env` y `.env.example` actualizados con `HA_BASE_URL`, `HA_TOKEN`, `HA_WEBHOOK_URL` (desactivadas — sin domótica) |
+
+### Notas técnicas sesión 2026-04-11
+
+- **Eagle namespace:** fix en línea 186 de `schematic_parser.py` — `ns = tag[:tag.rfind('}')+1] if '}' in tag else ""`
+- **Timeline METRICS:** combina `allFirmwareItems` (por device) + `allDecisionItems`, ordena por fecha desc, muestra 12 más recientes con badge FLASH/DECISION
+- **Plugin HA:** usa `urllib.request` (sin dependencias externas). Prioriza REST API (`HA_BASE_URL+HA_TOKEN`), fallback a webhook. Si no hay config, informa al usuario sin crashear
+- **No requiere `npx cap sync`** — los cambios son solo en el backend web, no en la app mobile
+
+---
+
 _Este archivo es la memoria del proyecto. Actualizarlo después de cada sesión significativa._
-_Última actualización: 2026-04-06 — Build Android iniciado. TypeScript requerido por Capacitor CLI. Android Studio abierto con proyecto listo._
+_Última actualización: 2026-04-11 — Motor de cálculo de ingeniería eléctrica/electrónica implementado (Nivel 2 roadmap)._
+
+---
+
+## 14. MOTOR DE CÁLCULO ELÉCTRICO (2026-04-11)
+
+### Archivos nuevos
+| Archivo | Descripción |
+|---------|-------------|
+| `tools/electrical_formulas.py` | 25 fórmulas puras: pasivos, potencia, BUCK/BOOST, filtros, op-amp, baterías, motores |
+| `agent/agents/electrical_calc_agent.py` | Agente híbrido: LLM clasifica+extrae, Python calcula, LLM explica |
+| `api/routers/calc.py` | `POST /api/calc/compute` + `GET /api/calc/formulas` |
+
+### Archivos modificados
+| Archivo | Cambio |
+|---------|--------|
+| `agent/orchestrator.py` | ElectricalCalcAgent como pre-filtro del path hardware; keywords de cálculo agregados |
+| `api/server.py` | Router `calc` registrado |
+| `api/static/index.html` | Tab CALC con 15 calculadoras interactivas |
+
+### Fórmulas disponibles (25)
+resistor_for_led, resistor_voltage_divider, resistor_power, capacitor_filter, rc_time_constant, capacitor_energy, power_dissipation, heat_sink_required, efficiency, fuse_rating, buck_converter, boost_converter, transformer_turns_ratio, low_pass_rc, high_pass_rc, lc_filter, inverting_amp, non_inverting_amp, voltage_follower, battery_autonomy, charge_time, motor_power, vfd_frequency_for_rpm, motor_torque, ohms_law
+
+### Notas técnicas
+- El LLM **NO** hace los cálculos — Python los hace. LLM solo clasifica intent y explica resultado
+- Cada fórmula retorna `{value, unit, formula, warnings, std_value, extra}`
+- `std_value` es el valor E24/fusible estándar más cercano al resultado
+- El agente busca en ComponentStockDB el componente más cercano al valor calculado
+- Si `ElectricalCalcAgent.run()` retorna `None`, el HardwareAgent toma el control (fallback limpio)
+- Endpoint REST: `POST /api/calc/compute` acepta `{formula, params}` sin autenticación
+
+---
+
+## 15. DRC ELÉCTRICO + BOM CON COSTOS (2026-04-11)
+
+### Archivos nuevos
+| Archivo | Descripción |
+|---------|-------------|
+| `tools/electrical_drc.py` | Motor DRC puro Python — 12 reglas eléctricas, sin LLM |
+| `tools/bom_generator.py` | BOM con costos — mapeo contra stock, fuzzy matching 5 niveles, export CSV |
+
+### Archivos modificados
+| Archivo | Cambio |
+|---------|--------|
+| `database/component_stock.py` | Columna `unit_cost REAL DEFAULT 0.0`, métodos `update_cost()`, `update()`, `add()` extendidos |
+| `agent/agents/circuit_agent.py` | Auto-DRC al crear circuito (`run_drc()` en `parse_circuit()`) |
+| `api/routers/circuits.py` | Endpoints: `GET /{id}/drc`, `GET /{id}/bom`, `GET /{id}/bom.csv` |
+| `tools/pdf_exporter.py` | Secciones VERIFICACIÓN DRC + BILL OF MATERIALS en el PDF |
+| `api/static/index.html` | Panel CIRCUIT_VIEWER: campo Circuit ID, botones DRC / BOM / CSV con resultados inline |
+
+### DRC — 12 checks implementados
+`NO_POWER_NET`, `LED_WITHOUT_RESISTOR`, `SHORT_CIRCUIT`, `NO_DECOUPLING_CAP`, `NO_I2C_PULLUP`, `NO_ONEWIRE_PULLUP`, `ISOLATED_COMPONENT`, `DUPLICATE_NET_NODE`, `MISSING_RESET_CAP`, `HIGH_CURRENT_NO_FUSE`, `OVERCURRENT_PIN`, `VOLTAGE_MISMATCH`
+
+### BOM — estrategia fuzzy matching
+1. Nombre exacto → 2. Nombre parcial → 3. Categoría + valor string → 4. Categoría + valor numérico más cercano → 5. Solo categoría
+
+### Notas técnicas
+- DRC retorna `{errors, warnings, info, passed, summary, counts}` — `errors` bloquean fabricación
+- DRC se ejecuta automáticamente al parsear cualquier circuito y se guarda en `circuit_data["drc"]`
+- BOM calcula `total_cost` = suma `unit_cost` del stock para cada componente del circuito
+- `bom_to_csv()` genera CSV con header, filas, total y lista de faltantes
+- `esc` alias para `escHtml` agregado en `index.html` para consistencia en todo el JS
+
+_Última actualización: 2026-04-11 — DRC eléctrico + BOM con costos implementados (Niveles 3+5 roadmap)._

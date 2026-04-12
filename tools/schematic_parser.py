@@ -181,8 +181,9 @@ def parse_eagle(content: str, filename: str = "schematic.sch") -> dict:
     except ET.ParseError as e:
         return _make_result(filename, "eagle", [], [], f"Error XML: {e}")
 
-    # Namespace Eagle (algunos archivos usan xmlns)
-    ns = ""
+    # Detectar namespace Eagle si existe (ej: {http://eagle.autodesk.com/xml}eagle)
+    tag = root.tag
+    ns = tag[:tag.rfind('}')+1] if '}' in tag else ""
 
     # Buscar instancias de partes en sheets
     for sheet in root.iter(f"{ns}sheet"):

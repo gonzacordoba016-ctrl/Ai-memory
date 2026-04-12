@@ -111,6 +111,7 @@ _include("push",             "api.routers.push")
 _include("schematics",       "api.routers.schematics")
 _include("stock",            "api.routers.stock")
 _include("decisions",        "api.routers.decisions")
+_include("calc",             "api.routers.calc")
 
 print(f"[STARTUP] Routers OK: {_routers_loaded}", flush=True)
 if _routers_failed:

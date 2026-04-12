@@ -101,6 +101,18 @@ class SQLMemory:
 
             conn.execute("CREATE INDEX IF NOT EXISTS idx_conversations_session ON conversations(session_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id)")
+
+            # ── Tabla de sesiones de chat ─────────────────────────────────
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS chat_sessions (
+                    id          TEXT PRIMARY KEY,
+                    user_id     TEXT NOT NULL DEFAULT 'default',
+                    title       TEXT NOT NULL DEFAULT 'Nueva conversación',
+                    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    last_msg_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id, last_msg_at)")
             conn.commit()
 
     # ======================
@@ -176,6 +188,72 @@ class SQLMemory:
             else:
                 conn.execute("DELETE FROM conversations WHERE user_id = ?", (user_id,))
             conn.commit()
+
+    # ======================
+    # SESIONES DE CHAT
+    # ======================
+
+    def list_sessions(self, user_id: str = "default", limit: int = 50) -> list[dict]:
+        """Lista sesiones de chat ordenadas por último mensaje."""
+        with self._get_connection() as conn:
+            rows = conn.execute("""
+                SELECT s.id, s.title, s.created_at, s.last_msg_at,
+                       COUNT(c.id) as msg_count
+                FROM chat_sessions s
+                LEFT JOIN conversations c ON c.session_id = s.id AND c.user_id = s.user_id
+                WHERE s.user_id = ?
+                GROUP BY s.id
+                ORDER BY s.last_msg_at DESC
+                LIMIT ?
+            """, (user_id, limit)).fetchall()
+        return [{"id": r[0], "title": r[1], "created_at": r[2],
+                 "last_msg_at": r[3], "msg_count": r[4]} for r in rows]
+
+    def create_session(self, session_id: str = None, title: str = "Nueva conversación",
+                       user_id: str = "default") -> dict:
+        """Crea una nueva sesión de chat."""
+        sid = session_id or str(_uuid.uuid4())
+        with self._get_connection() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO chat_sessions (id, user_id, title) VALUES (?, ?, ?)",
+                (sid, user_id, title)
+            )
+            conn.commit()
+        return {"id": sid, "title": title, "user_id": user_id}
+
+    def update_session_title(self, session_id: str, title: str, user_id: str = "default") -> bool:
+        """Actualiza el título de una sesión."""
+        with self._get_connection() as conn:
+            conn.execute(
+                "UPDATE chat_sessions SET title = ? WHERE id = ? AND user_id = ?",
+                (title, session_id, user_id)
+            )
+            conn.commit()
+        return True
+
+    def touch_session(self, session_id: str, user_id: str = "default"):
+        """Actualiza last_msg_at de la sesión y la crea si no existe."""
+        with self._get_connection() as conn:
+            conn.execute("""
+                INSERT INTO chat_sessions (id, user_id, title, last_msg_at)
+                VALUES (?, ?, 'Nueva conversación', CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET last_msg_at = CURRENT_TIMESTAMP
+            """, (session_id, user_id))
+            conn.commit()
+
+    def delete_session(self, session_id: str, user_id: str = "default") -> bool:
+        """Elimina una sesión y todos sus mensajes."""
+        with self._get_connection() as conn:
+            conn.execute(
+                "DELETE FROM conversations WHERE session_id = ? AND user_id = ?",
+                (session_id, user_id)
+            )
+            conn.execute(
+                "DELETE FROM chat_sessions WHERE id = ? AND user_id = ?",
+                (session_id, user_id)
+            )
+            conn.commit()
+        return True
 
     # ======================
     # USUARIOS

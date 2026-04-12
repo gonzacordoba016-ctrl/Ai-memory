@@ -2,7 +2,9 @@
 # Endpoints de memoria: facts, historial, búsqueda semántica, grafo, perfil, plugins, stats
 
 from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi.responses import JSONResponse
 from datetime import datetime
+from pydantic import BaseModel
 
 from database.sql_memory import _default as sql_db
 from memory.vector_memory import search_memory
@@ -171,3 +173,39 @@ async def cache_clear():
         return {"status": "ok", "message": "Cache limpiado"}
     except Exception as e:
         return {"status": "error", "detail": str(e)}
+
+
+# ── Chat Sessions ─────────────────────────────────────────────────────────────
+
+class SessionCreateRequest(BaseModel):
+    title: str = "Nueva conversación"
+
+class SessionTitleRequest(BaseModel):
+    title: str
+
+
+@router.get("/api/sessions")
+async def list_sessions():
+    sessions = sql_db.list_sessions()
+    return JSONResponse(content={"sessions": sessions})
+
+
+@router.post("/api/sessions", status_code=201)
+async def create_session(body: SessionCreateRequest = None):
+    import uuid
+    sid = str(uuid.uuid4())
+    title = body.title if body else "Nueva conversación"
+    result = sql_db.create_session(session_id=sid, title=title)
+    return JSONResponse(content=result, status_code=201)
+
+
+@router.patch("/api/sessions/{session_id}/title")
+async def rename_session(session_id: str, body: SessionTitleRequest):
+    sql_db.update_session_title(session_id, body.title.strip()[:80] or "Sin título")
+    return {"ok": True}
+
+
+@router.delete("/api/sessions/{session_id}")
+async def delete_session(session_id: str):
+    sql_db.delete_session(session_id)
+    return {"ok": True}

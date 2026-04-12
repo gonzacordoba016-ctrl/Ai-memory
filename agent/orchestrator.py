@@ -64,6 +64,26 @@ KEYWORD_ROUTES = {
         "corriente", "voltaje", "tensión", "potencia eléctrica",
         "kicad", "ltspice", "eagle", "esquemático",
         "decisión de diseño", "elegí el", "usé el",
+        # Cálculos de ingeniería eléctrica (ElectricalCalcAgent)
+        "calculá la resistencia", "calcular resistencia",
+        "calculá el capacitor", "calcular capacitor",
+        "calculá el inductor", "calcular inductor",
+        "dimensioná", "dimensionar", "dimensionamiento",
+        "resistencia para led", "resistencia limitadora",
+        "divisor de tensión", "divisor resistivo",
+        "filtro paso bajo", "filtro paso alto", "filtro lc",
+        "buck", "boost", "flyback", "convertidor dc",
+        "fuente conmutada", "switching",
+        "constante de tiempo rc", "tiempo de carga",
+        "autonomía de batería", "batería dura",
+        "fusible para", "qué fusible",
+        "disipador", "heatsink", "heat sink",
+        "eficiencia energética", "pérdidas",
+        "ganancia del amplificador", "ganancia opamp",
+        "frecuencia del vfd", "frecuencia para rpm",
+        "torque del motor", "potencia del motor",
+        "ley de ohm", "caída de tensión",
+        "relación de transformación",
     ],
     "research": [
         "busca", "buscar", "precio", "noticias", "hoy", "actual", "clima",
@@ -173,12 +193,26 @@ class Orchestrator:
                 context_parts.append(f"[Código/Archivos]\n{result}")
 
         if "hardware" in agents_to_run:
-            from agent.agents.hardware_agent import get_hardware_agent
-            hw_agent = get_hardware_agent()
-            result = await asyncio.to_thread(hw_agent.run, query, context)
-            results["hardware"] = result
-            if result:
-                context_parts.append(f"[Hardware]\n{result}")
+            # Intentar primero con ElectricalCalcAgent (cálculos exactos)
+            try:
+                from agent.agents.electrical_calc_agent import get_electrical_calc_agent
+                from database.component_stock import get_stock_db
+                ec_agent = get_electrical_calc_agent()
+                ec_result = await ec_agent.run(query, stock_db=get_stock_db())
+                if ec_result:
+                    results["hardware"] = ec_result
+                    context_parts.append(f"[Cálculo Eléctrico]\n{ec_result}")
+                    logger.info("[Orchestrator] ElectricalCalcAgent manejó la consulta")
+                else:
+                    raise ValueError("No es cálculo")
+            except Exception:
+                # Fallback al HardwareAgent normal
+                from agent.agents.hardware_agent import get_hardware_agent
+                hw_agent = get_hardware_agent()
+                result = await asyncio.to_thread(hw_agent.run, query, context)
+                results["hardware"] = result
+                if result:
+                    context_parts.append(f"[Hardware]\n{result}")
 
         return {
             "agents_used":      agents_to_run,

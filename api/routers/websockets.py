@@ -72,6 +72,13 @@ async def ws_chat(websocket: WebSocket, session: str = None):
 
             # Persistir mensaje del usuario en la sesión
             sql_db.store_message("user", user_input, session_id=session_id)
+            sql_db.touch_session(session_id)
+            # Auto-título: usar primeras palabras del primer mensaje
+            _msgs_so_far = sql_db.get_conversation_by_session(session_id, limit=2)
+            if len(_msgs_so_far) <= 1:
+                _auto_title = user_input[:60].strip()
+                if _auto_title:
+                    sql_db.update_session_title(session_id, _auto_title)
 
             async def on_token(token: str):
                 await websocket.send_text(json.dumps({"type": "token", "content": token}))

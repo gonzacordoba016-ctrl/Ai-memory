@@ -271,6 +271,8 @@ def test_memory_search():
     check("GET /api/history 200", r is not None and r.status_code == 200)
 
 
+import pytest
+@pytest.mark.asyncio
 async def test_websocket_chat():
     hdr("10. WebSocket Chat")
     uri = BASE.replace("http", "ws") + "/ws/chat"
