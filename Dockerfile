@@ -14,17 +14,17 @@ ENV HF_HOME=/app/.cache/huggingface
 ENV SENTENCE_TRANSFORMERS_HOME=/app/.cache/sentence_transformers
 
 # Instalar dependencias Python.
-# --extra-index-url garantiza que torch se resuelva desde la variante CPU
-# (evita que pip lo reemplace por la versión CUDA al resolver sentence-transformers).
+# --index-url (primario) = CPU wheel index → garantiza torch CPU, no CUDA.
+# --extra-index-url PyPI = fallback para todos los paquetes que no están en el CPU index.
 COPY requirements.txt .
 RUN pip install --no-cache-dir \
-    --extra-index-url https://download.pytorch.org/whl/cpu \
-    torch \
+    --index-url https://download.pytorch.org/whl/cpu \
+    --extra-index-url https://pypi.org/simple \
     -r requirements.txt
 
-# Pre-descargar el modelo de embeddings durante el build (evita cold-start lento)
-# HF_HOME y SENTENCE_TRANSFORMERS_HOME ya están seteados → el modelo queda en /app/.cache/
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
+# Pre-descargar el modelo de embeddings durante el build (evita cold-start lento).
+# || true → no falla el build si hay problema de red; el modelo se descarga al primer embed().
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')" || true
 
 # Copiar código fuente (cache bust: 2026-04-09)
 COPY . .

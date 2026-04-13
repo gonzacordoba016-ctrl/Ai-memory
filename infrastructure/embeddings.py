@@ -1,16 +1,20 @@
 # infrastructure/embeddings.py
 
 import threading
-from sentence_transformers import SentenceTransformer
 from core.config import EMBEDDING_MODEL
 from core.logger import logger
+
+# SentenceTransformer NO se importa aquí — cargarlo arrastra torch (~60-120s) y
+# bloquearía el bind del socket de uvicorn antes del primer request.
+# El import real ocurre dentro de _ensure_loaded(), al primer embed().
 
 
 class EmbeddingModel:
     """
     Lazy-loading wrapper sobre SentenceTransformer.
-    El modelo se carga en el primer embed(), no al importar el módulo.
-    Esto permite que uvicorn bindee el puerto antes de que el modelo esté listo.
+    Tanto el import de sentence_transformers como la carga del modelo se hacen
+    al primer embed(), no al importar el módulo.
+    Esto garantiza que uvicorn bindee el puerto en <1s.
     Thread-safe: usa un lock para evitar doble carga.
     """
 
@@ -25,11 +29,13 @@ class EmbeddingModel:
             if self._model is not None:
                 return
             try:
+                from sentence_transformers import SentenceTransformer  # import lazy
                 self._model = SentenceTransformer(EMBEDDING_MODEL, local_files_only=True)
                 logger.info(f"[Embeddings] Modelo cargado desde cache: {EMBEDDING_MODEL}")
             except Exception:
                 logger.info(f"[Embeddings] Cache miss — descargando: {EMBEDDING_MODEL}")
                 try:
+                    from sentence_transformers import SentenceTransformer  # import lazy
                     self._model = SentenceTransformer(EMBEDDING_MODEL)
                     logger.info(f"[Embeddings] Modelo descargado: {EMBEDDING_MODEL}")
                 except Exception as e:
