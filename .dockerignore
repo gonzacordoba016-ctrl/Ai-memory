@@ -23,6 +23,13 @@ database/*.db
 database/graph_memory.json
 memory_db/
 
+# Tests y evaluación — no necesarios en la imagen de producción
+eval/
+guide-test.py
+pytest.ini
+mypy.ini
+pyrightconfig.json
+
 # Node
 node_modules/
 npm-debug.log*

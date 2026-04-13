@@ -18,7 +18,6 @@ from core.logger import logger
 
 def _get_llm_api() -> str:
     """Lee la URL del LLM en runtime para evitar valores cacheados del import."""
-    import os
     provider = os.getenv("LLM_PROVIDER", "ollama")
     ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     urls = {
@@ -30,7 +29,6 @@ def _get_llm_api() -> str:
 
 def _get_llm_model() -> str:
     """Lee el modelo LLM en runtime."""
-    import os
     provider = os.getenv("LLM_PROVIDER", "ollama")
     if provider in ("ollama", "lmstudio"):
         return os.getenv("OLLAMA_MODEL", "qwen2.5:3b")

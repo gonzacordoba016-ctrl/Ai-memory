@@ -26,7 +26,7 @@ RUN pip install --no-cache-dir \
 # || true → no falla el build si hay problema de red; el modelo se descarga al primer embed().
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')" || true
 
-# Copiar código fuente (cache bust: 2026-04-09)
+# Copiar código fuente (cache bust: 2026-04-13)
 COPY . .
 
 # Crear directorios necesarios

@@ -7,12 +7,17 @@ load_dotenv()  # sin override: Railway/sistema tiene prioridad sobre .env local
 
 import os
 import sys
+import logging
+
+# Logger de servidor — centraliza todos los mensajes de startup/runtime
+_log = logging.getLogger("stratum.server")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 # Log de diagnóstico: muestra el provider y key en uso al arrancar
 _provider = os.getenv("LLM_PROVIDER", "ollama")
 _key = os.getenv("OPENROUTER_API_KEY", "") or os.getenv("AETHERMIND_API_KEY", "")
-print(f"[STARTUP] LLM_PROVIDER={_provider} | key prefix={_key[:15]}... | model={os.getenv('OPENROUTER_MODEL', os.getenv('OLLAMA_MODEL', '?'))}", flush=True)
-print(f"[STARTUP] PORT={os.getenv('PORT', '8000')} | MEMORY_DB={os.getenv('MEMORY_DB_PATH', './database/memory.db')}", flush=True)
+_log.info(f"[STARTUP] LLM_PROVIDER={_provider} | key prefix={_key[:15]}... | model={os.getenv('OPENROUTER_MODEL', os.getenv('OLLAMA_MODEL', '?'))}")
+_log.info(f"[STARTUP] PORT={os.getenv('PORT', '8000')} | MEMORY_DB={os.getenv('MEMORY_DB_PATH', './database/memory.db')}")
 
 # Coleccionamos errores de startup para reportarlos en /api/health
 _startup_errors: list[str] = []
@@ -22,7 +27,7 @@ try:
     validate_config()
 except Exception as e:
     msg = f"[WARNING] CONFIG: {e}"
-    print(msg, flush=True)
+    _log.warning(msg)
     _startup_errors.append(msg)
 
 import asyncio
@@ -102,9 +107,9 @@ _include("stock",            "api.routers.stock")
 _include("decisions",        "api.routers.decisions")
 _include("calc",             "api.routers.calc")
 
-print(f"[STARTUP] Routers OK: {_routers_loaded}", flush=True)
+_log.info(f"[STARTUP] Routers OK: {_routers_loaded}")
 if _routers_failed:
-    print(f"[STARTUP] Routers FAILED: {_routers_failed}", flush=True)
+    _log.warning(f"[STARTUP] Routers FAILED: {_routers_failed}")
 
 
 # ── Lifecycle ─────────────────────────────────────────────────────────
@@ -113,7 +118,7 @@ if _routers_failed:
 async def startup_event():
     _prov = os.getenv("LLM_PROVIDER", "ollama")
     _model = os.getenv("OPENROUTER_MODEL") or os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
-    print(f"[Server] LLM provider={_prov} | model={_model}", flush=True)
+    _log.info(f"[Server] LLM provider={_prov} | model={_model}")
 
     # Inyectar event loop en hardware bridge
     try:
@@ -128,29 +133,26 @@ async def startup_event():
         from database.component_stock import get_stock_db
         get_decisions_db()
         get_stock_db()
-        print("[Server] Tablas design_decisions y component_stock inicializadas.", flush=True)
+        _log.info("[Server] Tablas design_decisions y component_stock inicializadas.")
     except Exception as e:
         _startup_errors.append(f"DB init failed: {e}")
-        print(f"[Server] DB init error: {e}", flush=True)
+        _log.error(f"[Server] DB init error: {e}")
 
     # Job worker
     try:
         from api.job_worker import job_worker_loop
         asyncio.create_task(job_worker_loop())
-        print("[Server] Job worker iniciado.", flush=True)
+        _log.info("[Server] Job worker iniciado.")
     except Exception as e:
         _startup_errors.append(f"job_worker failed: {e}")
-        print(f"[Server] Job worker error: {e}", flush=True)
+        _log.error(f"[Server] Job worker error: {e}")
 
     # AgentController y ProactiveEngine — en background para no bloquear el startup.
-    # Uvicorn ya está escuchando el puerto y puede responder al healthcheck
-    # mientras estos componentes se inicializan.
     asyncio.create_task(_init_agents_background())
 
-    print(f"[Server] READY. Inicialización de agentes en background. Startup errors: {len(_startup_errors)}", flush=True)
-    if _startup_errors:
-        for e in _startup_errors:
-            print(f"  - {e}", flush=True)
+    _log.info(f"[Server] READY. Startup errors: {len(_startup_errors)}")
+    for err_msg in _startup_errors:
+        _log.warning(f"  - {err_msg}")
 
 
 async def _init_agents_background():
@@ -162,20 +164,20 @@ async def _init_agents_background():
     try:
         from agent.agent_controller import AgentController
         _state.agent = AgentController()
-        print("[STARTUP] AgentController inicializado.", flush=True)
+        _log.info("[STARTUP] AgentController inicializado.")
     except Exception as e:
         msg = f"AgentController init failed: {e}"
-        print(f"[ERROR] {msg}", flush=True)
+        _log.error(f"[ERROR] {msg}")
         _startup_errors.append(msg)
 
     try:
         from agent.proactive_engine import ProactiveEngine
         _state.proactive_engine = ProactiveEngine()
         await _state.proactive_engine.start()
-        print("[STARTUP] ProactiveEngine iniciado.", flush=True)
+        _log.info("[STARTUP] ProactiveEngine iniciado.")
     except Exception as e:
         msg = f"ProactiveEngine init failed: {e}"
-        print(f"[ERROR] {msg}", flush=True)
+        _log.error(f"[ERROR] {msg}")
         _startup_errors.append(msg)
 
 
