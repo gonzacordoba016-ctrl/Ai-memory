@@ -176,6 +176,9 @@
       <button onclick="switchView('metrics')"  id="nav-metrics"  class="nav-item flex items-center gap-3 py-1.5 pl-4 w-full text-left text-[#adaaaa] hover:bg-[#131313] hover:text-[#00cbfe] transition-all text-[10px]">
         <span class="material-symbols-outlined text-sm">bar_chart</span> METRICS
       </button>
+      <button onclick="switchView('kb')"        id="nav-kb"        class="nav-item flex items-center gap-3 py-1.5 pl-4 w-full text-left text-[#adaaaa] hover:bg-[#131313] hover:text-[#00cbfe] transition-all text-[10px]">
+        <span class="material-symbols-outlined text-sm">library_books</span> KB
+      </button>
       <button onclick="switchView('system')"   id="nav-system"   class="nav-item flex items-center gap-3 py-1.5 pl-4 w-full text-left text-[#adaaaa] hover:bg-[#131313] hover:text-[#00cbfe] transition-all text-[10px]">
         <span class="material-symbols-outlined text-sm">settings</span> SYSTEM
       </button>
@@ -825,6 +828,9 @@
         <button onclick="downloadCircuitBOMcsv()" class="flex-1 text-[9px] font-mono bg-[#131313] border border-[#494847]/50 text-[#adaaaa] hover:border-[#a4ffb9]/60 hover:text-primary px-2 py-1 transition-colors flex items-center justify-center gap-1">
           <span class="material-symbols-outlined text-xs">download</span>CSV
         </button>
+        <button onclick="simulateCircuitWokwi()" class="flex-1 text-[9px] font-mono bg-[#131313] border border-[#494847]/50 text-[#adaaaa] hover:border-[#a855f7]/60 hover:text-[#a855f7] px-2 py-1 transition-colors flex items-center justify-center gap-1">
+          <span class="material-symbols-outlined text-xs">memory</span>Wokwi
+        </button>
       </div>
       <!-- Results panel -->
       <div id="circuit-result-panel" class="hidden text-[9px] font-mono bg-[#131313] border border-[#494847]/30 p-2 max-h-48 overflow-y-auto space-y-1"></div>
@@ -942,6 +948,70 @@
   </div>
   <div class="flex-1 overflow-y-auto p-8">
     <div class="view-panel-slot max-w-5xl space-y-6" data-panel="system"></div>
+  </div>
+</div>
+
+<!-- ═══ VIEW: KNOWLEDGE BASE ══════════════════════════════════════════════ -->
+<div id="view-kb" class="hidden flex-col flex-1 h-full overflow-hidden">
+  <div class="flex items-center justify-between px-8 py-4 border-b border-[#a4ffb9]/10 flex-shrink-0">
+    <div class="flex items-center gap-3">
+      <span class="material-symbols-outlined text-secondary">library_books</span>
+      <span class="font-mono text-[11px] tracking-widest text-[#adaaaa]">KNOWLEDGE BASE</span>
+    </div>
+    <button onclick="switchView('chat')" class="text-[9px] font-mono text-[#494847] hover:text-primary flex items-center gap-1">
+      <span class="material-symbols-outlined text-xs">arrow_back</span>VOLVER AL CHAT
+    </button>
+  </div>
+  <div class="flex-1 overflow-y-auto p-8">
+    <div class="max-w-4xl space-y-6">
+
+      <!-- Upload + Index -->
+      <div class="border border-[#494847]/30 p-4 space-y-3">
+        <div class="text-[9px] font-mono text-[#494847] tracking-widest">SUBIR DOCUMENTO</div>
+        <div class="flex gap-2">
+          <input type="file" id="kb-file-input" accept=".txt,.md,.pdf,.py,.c,.cpp,.h,.json" class="hidden" onchange="kbUploadFile(this)"/>
+          <button onclick="document.getElementById('kb-file-input').click()"
+                  class="text-[9px] font-mono bg-[#131313] border border-[#494847]/50 text-[#adaaaa] hover:border-primary/60 hover:text-primary px-3 py-1.5 transition-colors flex items-center gap-1">
+            <span class="material-symbols-outlined text-xs">upload_file</span>Seleccionar archivo
+          </button>
+          <button onclick="kbReindex()"
+                  class="text-[9px] font-mono bg-[#131313] border border-[#494847]/50 text-[#adaaaa] hover:border-secondary/60 hover:text-secondary px-3 py-1.5 transition-colors flex items-center gap-1">
+            <span class="material-symbols-outlined text-xs">sync</span>Re-indexar todo
+          </button>
+        </div>
+        <div id="kb-upload-status" class="text-[9px] font-mono text-[#adaaaa] hidden"></div>
+      </div>
+
+      <!-- Search -->
+      <div class="border border-[#494847]/30 p-4 space-y-3">
+        <div class="text-[9px] font-mono text-[#494847] tracking-widest">BÚSQUEDA SEMÁNTICA</div>
+        <div class="flex gap-2">
+          <input id="kb-search-input" type="text" placeholder="buscar en knowledge base..."
+                 class="flex-1 bg-[#0a0a0a] border border-[#494847]/50 text-[10px] font-mono text-[#adaaaa] px-3 py-1.5 focus:outline-none focus:border-primary/50 placeholder-[#494847]"
+                 onkeydown="if(event.key==='Enter') kbSearch()"/>
+          <button onclick="kbSearch()"
+                  class="text-[9px] font-mono bg-[#131313] border border-[#494847]/50 text-[#adaaaa] hover:border-primary/60 hover:text-primary px-3 py-1.5 transition-colors flex items-center gap-1">
+            <span class="material-symbols-outlined text-xs">search</span>Buscar
+          </button>
+        </div>
+        <div id="kb-search-results" class="space-y-2"></div>
+      </div>
+
+      <!-- Document list -->
+      <div class="border border-[#494847]/30 p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <div class="text-[9px] font-mono text-[#494847] tracking-widest">DOCUMENTOS INDEXADOS</div>
+          <button onclick="kbLoadDocuments()"
+                  class="text-[8px] font-mono text-[#494847] hover:text-primary flex items-center gap-1">
+            <span class="material-symbols-outlined text-xs">refresh</span>
+          </button>
+        </div>
+        <div id="kb-doc-list" class="space-y-1 text-[9px] font-mono text-[#adaaaa]">
+          <div class="text-[#494847]">Cargando...</div>
+        </div>
+      </div>
+
+    </div>
   </div>
 </div>
 
@@ -1177,6 +1247,7 @@ function switchView(name) {
   if (name === 'metrics')  loadMetricsPanel();
   if (name === 'calc')     calcSwitchForm(document.getElementById('calc-selector')?.value || 'resistor_for_led');
   if (name === 'chat')     document.getElementById('prompt')?.focus();
+  if (name === 'kb')       kbLoadDocuments();
 }
 
 // Legacy alias used in some places
@@ -2867,6 +2938,136 @@ function downloadCircuitBOMcsv() {
   if (!id) return;
   window.open(`/api/circuits/${id}/bom.csv`, '_blank');
 }
+
+async function simulateCircuitWokwi() {
+  const id = _getCircuitId();
+  if (!id) return;
+  _showCircuitResult('<div class="text-[#adaaaa]">⏳ Generando diagram.json Wokwi...</div>');
+  try {
+    const r = await fetch(`/api/circuits/${id}/simulate`, { method: 'POST' });
+    const data = await r.json();
+    if (!r.ok) {
+      _showCircuitResult(`<div class="text-[#ff716c]">❌ ${escHtml(data.detail || 'Error')}</div>`);
+      return;
+    }
+    const parts = data.diagram_json?.parts?.length ?? 0;
+    const conns = data.diagram_json?.connections?.length ?? 0;
+    let html = `<div class="text-[#a855f7] font-bold mb-1">Wokwi — ${escHtml(data.circuit_name)}</div>`;
+    html += `<div class="text-[#adaaaa]">📦 ${parts} partes · 🔗 ${conns} conexiones</div>`;
+    if (data.status === 'unavailable') {
+      html += `<div class="text-[#f5c518] mt-1">${escHtml(data.message)}</div>`;
+      html += `<div class="flex gap-2 mt-2">`;
+      html += `<a href="/api/circuits/${id}/diagram.json" download class="text-[9px] font-mono bg-[#131313] border border-[#a855f7]/50 text-[#a855f7] px-2 py-1 hover:border-[#a855f7]">⬇ Descargar diagram.json</a>`;
+      html += `<a href="${escHtml(data.simulation_url)}" target="_blank" class="text-[9px] font-mono bg-[#131313] border border-[#a855f7]/50 text-[#a855f7] px-2 py-1 hover:border-[#a855f7]">🌐 Abrir Wokwi</a>`;
+      html += `</div>`;
+    } else if (data.status === 'ok') {
+      html += `<div class="text-[#a4ffb9] mt-1">✅ Simulación completada</div>`;
+      if (data.output) html += `<pre class="text-[8px] text-[#adaaaa] mt-1 max-h-24 overflow-y-auto">${escHtml(data.output)}</pre>`;
+    } else {
+      html += `<div class="text-[#ff716c] mt-1">⚠ ${escHtml(data.output || data.message || 'Error')}</div>`;
+      html += `<a href="/api/circuits/${id}/diagram.json" download class="text-[9px] font-mono text-[#a855f7] mt-1 block">⬇ Descargar diagram.json</a>`;
+    }
+    _showCircuitResult(html);
+  } catch(e) {
+    _showCircuitResult(`<div class="text-[#ff716c]">❌ ${escHtml(String(e))}</div>`);
+  }
+}
+
+// ── KNOWLEDGE BASE ────────────────────────────────────────────────────────────
+
+async function kbLoadDocuments() {
+  const el = document.getElementById('kb-doc-list');
+  if (!el) return;
+  el.innerHTML = '<div class="text-[#494847]">Cargando...</div>';
+  try {
+    const r = await fetch('/api/knowledge/documents');
+    const data = await r.json();
+    if (!data.documents || data.documents.length === 0) {
+      el.innerHTML = '<div class="text-[#494847]">Sin documentos indexados.</div>';
+      return;
+    }
+    el.innerHTML = data.documents.map(d => {
+      const name = typeof d === 'string' ? d : (d.filename || d.name || JSON.stringify(d));
+      const chunks = typeof d === 'object' && d.chunks != null ? ` <span class="text-[#494847]">${d.chunks} chunks</span>` : '';
+      return `<div class="flex items-center gap-2 py-0.5 border-b border-[#494847]/10">
+        <span class="material-symbols-outlined text-xs text-[#494847]">description</span>
+        <span class="flex-1 truncate">${escHtml(name)}</span>${chunks}
+      </div>`;
+    }).join('');
+  } catch(e) {
+    el.innerHTML = `<div class="text-[#ff716c]">Error: ${escHtml(String(e))}</div>`;
+  }
+}
+
+async function kbUploadFile(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  const status = document.getElementById('kb-upload-status');
+  status.classList.remove('hidden');
+  status.textContent = `⏳ Subiendo ${file.name}...`;
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r = await fetch('/api/knowledge/upload', { method: 'POST', body: fd });
+    const data = await r.json();
+    if (!r.ok) {
+      status.textContent = `❌ ${data.detail || 'Error al subir'}`;
+    } else {
+      status.textContent = `✅ ${data.filename} subido e indexado`;
+      input.value = '';
+      kbLoadDocuments();
+    }
+  } catch(e) {
+    status.textContent = `❌ ${String(e)}`;
+  }
+}
+
+async function kbReindex() {
+  const status = document.getElementById('kb-upload-status');
+  status.classList.remove('hidden');
+  status.textContent = '⏳ Re-indexando...';
+  try {
+    const r = await fetch('/api/knowledge/index?force=true', { method: 'POST' });
+    const data = await r.json();
+    status.textContent = `✅ Indexación completa: ${JSON.stringify(data.indexed)}`;
+    kbLoadDocuments();
+  } catch(e) {
+    status.textContent = `❌ ${String(e)}`;
+  }
+}
+
+async function kbSearch() {
+  const q = document.getElementById('kb-search-input')?.value?.trim();
+  const el = document.getElementById('kb-search-results');
+  if (!q || !el) return;
+  el.innerHTML = '<div class="text-[#494847] text-[9px]">Buscando...</div>';
+  try {
+    const r = await fetch(`/api/knowledge/search?q=${encodeURIComponent(q)}&top_k=5`);
+    const data = await r.json();
+    if (!data.results || data.results.length === 0) {
+      el.innerHTML = '<div class="text-[#494847] text-[9px]">Sin resultados.</div>';
+      return;
+    }
+    el.innerHTML = data.results.map((res, i) => {
+      // results may be plain strings "[source.txt] text..." or objects
+      const raw = typeof res === 'string' ? res : (res.text || JSON.stringify(res));
+      const srcMatch = raw.match(/^\[([^\]]+)\]\s*/);
+      const src = srcMatch ? srcMatch[1] : '';
+      const text = srcMatch ? raw.slice(srcMatch[0].length) : raw;
+      const score = typeof res === 'object' && res.score != null
+        ? `<span class="text-[#494847] ml-1">${(res.score*100).toFixed(0)}%</span>` : '';
+      return `<div class="border border-[#494847]/20 p-2 space-y-0.5">
+        <div class="flex items-center gap-1 text-[8px] text-[#494847]">
+          <span>#${i+1}</span>${score}${src ? `<span class="ml-1">· ${escHtml(src)}</span>` : ''}
+        </div>
+        <div class="text-[9px] text-[#adaaaa] leading-relaxed">${escHtml(text.slice(0,300))}</div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    el.innerHTML = `<div class="text-[#ff716c] text-[9px]">❌ ${escHtml(String(e))}</div>`;
+  }
+}
+
 </script>
 </body>
 </html>

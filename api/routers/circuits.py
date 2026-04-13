@@ -249,6 +249,26 @@ async def update_circuit_layout(circuit_id: int, body: dict):
     return {"status": "ok", "circuit_id": circuit_id, "positions_saved": len(positions)}
 
 
+@router.get("/{circuit_id}/diagram.json")
+async def download_wokwi_diagram(circuit_id: int):
+    """Descarga el diagram.json Wokwi listo para importar en wokwi.com."""
+    from tools.wokwi_simulator import generate_wokwi_diagram
+    import json as _json
+
+    agent        = _get_circuit_agent()
+    circuit_data = agent.get_circuit_by_id(circuit_id)
+    if not circuit_data:
+        raise HTTPException(status_code=404, detail="Circuito no encontrado")
+
+    diagram  = generate_wokwi_diagram(circuit_data)
+    filename = f"stratum_circuit_{circuit_id}.diagram.json"
+    return Response(
+        content=_json.dumps(diagram, ensure_ascii=False, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
 @router.post("/{circuit_id}/simulate")
 async def simulate_circuit(circuit_id: int, firmware_path: str = "", timeout: int = 10):
     """
