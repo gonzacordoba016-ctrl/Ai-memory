@@ -3,6 +3,9 @@
 .env.*
 !.env.example
 
+# Cache de modelos local (el container descarga/cachea el suyo propio)
+.cache/
+
 # Python
 __pycache__/
 *.py[cod]
