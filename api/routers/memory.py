@@ -118,15 +118,21 @@ async def uninstall_plugin(name: str):
 
 @router.get("/api/profile")
 async def get_user_profile():
-    from api.app_state import agent
-    return {"profile": agent.profiler.get_profile_summary()}
+    import api.app_state as _state
+    from fastapi import HTTPException
+    if _state.agent is None:
+        raise HTTPException(status_code=503, detail="Agente inicializándose, intentá en unos segundos")
+    return {"profile": _state.agent.profiler.get_profile_summary()}
 
 
 @router.delete("/api/profile")
 async def reset_user_profile():
-    from api.app_state import agent
-    agent.profiler._save_profile(agent.profiler._default_profile())
-    agent.profiler._cache = None
+    import api.app_state as _state
+    from fastapi import HTTPException
+    if _state.agent is None:
+        raise HTTPException(status_code=503, detail="Agente inicializándose, intentá en unos segundos")
+    _state.agent.profiler._save_profile(_state.agent.profiler._default_profile())
+    _state.agent.profiler._cache = None
     return {"status": "reset"}
 
 

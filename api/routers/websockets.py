@@ -19,8 +19,18 @@ _WS_RATE_WINDOW = 3.0
 
 @router.websocket("/ws/chat")
 async def ws_chat(websocket: WebSocket, session: str = None):
-    from api.app_state import agent
+    import api.app_state as _state
     await websocket.accept()
+
+    if _state.agent is None:
+        await websocket.send_text(json.dumps({
+            "type":    "error",
+            "content": "El agente está inicializándose, intentá en unos segundos.",
+        }))
+        await websocket.close()
+        return
+
+    agent = _state.agent
 
     # Gestión de sesión
     session_id = session or str(uuid_lib.uuid4())
@@ -153,8 +163,18 @@ async def ws_signal(websocket: WebSocket):
 
 @router.websocket("/ws/proactive")
 async def ws_proactive(websocket: WebSocket):
-    from api.app_state import proactive_engine
+    import api.app_state as _state
     await websocket.accept()
+
+    if _state.proactive_engine is None:
+        await websocket.send_text(json.dumps({
+            "type":    "error",
+            "content": "Motor proactivo inicializándose, intentá en unos segundos.",
+        }))
+        await websocket.close()
+        return
+
+    proactive_engine = _state.proactive_engine
     logger.info("WebSocket proactivo conectado")
 
     queue = proactive_engine.subscribe()
@@ -176,10 +196,22 @@ async def ws_proactive(websocket: WebSocket):
 
 @router.get("/api/proactive/status")
 async def proactive_status():
-    from api.app_state import proactive_engine
+    import api.app_state as _state
+    if _state.proactive_engine is None:
+        return {
+            "running":  False,
+            "clients":  0,
+            "initializing": True,
+            "intervals": {
+                "device_check_seconds":   60,
+                "inactive_check_seconds": 3600,
+                "error_check_seconds":    1800,
+                "daily_summary_seconds":  86400,
+            }
+        }
     return {
-        "running":  proactive_engine._running,
-        "clients":  len(proactive_engine._clients),
+        "running":  _state.proactive_engine._running,
+        "clients":  len(_state.proactive_engine._clients),
         "intervals": {
             "device_check_seconds":   60,
             "inactive_check_seconds": 3600,

@@ -45,17 +45,6 @@ except Exception as e:
     _startup_errors.append(f"slowapi import failed: {e}")
     _slowapi_ok = False
 
-# Inicializar singletons con manejo de errores
-agent = None
-proactive_engine = None
-try:
-    from api.app_state import agent, proactive_engine  # noqa: F401
-    print("[STARTUP] AgentController y ProactiveEngine inicializados.", flush=True)
-except Exception as e:
-    msg = f"[ERROR] app_state init failed: {e}"
-    print(msg, flush=True)
-    _startup_errors.append(msg)
-
 app = FastAPI(title="Stratum — Hardware Memory Engine")
 
 # ── Rate limiting ─────────────────────────────────────────────────────
@@ -133,7 +122,7 @@ async def startup_event():
     except Exception as e:
         _startup_errors.append(f"hardware_bridge.set_event_loop failed: {e}")
 
-    # Inicializar tablas SQLite
+    # Inicializar tablas SQLite (ligero, rápido)
     try:
         from database.design_decisions import get_decisions_db
         from database.component_stock import get_stock_db
@@ -144,15 +133,6 @@ async def startup_event():
         _startup_errors.append(f"DB init failed: {e}")
         print(f"[Server] DB init error: {e}", flush=True)
 
-    # Motor proactivo
-    if proactive_engine is not None:
-        try:
-            await proactive_engine.start()
-            print("[Server] Motor proactivo iniciado.", flush=True)
-        except Exception as e:
-            _startup_errors.append(f"proactive_engine.start failed: {e}")
-            print(f"[Server] ProactiveEngine error: {e}", flush=True)
-
     # Job worker
     try:
         from api.job_worker import job_worker_loop
@@ -162,10 +142,41 @@ async def startup_event():
         _startup_errors.append(f"job_worker failed: {e}")
         print(f"[Server] Job worker error: {e}", flush=True)
 
-    print(f"[Server] READY. Startup errors: {len(_startup_errors)}", flush=True)
+    # AgentController y ProactiveEngine — en background para no bloquear el startup.
+    # Uvicorn ya está escuchando el puerto y puede responder al healthcheck
+    # mientras estos componentes se inicializan.
+    asyncio.create_task(_init_agents_background())
+
+    print(f"[Server] READY. Inicialización de agentes en background. Startup errors: {len(_startup_errors)}", flush=True)
     if _startup_errors:
-        for err in _startup_errors:
-            print(f"  - {err}", flush=True)
+        for e in _startup_errors:
+            print(f"  - {e}", flush=True)
+
+
+async def _init_agents_background():
+    """Inicializa AgentController y ProactiveEngine en background task.
+    Corre después de que uvicorn ya está escuchando el puerto,
+    así el healthcheck puede pasar mientras se inicializa."""
+    import api.app_state as _state
+
+    try:
+        from agent.agent_controller import AgentController
+        _state.agent = AgentController()
+        print("[STARTUP] AgentController inicializado.", flush=True)
+    except Exception as e:
+        msg = f"AgentController init failed: {e}"
+        print(f"[ERROR] {msg}", flush=True)
+        _startup_errors.append(msg)
+
+    try:
+        from agent.proactive_engine import ProactiveEngine
+        _state.proactive_engine = ProactiveEngine()
+        await _state.proactive_engine.start()
+        print("[STARTUP] ProactiveEngine iniciado.", flush=True)
+    except Exception as e:
+        msg = f"ProactiveEngine init failed: {e}"
+        print(f"[ERROR] {msg}", flush=True)
+        _startup_errors.append(msg)
 
 
 @app.on_event("shutdown")

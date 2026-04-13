@@ -50,7 +50,7 @@ def step(msg): print(f"\n{_c(msg, 1)}")
 def cmd_serve(port: int, reload: bool) -> None:
     """Levanta el servidor FastAPI completo con todos los módulos activos."""
     from dotenv import load_dotenv
-    load_dotenv(override=True)
+    load_dotenv()  # sin override: las vars del sistema (Railway) tienen prioridad
 
     os.environ["AETHERMIND_AGENT_ID"] = "56dd50bb-dba1-42fc-b46a-d9cefa170500"
     os.environ["AETHERMIND_ENV"]      = "development"

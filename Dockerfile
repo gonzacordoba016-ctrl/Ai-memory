@@ -13,12 +13,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV HF_HOME=/app/.cache/huggingface
 ENV SENTENCE_TRANSFORMERS_HOME=/app/.cache/sentence_transformers
 
-# Pre-instalar PyTorch versión CPU para evitar descargar 2.5GB de binarios CUDA (que causa timeouts en la nube)
-RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-
-# Instalar dependencias Python (layer cache)
+# Instalar dependencias Python.
+# --extra-index-url garantiza que torch se resuelva desde la variante CPU
+# (evita que pip lo reemplace por la versión CUDA al resolver sentence-transformers).
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
+    torch \
+    -r requirements.txt
 
 # Pre-descargar el modelo de embeddings durante el build (evita cold-start lento)
 # HF_HOME y SENTENCE_TRANSFORMERS_HOME ya están seteados → el modelo queda en /app/.cache/
