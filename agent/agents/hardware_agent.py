@@ -3,6 +3,7 @@
 import json as _json
 import requests
 import os
+import unicodedata
 from core.config import LLM_API, LLM_MODEL, get_llm_headers
 from core.logger import logger
 from tools.hardware_detector import detect_devices
@@ -29,6 +30,11 @@ INTENT_PROMPT = """Clasificá esta consulta de hardware en UNA sola palabra:
 Consulta: "{task}"
 
 Respondé SOLO con una de estas 7 palabras: save_decision, save_circuit, query, program, signal, debug, design"""
+
+
+def _normalize(s: str) -> str:
+    """Elimina tildes/acentos para matching insensible a tildes."""
+    return unicodedata.normalize("NFD", s).encode("ascii", "ignore").decode("ascii")
 
 
 # ── KEYWORDS exhaustivas por categoría ───────────────────────────────────────
@@ -194,28 +200,28 @@ class HardwareAgent:
 
     def _classify_by_keywords(self, task: str) -> str:
         """Fallback exhaustivo por keywords cuando el LLM no responde."""
-        t = task.lower()
+        t = _normalize(task.lower())
 
-        if any(kw in t for kw in SAVE_DECISION_KEYWORDS):
+        if any(_normalize(kw) in t for kw in SAVE_DECISION_KEYWORDS):
             return "save_decision"
 
-        if any(kw in t for kw in SAVE_CIRCUIT_KEYWORDS):
+        if any(_normalize(kw) in t for kw in SAVE_CIRCUIT_KEYWORDS):
             return "save_circuit"
 
         # Debug tiene prioridad sobre program (errores antes que programar)
-        if any(kw in t for kw in DEBUG_KEYWORDS):
+        if any(_normalize(kw) in t for kw in DEBUG_KEYWORDS):
             return "debug"
 
-        if any(kw in t for kw in QUERY_KEYWORDS):
+        if any(_normalize(kw) in t for kw in QUERY_KEYWORDS):
             return "query"
 
-        if any(kw in t for kw in SIGNAL_KEYWORDS):
+        if any(_normalize(kw) in t for kw in SIGNAL_KEYWORDS):
             return "signal"
 
-        if any(kw in t for kw in DESIGN_KEYWORDS):
+        if any(_normalize(kw) in t for kw in DESIGN_KEYWORDS):
             return "design"
 
-        if any(kw in t for kw in PROGRAM_KEYWORDS):
+        if any(_normalize(kw) in t for kw in PROGRAM_KEYWORDS):
             return "program"
 
         # Default: si mencionan hardware sin contexto claro, consulta de diseño
