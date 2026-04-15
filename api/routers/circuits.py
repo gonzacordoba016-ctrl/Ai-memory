@@ -5,8 +5,9 @@ import asyncio
 import uuid as uuid_lib
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Request, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import HTMLResponse, JSONResponse, Response
+from api.auth import get_current_user
 from api.limiter import limiter
 from pydantic import BaseModel
 
@@ -18,7 +19,7 @@ from tools.pcb_renderer import PCBRenderer
 from tools.firmware_generator import generate_firmware
 from core.logger import logger
 
-router = APIRouter(prefix="/api/circuits", tags=["circuits"])
+router = APIRouter(prefix="/api/circuits", tags=["circuits"], dependencies=[Depends(get_current_user)])
 
 # Singleton para CircuitAgent — una sola instancia + conexión SQLite por proceso
 _circuit_agent: CircuitAgent = None

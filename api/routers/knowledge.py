@@ -5,12 +5,13 @@ import asyncio
 import os
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
+from api.auth import get_current_user
 from knowledge.knowledge_base import index_knowledge_base, search_knowledge, list_indexed_documents
 from api.limiter import limiter
 from core.logger import logger
 
-router = APIRouter(prefix="/api/knowledge", tags=["knowledge"])
+router = APIRouter(prefix="/api/knowledge", tags=["knowledge"], dependencies=[Depends(get_current_user)])
 
 _KB_DIR = Path("agent_files/knowledge")
 _ALLOWED_EXTS = {".txt", ".md", ".pdf", ".py", ".c", ".cpp", ".h", ".json", ".yaml", ".yml"}

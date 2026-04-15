@@ -4,8 +4,10 @@
 import asyncio
 import json
 import uuid as uuid_lib
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
+from api.auth import decode_token, get_current_user
+from core.config import MULTI_USER
 from database.sql_memory import _default as sql_db
 from memory.graph_memory import graph_memory
 from tools.signal_reader import signal_reader
@@ -13,12 +15,35 @@ from core.logger import logger
 
 router = APIRouter(tags=["websockets"])
 
+
+async def _ws_require_auth(websocket: WebSocket, token: str = "") -> bool:
+    """
+    Valida el JWT para conexiones WebSocket (token via query param).
+    Retorna True si está autorizado. Si no, envía error y cierra.
+    Browsers no pueden enviar Authorization: header en WebSocket connections.
+    """
+    if not MULTI_USER:
+        return True
+    payload = decode_token(token)
+    if not payload:
+        await websocket.accept()
+        await websocket.send_text(json.dumps({
+            "type":    "error",
+            "content": "Token de autenticación requerido o inválido. Pasá ?token=<JWT>",
+        }))
+        await websocket.close(code=4001)
+        return False
+    return True
+
 # Rate limiting: segundos mínimos entre mensajes por conexión
 _WS_RATE_WINDOW = 3.0
 
 
 @router.websocket("/ws/chat")
-async def ws_chat(websocket: WebSocket, session: str = None):
+async def ws_chat(websocket: WebSocket, session: str = None, token: str = ""):
+    if not await _ws_require_auth(websocket, token):
+        return
+
     import api.app_state as _state
     await websocket.accept()
 
@@ -197,7 +222,7 @@ async def ws_proactive(websocket: WebSocket):
 
 
 @router.get("/api/proactive/status")
-async def proactive_status():
+async def proactive_status(_: str = Depends(get_current_user)):
     import api.app_state as _state
     if _state.proactive_engine is None:
         return {

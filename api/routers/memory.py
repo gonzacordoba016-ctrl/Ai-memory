@@ -1,17 +1,18 @@
 # api/routers/memory.py
 # Endpoints de memoria: facts, historial, búsqueda semántica, grafo, perfil, plugins, stats
 
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse
 from datetime import datetime
 from pydantic import BaseModel
 
+from api.auth import get_current_user
 from database.sql_memory import _default as sql_db
 from memory.vector_memory import search_memory
 from memory.graph_memory import graph_memory
 from database.hardware_memory import hardware_memory
 
-router = APIRouter(tags=["memory"])
+router = APIRouter(tags=["memory"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("/api/debug/agent")

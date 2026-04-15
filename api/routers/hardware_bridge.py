@@ -15,7 +15,8 @@ import os
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from api.auth import get_current_user
 from core.logger import logger
 
 router = APIRouter(tags=["hardware-bridge"])
@@ -159,12 +160,12 @@ async def ws_hardware_bridge(websocket: WebSocket, token: str = ""):
 # ── Status endpoint ───────────────────────────────────────────────────────────
 
 @router.get("/api/hardware/bridge/status")
-async def get_bridge_status():
+async def get_bridge_status(_: str = Depends(get_current_user)):
     return bridge_status()
 
 
 @router.post("/api/hardware/bridge/test")
-async def test_bridge():
+async def test_bridge(_: str = Depends(get_current_user)):
     """Envía un job 'detect' al bridge client y retorna los dispositivos encontrados."""
     if not is_bridge_connected():
         return {"success": False, "error": "Bridge no conectado — arrancá el bridge con: python run.py bridge --url http://localhost:8000"}
