@@ -161,3 +161,12 @@ async def ws_hardware_bridge(websocket: WebSocket, token: str = ""):
 @router.get("/api/hardware/bridge/status")
 async def get_bridge_status():
     return bridge_status()
+
+
+@router.post("/api/hardware/bridge/test")
+async def test_bridge():
+    """Envía un job 'detect' al bridge client y retorna los dispositivos encontrados."""
+    if not is_bridge_connected():
+        return {"success": False, "error": "Bridge no conectado — arrancá el bridge con: python run.py bridge --url http://localhost:8000"}
+    result = await send_to_bridge("detect", {}, timeout=15)
+    return result

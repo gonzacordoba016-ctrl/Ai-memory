@@ -288,7 +288,7 @@ def _run_async(coro):
         # Hay un loop corriendo (FastAPI) — usar run_coroutine_threadsafe
         import concurrent.futures
         future = asyncio.run_coroutine_threadsafe(coro, loop)
-        return future.result(timeout=60)
+        return future.result(timeout=180)
     except RuntimeError:
         # No hay loop — crear uno (CLI, tests)
         return asyncio.run(coro)

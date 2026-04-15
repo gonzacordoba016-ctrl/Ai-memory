@@ -249,6 +249,22 @@ async def update_circuit_layout(circuit_id: int, body: dict):
     return {"status": "ok", "circuit_id": circuit_id, "positions_saved": len(positions)}
 
 
+@router.get("/wokwi/status")
+async def wokwi_status():
+    """Estado del entorno Wokwi CLI: disponibilidad del binario y token configurado."""
+    from tools.wokwi_simulator import _is_wokwi_cli_available
+    import os
+    cli_available = await asyncio.to_thread(_is_wokwi_cli_available)
+    token_set = bool(os.getenv("WOKWI_CLI_TOKEN", "").strip())
+    return {
+        "cli_available": cli_available,
+        "token_set": token_set,
+        "ready": cli_available and token_set,
+        "install_hint": "npm install -g @wokwi/cli  (requiere Node.js)",
+        "token_hint": "Obtener en https://wokwi.com/dashboard/ci → API Token, luego WOKWI_CLI_TOKEN=... en .env",
+    }
+
+
 @router.get("/{circuit_id}/diagram.json")
 async def download_wokwi_diagram(circuit_id: int):
     """Descarga el diagram.json Wokwi listo para importar en wokwi.com."""

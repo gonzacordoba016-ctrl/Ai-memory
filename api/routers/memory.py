@@ -14,6 +14,12 @@ from database.hardware_memory import hardware_memory
 router = APIRouter(tags=["memory"])
 
 
+@router.get("/api/debug/agent")
+async def debug_agent_state():
+    import api.app_state as _state
+    return {"agent_ready": _state.agent is not None, "agent_type": type(_state.agent).__name__ if _state.agent else None}
+
+
 @router.get("/api/stats")
 async def get_stats():
     facts    = sql_db.get_all_facts()

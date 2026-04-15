@@ -422,7 +422,7 @@ class HardwareAgent:
                     ],
                     "temperature": 0.3,
                 },
-                timeout=60
+                timeout=180
             )
             response.raise_for_status()
             answer = response.json()["choices"][0]["message"]["content"].strip()
@@ -780,7 +780,7 @@ class HardwareAgent:
                     ],
                     "temperature": 0.2,
                 },
-                timeout=60
+                timeout=180
             )
             response.raise_for_status()
             content      = response.json()["choices"][0]["message"]["content"].strip()
@@ -850,7 +850,7 @@ class HardwareAgent:
                     ],
                     "temperature": 0.1,
                 },
-                timeout=60
+                timeout=180
             )
             response.raise_for_status()
             fixed = response.json()["choices"][0]["message"]["content"].strip()

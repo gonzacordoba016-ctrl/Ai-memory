@@ -59,3 +59,21 @@ async def trigger_index(request: Request, force: bool = False):
 async def knowledge_search(q: str, top_k: int = 5):
     results = search_knowledge(q, top_k=top_k)
     return {"query": q, "results": results}
+
+
+@router.delete("/delete/{filename}")
+async def delete_knowledge_document(filename: str):
+    """Elimina un archivo de agent_files/knowledge/ y re-indexa."""
+    safe_name = Path(filename).name
+    if not safe_name or safe_name != filename:
+        raise HTTPException(status_code=400, detail="Nombre de archivo inválido")
+
+    target = _KB_DIR / safe_name
+    if not target.exists():
+        raise HTTPException(status_code=404, detail=f"Archivo '{safe_name}' no encontrado")
+
+    target.unlink()
+    logger.info(f"[Knowledge] Archivo eliminado: {safe_name}")
+
+    indexed = await asyncio.to_thread(index_knowledge_base, force=True)
+    return {"status": "ok", "deleted": safe_name, "indexed": indexed}

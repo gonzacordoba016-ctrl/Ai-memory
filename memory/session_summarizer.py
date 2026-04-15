@@ -68,7 +68,7 @@ def _call_llm(conversation: str) -> str | None:
                 "messages":    [{"role": "user", "content": SUMMARY_PROMPT.format(conversation=conversation)}],
                 "temperature": 0.3,
             },
-            timeout=60
+            timeout=180
         )
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"].strip()

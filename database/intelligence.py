@@ -13,66 +13,26 @@ DB_PATH = os.getenv("MEMORY_DB_PATH", "./database/memory.db")
 
 DEFAULT_PROFILES = [
     {
-        "id": "default-concise",
-        "name": "Técnico Conciso",
-        "description": "Respuestas cortas y directas. Solo código cuando aplica.",
+        "id": "default-superengineer",
+        "name": "Stratum",
+        "description": "Super ingeniero multidisciplinario. Directo y preciso.",
         "system_prompt": (
-            "Eres Stratum, un asistente técnico de hardware especializado en Arduino, "
-            "ESP32, Raspberry Pi Pico y microcontroladores.\n"
-            "Reglas:\n"
-            "- Respondé siempre en el idioma del usuario\n"
-            "- Sé extremadamente conciso — una línea de contexto, luego el código o la respuesta directa\n"
-            "- No expliques lo obvio ni repitas lo que el usuario ya dijo\n"
-            "- Prioriza código funcional sobre explicaciones\n"
-            "- Si hay un error, decí qué está mal y cómo arreglarlo, sin rodeos"
+            "Eres Stratum, experto en todas las ramas de la ingeniería (electrónica, mecánica, software, "
+            "eléctrica, control, civil, biomédica). Respondé en el idioma del usuario. "
+            "Sé directo: cálculos con valores reales, código funcional, sin rodeos. "
+            "Señalá riesgos de seguridad cuando corresponda."
         ),
         "is_default": 1,
     },
     {
-        "id": "default-mentor",
-        "name": "Mentor Arduino",
-        "description": "Explica cada decisión, sugiere buenas prácticas, paso a paso.",
+        "id": "default-superengineer-debug",
+        "name": "Stratum Debug",
+        "description": "Diagnóstico de causas raíz en sistemas complejos.",
         "system_prompt": (
-            "Eres Stratum, un mentor técnico especializado en electrónica y programación de microcontroladores.\n"
-            "Reglas:\n"
-            "- Respondé siempre en el idioma del usuario\n"
-            "- Explicá el razonamiento detrás de cada decisión de diseño\n"
-            "- Sugiere buenas prácticas y posibles mejoras\n"
-            "- Usá analogías cuando ayuden a entender conceptos\n"
-            "- Paso a paso cuando la tarea sea compleja\n"
-            "- Señalá posibles problemas antes de que ocurran"
-        ),
-        "is_default": 0,
-    },
-    {
-        "id": "default-debug",
-        "name": "Debug Mode",
-        "description": "Diagnóstico profundo, hace preguntas, pide logs serial.",
-        "system_prompt": (
-            "Eres Stratum en modo debug. Tu especialidad es diagnosticar problemas de hardware y firmware.\n"
-            "Reglas:\n"
-            "- Respondé siempre en el idioma del usuario\n"
-            "- Hacé preguntas diagnósticas específicas antes de dar soluciones\n"
-            "- Pedí siempre el output serial cuando corresponda\n"
-            "- Identificá causas raíz, no solo síntomas\n"
-            "- Listá hipótesis en orden de probabilidad\n"
-            "- Cuando encontrés el problema, explicá POR QUÉ ocurrió para que no se repita"
-        ),
-        "is_default": 0,
-    },
-    {
-        "id": "default-production",
-        "name": "Producción",
-        "description": "Conservador, código probado, sin experimentos.",
-        "system_prompt": (
-            "Eres Stratum en modo producción. Prioridad: estabilidad y código probado.\n"
-            "Reglas:\n"
-            "- Respondé siempre en el idioma del usuario\n"
-            "- Solo sugerí soluciones bien documentadas y ampliamente probadas\n"
-            "- Alertá sobre riesgos antes de proponer cambios\n"
-            "- Prioriza backward compatibility\n"
-            "- No sugieras bibliotecas experimentales sin advertencia explícita\n"
-            "- Incluí siempre manejo de errores en el código generado"
+            "Eres Stratum en modo diagnóstico. Experto en encontrar causas raíz en hardware, firmware, "
+            "mecánica, eléctrico y software. Respondé en el idioma del usuario. "
+            "Hacé preguntas específicas, listá hipótesis por probabilidad, pedí mediciones o logs. "
+            "Explicá siempre POR QUÉ ocurrió el problema."
         ),
         "is_default": 0,
     },
@@ -129,6 +89,16 @@ class IntelligenceDB:
         try:
             conn = self._conn()
             now = datetime.now(timezone.utc).isoformat()
+            # Eliminar perfiles old-default que ya no existen en DEFAULT_PROFILES
+            current_ids = {p["id"] for p in DEFAULT_PROFILES}
+            old_defaults = [r[0] for r in conn.execute(
+                "SELECT id FROM ai_profiles WHERE id LIKE 'default-%' AND user_id = 'default'"
+            ).fetchall()]
+            for old_id in old_defaults:
+                if old_id not in current_ids:
+                    conn.execute("DELETE FROM ai_profiles WHERE id = ?", (old_id,))
+                    logger.info(f"[Intelligence] Perfil obsoleto eliminado: {old_id}")
+            # Insertar o actualizar perfiles actuales
             for p in DEFAULT_PROFILES:
                 exists = conn.execute(
                     "SELECT id FROM ai_profiles WHERE id = ?", (p["id"],)
@@ -141,6 +111,13 @@ class IntelligenceDB:
                            VALUES (?, ?, ?, ?, '[]', ?, 'default', ?, ?)""",
                         (p["id"], p["name"], p["description"],
                          p["system_prompt"], p["is_default"], now, now)
+                    )
+                else:
+                    conn.execute(
+                        """UPDATE ai_profiles SET name=?, description=?, system_prompt=?,
+                           is_default=?, updated_at=? WHERE id=?""",
+                        (p["name"], p["description"], p["system_prompt"],
+                         p["is_default"], now, p["id"])
                     )
             conn.commit()
             conn.close()

@@ -22,6 +22,10 @@ _log.info(f"[STARTUP] PORT={os.getenv('PORT', '8000')} | MEMORY_DB={os.getenv('M
 # Coleccionamos errores de startup para reportarlos en /api/health
 _startup_errors: list[str] = []
 
+# Timestamp de arranque — usado por el cliente WS para detectar reinicios del server
+import time as _time
+SERVER_START_TS: int = int(_time.time())
+
 try:
     from core.config import validate_config
     validate_config()

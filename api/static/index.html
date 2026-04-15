@@ -742,6 +742,26 @@
           <p class="text-[10px] text-[#adaaaa]">Cargando...</p>
         </div>
       </div>
+      <!-- Wokwi CLI Status -->
+      <div>
+        <div class="text-[8px] opacity-50 mb-2">WOKWI_CLI</div>
+        <div id="wokwi-status-card" class="bg-[#131313] p-3 border border-[#494847]/30 space-y-2 text-[9px] font-mono text-[#adaaaa]">
+          <div class="text-[#494847]">Cargando...</div>
+        </div>
+      </div>
+
+      <!-- Hardware Bridge -->
+      <div>
+        <div class="flex justify-between items-center mb-2">
+          <div class="text-[8px] opacity-50">HARDWARE_BRIDGE</div>
+          <button onclick="bridgeTest()" class="text-[8px] text-secondary hover:text-primary">TEST DETECT</button>
+        </div>
+        <div id="bridge-test-result" class="bg-[#131313] p-3 border border-[#494847]/30 space-y-1 text-[9px] font-mono text-[#adaaaa]">
+          <div class="text-[#494847]">Usá "TEST DETECT" para enviar un job al bridge client.</div>
+          <div class="text-[#494847] mt-1">Para conectar el bridge: <span class="text-[#adaaaa]">python run.py bridge --url http://localhost:8000</span></div>
+        </div>
+      </div>
+
       <div>
         <div class="text-[8px] opacity-50 mb-2">SYSTEM_LOGS</div>
         <div id="logs-list" class="space-y-0.5 font-mono text-[9px] max-h-64 overflow-y-auto"></div>
@@ -1242,7 +1262,7 @@ function switchView(name) {
 
   // Trigger data loads
   if (name === 'devices')  loadHardware();
-  if (name === 'system')   { loadMetrics(); webLoadStockSummary(); webSearchStock(''); }
+  if (name === 'system')   { loadMetrics(); webLoadStockSummary(); webSearchStock(''); loadWokwiStatus(); }
   if (name === 'intel')    { loadIntelligence(); webLoadDecisions(); }
   if (name === 'metrics')  loadMetricsPanel();
   if (name === 'calc')     calcSwitchForm(document.getElementById('calc-selector')?.value || 'resistor_for_led');
@@ -1428,7 +1448,7 @@ function connectWS() {
     addLog('WebSocket conectado', 'info');
     loadStats();
     loadFacts();
-    if (_offlineQueue.length > 0) drainOfflineQueue();
+    // No drainear aquí — esperamos el session message para saber si el server reinició
   };
   ws.onclose = () => {
     setConnected(false);
@@ -1443,7 +1463,23 @@ function connectWS() {
     if (data.type === 'session') {
       _session_id = data.session_id;
       localStorage.setItem('stratum_session_id', _session_id);
-      if (data.resumed) loadSessionHistory(_session_id);
+      // Detectar reinicio del server por cambio de timestamp
+      const prevServerStart = localStorage.getItem('stratum_server_start');
+      const currServerStart = String(data.server_start || '');
+      const serverRestarted = currServerStart && prevServerStart !== currServerStart;
+      if (serverRestarted) {
+        _offlineQueue = [];
+        _saveQueue();
+        document.querySelectorAll('[data-queued="true"]').forEach(el => el.remove());
+        _updateQueueBadge();
+        const area = document.getElementById('messages');
+        if (area) area.innerHTML = '';
+        addLog('Server reiniciado — chat limpiado', 'warn');
+        localStorage.setItem('stratum_server_start', currServerStart);
+      } else {
+        if (_offlineQueue.length > 0) drainOfflineQueue();
+        if (data.resumed) loadSessionHistory(_session_id);
+      }
       loadSessions();
       return;
     }
@@ -1466,6 +1502,9 @@ async function loadSessionHistory(sid) {
     const d = await fetch(`${API}/history?session_id=${encodeURIComponent(sid)}&limit=20`).then(r => r.json());
     const msgs = (d.messages || []).reverse();
     if (!msgs.length) return;
+    // Limpiar DOM antes de cargar para evitar duplicados
+    const area = document.getElementById('messages');
+    if (area) area.innerHTML = '';
     msgs.forEach(m => {
       if (m.role !== 'user' && m.role !== 'assistant') return;
       addMessage(m.role === 'user' ? 'user' : 'agent', m.content, m.agents_used || []);
@@ -1546,6 +1585,52 @@ async function loadBridgeStatus() {
     }
   } catch(e) {
     if (txt) { txt.textContent = 'UNREACHABLE'; txt.className = 'text-[9px] font-mono text-error'; }
+  }
+}
+
+// ── WOKWI CLI STATUS ─────────────────────────────────────────────────────
+async function loadWokwiStatus() {
+  const card = document.getElementById('wokwi-status-card');
+  if (!card) return;
+  try {
+    const d = await fetch(`${API}/circuits/wokwi/status`).then(r => r.json());
+    const cliOk    = d.cli_available;
+    const tokenOk  = d.token_set;
+    const ready    = d.ready;
+    const dot = (ok) => `<span class="inline-block w-1.5 h-1.5 rounded-full mr-1 ${ok ? 'bg-primary' : 'bg-[#494847]'}"></span>`;
+    card.innerHTML = `
+      <div class="flex items-center gap-2">${dot(cliOk)}<span class="${cliOk ? 'text-primary' : 'text-[#494847]'}">wokwi-cli ${cliOk ? 'INSTALADO' : 'NO INSTALADO'}</span></div>
+      <div class="flex items-center gap-2">${dot(tokenOk)}<span class="${tokenOk ? 'text-primary' : 'text-[#494847]'}">WOKWI_CLI_TOKEN ${tokenOk ? 'CONFIGURADO' : 'NO CONFIGURADO'}</span></div>
+      ${!cliOk ? `<div class="text-[#494847] mt-1">Instalar: <span class="text-[#adaaaa]">${escHtml(d.install_hint)}</span></div>` : ''}
+      ${!tokenOk ? `<div class="text-[#494847]">Token: <span class="text-[#adaaaa]">wokwi.com/dashboard/ci → API Token → WOKWI_CLI_TOKEN en .env</span></div>` : ''}
+      ${ready ? '<div class="text-primary mt-1">Simulación headless disponible ✓</div>' : ''}
+    `;
+  } catch(e) {
+    card.innerHTML = `<div class="text-error text-[9px]">Error: ${escHtml(String(e))}</div>`;
+  }
+}
+
+// ── HARDWARE BRIDGE TEST ─────────────────────────────────────────────────
+async function bridgeTest() {
+  const el = document.getElementById('bridge-test-result');
+  if (!el) return;
+  el.innerHTML = '<div class="text-[#adaaaa]">Enviando job "detect" al bridge...</div>';
+  try {
+    const r = await fetch(`${API}/hardware/bridge/test`, { method: 'POST' });
+    const d = await r.json();
+    if (!d.success) {
+      el.innerHTML = `<div class="text-error">Error: ${escHtml(d.error || 'Sin respuesta')}</div>`;
+      return;
+    }
+    const devices = d.devices || [];
+    if (devices.length === 0) {
+      el.innerHTML = '<div class="text-[#adaaaa]">Bridge respondió — sin dispositivos detectados.</div>';
+      return;
+    }
+    el.innerHTML = `<div class="text-primary mb-1">Bridge OK — ${devices.length} dispositivo(s):</div>` +
+      devices.map(dv => `<div class="text-[#adaaaa] pl-2">▸ ${escHtml(dv.device_name || dv.port || JSON.stringify(dv))}</div>`).join('');
+  } catch(e) {
+    el.innerHTML = `<div class="text-error">Error: ${escHtml(String(e))}</div>`;
   }
 }
 
@@ -2145,7 +2230,7 @@ function renderOscilloscope(latest) {
 }
 
 function renderIdleOscilloscope() {
-  if (!_oscChart) _initOscChart();
+  try { if (!_oscChart) _initOscChart(); } catch(e) {}
   if (!_oscChart) return;
   const idle = [30,50,70,45,20,60,90,65,40,20,55,85,50,35,75,25,60,45,70,40,
                 30,50,70,45,20,60,90,65,40,20,55,85,50,35,75,25,60,45,70,40];
@@ -2987,15 +3072,38 @@ async function kbLoadDocuments() {
       return;
     }
     el.innerHTML = data.documents.map(d => {
-      const name = typeof d === 'string' ? d : (d.filename || d.name || JSON.stringify(d));
+      const name = typeof d === 'string' ? d : (d.source || d.filename || d.name || JSON.stringify(d));
       const chunks = typeof d === 'object' && d.chunks != null ? ` <span class="text-[#494847]">${d.chunks} chunks</span>` : '';
       return `<div class="flex items-center gap-2 py-0.5 border-b border-[#494847]/10">
         <span class="material-symbols-outlined text-xs text-[#494847]">description</span>
         <span class="flex-1 truncate">${escHtml(name)}</span>${chunks}
+        <button onclick="kbDeleteDoc('${escHtml(name).replace(/'/g, "\\'")}')"
+                class="text-[8px] text-[#494847] hover:text-error transition-colors ml-1" title="Eliminar">
+          <span class="material-symbols-outlined text-xs">delete</span>
+        </button>
       </div>`;
     }).join('');
   } catch(e) {
     el.innerHTML = `<div class="text-[#ff716c]">Error: ${escHtml(String(e))}</div>`;
+  }
+}
+
+async function kbDeleteDoc(filename) {
+  if (!confirm(`Eliminar "${filename}" de la Knowledge Base?`)) return;
+  const status = document.getElementById('kb-upload-status');
+  status.classList.remove('hidden');
+  status.textContent = `Eliminando ${filename}...`;
+  try {
+    const r = await fetch(`/api/knowledge/delete/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+    const data = await r.json();
+    if (!r.ok) {
+      status.textContent = `❌ ${data.detail || 'Error al eliminar'}`;
+    } else {
+      status.textContent = `✅ ${data.deleted} eliminado`;
+      kbLoadDocuments();
+    }
+  } catch(e) {
+    status.textContent = `❌ ${String(e)}`;
   }
 }
 

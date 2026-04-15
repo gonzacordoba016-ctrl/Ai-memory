@@ -40,10 +40,12 @@ async def ws_chat(websocket: WebSocket, session: str = None):
     logger.info(f"WebSocket chat conectado | session={session_id} | resumed={resumed}")
 
     # Mensaje inicial con session_id para que el cliente lo persista
+    from api.server import SERVER_START_TS
     await websocket.send_text(json.dumps({
-        "type":       "session",
-        "session_id": session_id,
-        "resumed":    resumed,
+        "type":         "session",
+        "session_id":   session_id,
+        "resumed":      resumed,
+        "server_start": SERVER_START_TS,
     }))
 
     # Si retomamos sesión, inyectar historial en el agente

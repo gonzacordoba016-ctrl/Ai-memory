@@ -101,7 +101,7 @@ def generate_firmware(
                 ],
                 "temperature": 0.2,
             },
-            timeout=60
+            timeout=180
         )
         response.raise_for_status()
         code = response.json()["choices"][0]["message"]["content"].strip()
@@ -204,7 +204,7 @@ Genera el firmware C++ que controle exactamente este circuito."""
                 ],
                 "temperature": 0.2,
             },
-            timeout=60
+            timeout=180
         )
         response.raise_for_status()
         code = response.json()["choices"][0]["message"]["content"].strip()
