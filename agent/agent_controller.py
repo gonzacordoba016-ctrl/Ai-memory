@@ -1,7 +1,7 @@
 # agent/agent_controller.py
 
 from agent.agent_state import AgentState
-from memory.vector_memory import store_memory
+from memory.vector_memory import store_memory, search_memory
 from memory.short_memory import ShortMemory
 from memory.fact_extractor import extract_facts
 from memory.graph_memory import graph_memory
@@ -104,11 +104,17 @@ class AgentController:
         except Exception as e:
             logger.warning(f"[AgentController] No se pudo cargar perfil de IA: {e}")
 
-        # 5. Construir prompt final con perfil del usuario
+        # 5. Búsqueda semántica en Qdrant — siempre, independiente del orquestador
+        try:
+            memories = await asyncio.to_thread(search_memory, user_input, 5)
+        except Exception:
+            memories = []
+
+        # 6. Construir prompt final con perfil del usuario
         prompt = build_prompt(
             user_input           = user_input,
             history              = self.state.get_history(),
-            memories             = [],
+            memories             = memories,
             facts                = self.state.get_all_facts(),
             graph_context        = sub_context,
             user_profile_context = self.profiler.format_for_prompt(),
@@ -116,7 +122,7 @@ class AgentController:
             source_context       = source_context,
         )
 
-        # 6. Generar respuesta — streaming async o llamada directa
+        # 7. Generar respuesta — streaming async o llamada directa
         messages = [{"role": "user", "content": prompt}]
 
         if on_token:

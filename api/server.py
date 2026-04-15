@@ -206,6 +206,12 @@ async def root():
 
 # ── Health check ──────────────────────────────────────────────────────
 
+@app.get("/health")
+async def health_root():
+    """Healthcheck raíz para Railway y proxies que no usan /api prefix."""
+    return JSONResponse(status_code=200, content={"status": "ok"})
+
+
 @app.get("/api/health")
 async def health():
     try:
@@ -225,14 +231,14 @@ async def health():
     except Exception as e:
         checks["sqlite"] = f"error: {e}"
 
-    # Qdrant
+    # Qdrant — lazy/opcional: "not_initialized" no es un fallo
     try:
         from infrastructure.vector_store import vector_store
         if vector_store.client:
             vector_store.client.get_collections()
             checks["qdrant"] = "ok"
         else:
-            checks["qdrant"] = "disabled"
+            checks["qdrant"] = "not_initialized"
     except Exception as e:
         checks["qdrant"] = f"error: {e}"
 
@@ -248,16 +254,20 @@ async def health():
     else:
         checks["llm_provider"] = provider
 
+    # Solo SQLite determina el estado general — Qdrant es lazy y opcional
     overall = "ok" if checks.get("sqlite") == "ok" else "degraded"
 
-    return {
-        "status":         overall,
-        "services":       checks,
-        "startup_errors": _startup_errors,
-        "routers_ok":     _routers_loaded,
-        "routers_failed": _routers_failed,
-        "timestamp":      datetime.utcnow().isoformat(),
-    }
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status":         overall,
+            "services":       checks,
+            "startup_errors": _startup_errors,
+            "routers_ok":     _routers_loaded,
+            "routers_failed": _routers_failed,
+            "timestamp":      datetime.utcnow().isoformat(),
+        },
+    )
 
 
 # ── Arranque directo ──────────────────────────────────────────────────
