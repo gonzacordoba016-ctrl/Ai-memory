@@ -3,8 +3,8 @@ builder = "dockerfile"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "mkdir -p /data/database /data/memory_db && python run.py serve --no-reload"
-healthcheckPath = "/api/health"
-healthcheckTimeout = 300
+startCommand = "python run.py serve --no-reload"
+healthcheckPath = "/health"
+healthcheckTimeout = 120
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3

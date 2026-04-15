@@ -58,6 +58,21 @@ def cmd_serve(port: int, reload: bool) -> None:
     # Railway y otros PaaS inyectan PORT como variable de entorno
     port = int(os.getenv("PORT", str(port)))
 
+    # Crear directorios de persistencia si no existen (Railway Volume o local)
+    # Se hace aquí, antes de importar los módulos que los necesitan, para evitar
+    # que os.makedirs() falle dentro de _include() con Permission denied.
+    for _path_var, _default in [
+        ("MEMORY_DB_PATH",  "./database/memory.db"),
+        ("VECTOR_DB_PATH",  "./memory_db"),
+        ("GRAPH_DB_PATH",   "./database/graph_memory.json"),
+    ]:
+        _dir = os.path.dirname(os.getenv(_path_var, _default))
+        if _dir:
+            try:
+                os.makedirs(_dir, exist_ok=True)
+            except OSError:
+                pass  # sin permiso (ej: Railway sin Volume) — los módulos usarán ruta por defecto
+
     # Validar configuración antes de arrancar (advertencia, no crash)
     try:
         from core.config import validate_config
