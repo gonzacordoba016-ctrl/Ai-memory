@@ -53,7 +53,8 @@ Respondé SOLO con una de las palabras clave listadas."""
 EXTRACT_PROMPTS = {
     "resistor_for_led": """Extraé los parámetros para calcular resistencia de LED.
 JSON con claves: vcc (float, voltios fuente), vled (float, caída en LED), iled_ma (float, corriente en mA).
-Valores típicos si no se mencionan: vled=2.0 para rojo/amarillo, vled=3.3 para azul/blanco, iled_ma=20.
+Valores típicos si no se mencionan: vled=2.0 para rojo/amarillo/verde (Vf=2.0V), vled=3.2 para azul/blanco/violeta (Vf=3.2V), iled_ma=20.
+Si vcc == vled o vcc < vled, usar vled=2.0 como fallback seguro y agregar advertencia.
 Consulta: "{task}"
 Respondé SOLO con JSON válido.""",
 
@@ -254,6 +255,7 @@ class ElectricalCalcAgent:
             timeout=15.0,
             agent_id="electrical_calc",
             agent_name="ElectricalCalc",
+            use_cache=False,  # Sin cache: el prompt template es igual para todas las queries
         )
         key = raw.strip().lower().split()[0] if raw.strip() else "unknown"
         # Fallback por keywords si el LLM devuelve algo inesperado

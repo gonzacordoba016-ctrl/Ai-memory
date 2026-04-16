@@ -6,6 +6,7 @@
 <title>STRATUM // Engineering Memory Engine</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <style>
@@ -36,6 +37,19 @@
   .calc-kv { display:flex; justify-content:space-between; padding:1px 0; }
   .calc-kv span:first-child { opacity:0.5; }
   .calc-kv span:last-child { color:#a4ffb9; font-weight:bold; }
+  /* Markdown rendering — tema oscuro para mensajes del agente */
+  .prose-stratum p { margin: 0.3em 0; }
+  .prose-stratum strong { color: #a4ffb9; font-weight: 700; }
+  .prose-stratum em { color: #adaaaa; font-style: italic; }
+  .prose-stratum h1,.prose-stratum h2,.prose-stratum h3 { color: #a4ffb9; font-weight: 700; margin: 0.6em 0 0.3em; letter-spacing: -0.02em; }
+  .prose-stratum code { background: #0a0a0a; color: #00cbfe; padding: 1px 5px; font-size: 0.85em; border: 1px solid #494847/40; font-family: monospace; }
+  .prose-stratum pre { background: #0a0a0a; border: 1px solid #494847; padding: 10px 14px; margin: 0.5em 0; overflow-x: auto; }
+  .prose-stratum pre code { background: none; border: none; padding: 0; color: #e0e0e0; font-size: 0.82em; }
+  .prose-stratum ul,.prose-stratum ol { padding-left: 1.4em; margin: 0.3em 0; }
+  .prose-stratum li { margin: 0.15em 0; }
+  .prose-stratum blockquote { border-left: 2px solid #a4ffb9; padding-left: 10px; color: #adaaaa; margin: 0.4em 0; }
+  .prose-stratum a { color: #00cbfe; text-decoration: underline; }
+  .prose-stratum hr { border-color: #494847; margin: 0.5em 0; }
   .calc-warn { color:#ffd700; font-size:8px; margin-top:2px; }
   .calc-stock { color:#00cbfe; font-size:8px; margin-top:4px; border-top:1px solid #494847/30; padding-top:4px; }
 </style>
@@ -812,8 +826,11 @@
         <span class="material-symbols-outlined">send</span>
       </button>
     </div>
-    <div class="flex gap-4 mt-2">
+    <div class="flex gap-4 mt-2 items-center">
       <span id="agents-label" class="text-[8px] text-[#adaaaa] tracking-widest hidden"></span>
+      <button onclick="exportChat()" title="DEV — exportar chat como JSON" class="ml-auto text-[8px] font-mono text-[#f59e0b] border border-[#f59e0b]/40 hover:border-[#f59e0b] hover:bg-[#f59e0b]/10 px-2 py-0.5 transition-colors flex items-center gap-1">
+        <span class="material-symbols-outlined" style="font-size:10px">download</span>[DEV] EXPORT
+      </button>
     </div>
   </div>
 
@@ -1135,7 +1152,7 @@ let currentAgentEl = null;
 let signalBuffer = [];
 let _session_id   = localStorage.getItem('stratum_session_id') || null;
 let _wsRetryDelay = 2000;
-let _offlineQueue = JSON.parse(localStorage.getItem('stratum_web_offline_queue') || '[]');
+let _offlineQueue = [];  // solo en memoria — no persiste entre reloads
 let _sessions     = [];   // list of session objects from API
 let _activeView   = 'chat';
 
@@ -1178,7 +1195,8 @@ function toggleVoice() {
 
 // ── OFFLINE QUEUE ────────────────────────────────────────────────────────
 function _saveQueue() {
-  localStorage.setItem('stratum_web_offline_queue', JSON.stringify(_offlineQueue));
+  // Queue es solo en memoria — no persiste en localStorage para evitar
+  // que mensajes de sesiones anteriores se reenvíen en un reload.
 }
 function _updateQueueBadge() {
   const s = document.getElementById('status-text');
@@ -1644,6 +1662,32 @@ async function loadAuthStatus() {
   } catch(e) {}
 }
 
+// ── DEV EXPORT ───────────────────────────────────────────────────────────
+async function exportChat() {
+  const sid = _session_id;
+  if (!sid) { alert('[DEV] No hay sesión activa'); return; }
+  try {
+    const res  = await fetch(`${API}/history?session_id=${encodeURIComponent(sid)}&limit=2000`);
+    const data = await res.json();
+    const msgs = data.messages || [];
+    const out  = {
+      exported_at: new Date().toISOString(),
+      session_id:  sid,
+      total:       msgs.length,
+      messages:    msgs,
+    };
+    const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `stratum_chat_${sid.slice(0,8)}_${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    alert('[DEV] Error exportando: ' + e.message);
+  }
+}
+
 // ── CHAT ─────────────────────────────────────────────────────────────────
 function sendMessage() {
   const input = document.getElementById('prompt');
@@ -1691,7 +1735,7 @@ function addMessage(role, content, agents = [], streaming = false) {
           <span class="text-[9px] text-primary opacity-50">STRATUM_ENGINE // AI_CORE // ${ts}</span>
           <div class="flex gap-1 agent-badges">${badges}</div>
         </div>
-        <div class="agent-content leading-relaxed${streaming ? ' blinking-cursor' : ''}">${escHtml(content)}</div>
+        <div class="agent-content prose-stratum leading-relaxed${streaming ? ' blinking-cursor' : ''}">${streaming ? escHtml(content) : renderMarkdown(content)}</div>
       </div>`;
   }
 
@@ -1711,14 +1755,26 @@ function appendToken(token) {
 function finishStreaming(data) {
   if (currentAgentEl) {
     currentAgentEl.classList.remove('blinking-cursor');
-    if (data?.agents_used?.length) {
-      const container = currentAgentEl.closest('.bg-\\[\\#131313\\]')?.querySelector('.agent-badges');
-      if (container) {
-        const colors = { memory:'text-primary', hardware:'text-secondary', research:'text-[#adaaaa]', code:'text-[#8eff71]', proactive:'text-[#ffaa00]', direct:'text-[#adaaaa]' };
-        container.innerHTML = data.agents_used.map(a => {
-          const c = colors[a] || 'text-[#adaaaa]';
-          return `<span class="px-1 py-0.5 bg-[#131313] ${c} text-[8px] font-bold uppercase border border-current/20">AGNT_${a.toUpperCase()}</span>`;
-        }).join('');
+
+    const rawText = currentAgentEl.textContent || '';
+
+    if (!rawText.trim()) {
+      // Burbuja vacía (timeout sin tokens) — eliminarla del DOM
+      const bubble = currentAgentEl.closest('.flex.flex-col.items-start');
+      if (bubble) bubble.remove();
+    } else {
+      // Re-renderizar el texto acumulado como markdown
+      currentAgentEl.innerHTML = renderMarkdown(rawText);
+
+      if (data?.agents_used?.length) {
+        const container = currentAgentEl.closest('.bg-\\[\\#131313\\]')?.querySelector('.agent-badges');
+        if (container) {
+          const colors = { memory:'text-primary', hardware:'text-secondary', research:'text-[#adaaaa]', code:'text-[#8eff71]', proactive:'text-[#ffaa00]', direct:'text-[#adaaaa]' };
+          container.innerHTML = data.agents_used.map(a => {
+            const c = colors[a] || 'text-[#adaaaa]';
+            return `<span class="px-1 py-0.5 bg-[#131313] ${c} text-[8px] font-bold uppercase border border-current/20">AGNT_${a.toUpperCase()}</span>`;
+          }).join('');
+        }
       }
     }
   }
@@ -2574,6 +2630,19 @@ function escHtml(str) {
 }
 const esc = escHtml;
 
+// Render markdown seguro para mensajes del agente.
+// marked.js convierte markdown → HTML; escHtml se usa solo para contenido de usuario.
+function renderMarkdown(text) {
+  try {
+    if (typeof marked === 'undefined') return escHtml(text);
+    // Configurar marked: sin sanitize (deprecated), mode gfm
+    marked.setOptions({ gfm: true, breaks: true });
+    return marked.parse(String(text));
+  } catch(e) {
+    return escHtml(text);
+  }
+}
+
 // ── INIT ──────────────────────────────────────────────────────────────────
 document.getElementById('session-time').textContent =
   'SESSION_INIT :: ' + new Date().toISOString().replace('T', '_').slice(0, 19);
@@ -2600,21 +2669,8 @@ setInterval(loadHealth,       30000);
 setInterval(loadBridgeStatus, 10000);
 setInterval(loadSessions,     30000);
 
-// Mostrar mensajes encolados de sesiones anteriores
-if (_offlineQueue.length > 0) {
-  _updateQueueBadge();
-  const area = document.getElementById('chat-area');
-  if (area) {
-    _offlineQueue.forEach(item => {
-      const div = document.createElement('div');
-      const ts  = new Date(item.ts).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
-      div.className      = 'msg-queued font-mono text-xs';
-      div.dataset.queued = 'true';
-      div.innerHTML = `<span class="text-[8px] text-[#494847] mr-2">${ts} QUEUED</span><span class="text-[#adaaaa]">${item.text.replace(/</g,'&lt;')}</span>`;
-      area.appendChild(div);
-    });
-  }
-}
+// Limpiar cualquier queue residual de versiones anteriores que usaban localStorage
+localStorage.removeItem('stratum_web_offline_queue');
 
 // ── WEB: DESIGN DECISIONS ────────────────────────────────────────────────────
 function webToggleDecisionForm() {

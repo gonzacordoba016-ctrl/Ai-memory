@@ -36,6 +36,30 @@ Consulta: "{query}"
 JSON:"""
 
 
+# Keywords que indican EXPLÍCITAMENTE un cálculo eléctrico.
+# Solo si uno de estos aparece se intenta ElectricalCalcAgent.
+# Evita que consultas de firmware/circuitos sean mal clasificadas.
+ELECTRICAL_CALC_KEYWORDS = [
+    "calculá la resistencia", "calcular resistencia", "resistencia para led",
+    "resistencia limitadora", "cuánta resistencia", "cuanta resistencia",
+    "calculá el capacitor", "calcular capacitor", "qué capacitor", "que capacitor",
+    "calculá el inductor", "calcular inductor",
+    "divisor de tensión", "divisor resistivo", "divisor de tension",
+    "filtro paso bajo", "filtro paso alto", "filtro rc", "filtro lc",
+    "filtro pasa bajo", "filtro pasa alto",
+    "constante de tiempo rc", "tiempo de carga",
+    "autonomía de batería", "autonomia de bateria", "cuánto dura la batería",
+    "fusible para", "qué fusible", "que fusible",
+    "disipador térmico", "heatsink", "heat sink",
+    "convertidor buck", "convertidor boost", "buck converter", "boost converter",
+    "relación de transformación", "transformador",
+    "ganancia del amplificador", "amplificador inversor", "amplificador no inversor",
+    "frecuencia vfd", "frecuencia para rpm", "torque del motor",
+    "ley de ohm", "caída de tensión", "caida de tension",
+    "potencia disipada", "eficiencia energética", "eficiencia energetica",
+    "dimensioná", "dimensionar",
+]
+
 KEYWORD_ROUTES = {
     "hardware": [
         "arduino", "esp32", "esp8266", "pico", "led", "sensor",
@@ -193,20 +217,28 @@ class Orchestrator:
                 context_parts.append(f"[Código/Archivos]\n{result}")
 
         if "hardware" in agents_to_run:
-            # Intentar primero con ElectricalCalcAgent (cálculos exactos)
-            try:
-                from agent.agents.electrical_calc_agent import get_electrical_calc_agent
-                from database.component_stock import get_stock_db
-                ec_agent = get_electrical_calc_agent()
-                ec_result = await ec_agent.run(query, stock_db=get_stock_db())
-                if ec_result:
-                    results["hardware"] = ec_result
-                    context_parts.append(f"[Cálculo Eléctrico]\n{ec_result}")
-                    logger.info("[Orchestrator] ElectricalCalcAgent manejó la consulta")
-                else:
-                    raise ValueError("No es cálculo")
-            except Exception:
-                # Fallback al HardwareAgent normal
+            q_lower = query.lower()
+            # Solo intentar ElectricalCalcAgent si la consulta contiene keywords
+            # de cálculo explícito — evita que firmware/circuitos sean mal ruteados.
+            is_calc_query = any(kw in q_lower for kw in ELECTRICAL_CALC_KEYWORDS)
+            ec_handled = False
+
+            if is_calc_query:
+                try:
+                    from agent.agents.electrical_calc_agent import get_electrical_calc_agent
+                    from database.component_stock import get_stock_db
+                    ec_agent  = get_electrical_calc_agent()
+                    ec_result = await ec_agent.run(query, stock_db=get_stock_db())
+                    if ec_result:
+                        results["hardware"] = ec_result
+                        context_parts.append(f"[Cálculo Eléctrico]\n{ec_result}")
+                        logger.info("[Orchestrator] ElectricalCalcAgent manejó la consulta")
+                        ec_handled = True
+                except Exception as e:
+                    logger.warning(f"[Orchestrator] ElectricalCalcAgent falló: {e}")
+
+            if not ec_handled:
+                # HardwareAgent para firmware, circuitos, dispositivos, etc.
                 from agent.agents.hardware_agent import get_hardware_agent
                 hw_agent = get_hardware_agent()
                 result = await asyncio.to_thread(hw_agent.run, query, context)
