@@ -238,7 +238,7 @@ async def proactive_status(_: str = Depends(get_current_user)):
         }
     return {
         "running":  _state.proactive_engine._running,
-        "clients":  len(_state.proactive_engine._clients),
+        "clients":  _state.proactive_engine.client_count,
         "intervals": {
             "device_check_seconds":   60,
             "inactive_check_seconds": 3600,

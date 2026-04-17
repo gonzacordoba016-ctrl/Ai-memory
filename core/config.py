@@ -69,7 +69,7 @@ def get_llm_headers(agent_id: str = None, agent_name: str = "antigravity") -> di
     provider = os.getenv("LLM_PROVIDER", "ollama")
 
     if provider == "openrouter":
-        api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("AETHERMIND_API_KEY")
+        api_key = os.getenv("OPENROUTER_API_KEY")
         if not api_key:
             raise ValueError("OPENROUTER_API_KEY no configurada")
         # Diagnóstico: loguear el inicio de la key para verificar cuál se está usando
@@ -77,16 +77,6 @@ def get_llm_headers(agent_id: str = None, agent_name: str = "antigravity") -> di
         headers["Authorization"]        = f"Bearer {api_key}"
         headers["HTTP-Referer"]         = "https://stratum.local"
         headers["X-Title"]              = "Stratum AI Memory Engine"
-
-    elif provider == "ollama":
-        aethermind_token = os.getenv("AETHERMIND_TOKEN")
-        if aethermind_token:
-            env_agent_id   = os.getenv("AETHERMIND_AGENT_ID")
-            final_agent_id = env_agent_id or agent_id or "ai-memory-engine"
-            headers["X-Client-Token"] = aethermind_token
-            headers["X-Agent-Id"]     = final_agent_id
-            headers["X-Agent-Name"]   = agent_name
-            headers["X-Environment"]  = os.getenv("AETHERMIND_ENV", "development")
 
     return headers
 
@@ -147,8 +137,16 @@ JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "1440"))  # 24h por def
 PORT = int(os.getenv("PORT", "8000"))
 
 # CORS: lista de orígenes permitidos separados por coma.
-# En producción incluir el dominio de la app y capacitor://localhost para mobile.
-_raw_origins = os.getenv("ALLOWED_ORIGINS", "*")
+# Sobreescribir con la variable de entorno ALLOWED_ORIGINS en Railway.
+# Default seguro: solo el dominio de producción + localhost para dev.
+_CORS_DEFAULT = (
+    "https://ai-memory-production-d6b1.up.railway.app,"
+    "http://localhost:3000,"
+    "http://localhost:8000,"
+    "http://127.0.0.1:8000,"
+    "capacitor://localhost"   # Capacitor/mobile
+)
+_raw_origins = os.getenv("ALLOWED_ORIGINS", _CORS_DEFAULT)
 ALLOWED_ORIGINS: list[str] = (
     ["*"] if _raw_origins.strip() == "*"
     else [o.strip() for o in _raw_origins.split(",") if o.strip()]

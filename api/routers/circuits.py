@@ -121,7 +121,8 @@ async def get_gerber_files(circuit_id: int):
 
 
 @router.post("/{device_name}/generate-firmware")
-async def generate_firmware_for_device(device_name: str, request: FirmwareRequest = None):
+@limiter.limit("5/minute")
+async def generate_firmware_for_device(request: Request, device_name: str, body: FirmwareRequest = None):
     from api.app_state import job_queue, jobs
     from agent.agents.hardware_agent import get_hardware_agent
     from tools.firmware_flasher import compile_firmware
@@ -149,7 +150,7 @@ async def generate_firmware_for_device(device_name: str, request: FirmwareReques
     else:
         platform = "arduino:avr"
 
-    task_desc   = request.task_description if request else "Generar firmware"
+    task_desc   = body.task_description if body else "Generar firmware"
     MAX_RETRIES = 3
 
     def _generate_and_compile():
@@ -287,7 +288,8 @@ async def download_wokwi_diagram(circuit_id: int):
 
 
 @router.post("/{circuit_id}/simulate")
-async def simulate_circuit(circuit_id: int, firmware_path: str = "", timeout: int = 10):
+@limiter.limit("5/minute")
+async def simulate_circuit(request: Request, circuit_id: int, firmware_path: str = "", timeout: int = 10):
     """
     Genera un diagram.json Wokwi para el circuito y opcionalmente lo simula con wokwi-cli.
 
@@ -342,7 +344,8 @@ async def parse_circuit_async(request: Request, description: str, mcu: str = "Ar
 # ── DRC ───────────────────────────────────────────────────────────────────────
 
 @router.get("/{circuit_id}/drc")
-async def run_circuit_drc(circuit_id: int):
+@limiter.limit("10/minute")
+async def run_circuit_drc(request: Request, circuit_id: int):
     """Ejecuta el DRC (Design Rule Check) eléctrico sobre un circuito."""
     from tools.electrical_drc import run_drc
 

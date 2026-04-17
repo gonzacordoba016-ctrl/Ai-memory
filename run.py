@@ -41,9 +41,6 @@ def cmd_serve(port: int, reload: bool) -> None:
     from dotenv import load_dotenv
     load_dotenv(override=True)  # .env local tiene prioridad; Railway no usa .env
 
-    os.environ["AETHERMIND_AGENT_ID"] = "56dd50bb-dba1-42fc-b46a-d9cefa170500"
-    os.environ["AETHERMIND_ENV"]      = "development"
-
     # Railway y otros PaaS inyectan PORT como variable de entorno
     port = int(os.getenv("PORT", str(port)))
 

@@ -1,0 +1,124 @@
+// ── UTILS ─────────────────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+const esc = escHtml;
+
+// Render markdown seguro para mensajes del agente.
+// marked.js convierte markdown → HTML; escHtml se usa solo para contenido de usuario.
+function renderMarkdown(text) {
+  try {
+    if (typeof marked === 'undefined') return escHtml(text);
+    // Configurar marked: sin sanitize (deprecated), mode gfm
+    marked.setOptions({ gfm: true, breaks: true });
+    return marked.parse(String(text));
+  } catch(e) {
+    return escHtml(text);
+  }
+}
+
+// ── LOGS ──────────────────────────────────────────────────────────────────
+function addLog(msg, type = 'info') {
+  const el = document.getElementById('logs-list');
+  const ts = new Date().toLocaleTimeString('es', {hour12: false});
+  const colors = { info:'text-[#494847]', warn:'text-[#ffaa00]', error:'text-error', cmd:'text-primary' };
+  const line = document.createElement('div');
+  line.className  = `${colors[type] || 'text-[#494847]'} leading-relaxed`;
+  line.textContent = `[${ts}] ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+  if (el.children.length > 200) el.removeChild(el.firstChild);
+}
+
+// ── DEV EXPORT ───────────────────────────────────────────────────────────
+async function exportChat() {
+  const sid = _session_id;
+  if (!sid) { alert('[DEV] No hay sesión activa'); return; }
+  try {
+    const res  = await authFetch(`${API}/history?session_id=${encodeURIComponent(sid)}&limit=2000`);
+    const data = await res.json();
+    const msgs = data.messages || [];
+    const out  = {
+      exported_at: new Date().toISOString(),
+      session_id:  sid,
+      total:       msgs.length,
+      messages:    msgs,
+    };
+    const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `stratum_chat_${sid.slice(0,8)}_${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    alert('[DEV] Error exportando: ' + e.message);
+  }
+}
+
+// ── OFFLINE QUEUE ────────────────────────────────────────────────────────
+function _saveQueue() {
+  // Queue es solo en memoria — no persiste en localStorage para evitar
+  // que mensajes de sesiones anteriores se reenvíen en un reload.
+}
+function _updateQueueBadge() {
+  const s = document.getElementById('status-text');
+  if (!s) return;
+  s.innerHTML = _offlineQueue.length > 0
+    ? `ENGINE_OFFLINE <span class="queue-badge">${_offlineQueue.length} QUEUED</span>`
+    : s.textContent;
+}
+function _enqueueMessage(text) {
+  _offlineQueue.push({ text, ts: Date.now() });
+  _saveQueue();
+  const area = document.getElementById('chat-area');
+  if (area) {
+    const div = document.createElement('div');
+    const ts  = new Date().toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+    div.className     = 'msg-queued font-mono text-xs';
+    div.dataset.queued = 'true';
+    div.innerHTML = `<span class="text-[8px] text-[#494847] mr-2">${ts} QUEUED</span><span class="text-[#adaaaa]">${text.replace(/</g,'&lt;')}</span>`;
+    area.appendChild(div);
+    area.scrollTop = area.scrollHeight;
+  }
+  _updateQueueBadge();
+  addLog(`Mensaje encolado (sin conexión): "${text.slice(0, 40)}"`, 'warn');
+}
+async function drainOfflineQueue() {
+  if (!_offlineQueue.length) return;
+  document.querySelectorAll('[data-queued="true"]').forEach(el => el.remove());
+  const queue = [..._offlineQueue];
+  _offlineQueue = [];
+  _saveQueue();
+  for (const item of queue) {
+    if (!ws || ws.readyState !== 1) break;
+    addMessage('user', item.text, []);
+    isStreaming = true;
+    document.getElementById('send-btn').classList.add('opacity-40', 'pointer-events-none');
+    currentAgentEl = null;
+    addLog(`Enviando mensaje encolado: "${item.text.slice(0, 40)}"`, 'info');
+    ws.send(JSON.stringify({ message: item.text }));
+    await new Promise(res => {
+      const handler = (e) => {
+        try { const d = JSON.parse(e.data); if (d.type === 'done' || d.type === 'error') { ws.removeEventListener('message', handler); res(); } } catch(e) {}
+      };
+      ws.addEventListener('message', handler);
+      setTimeout(res, 30000);
+    });
+  }
+}
+
+// ── SEARCH ────────────────────────────────────────────────────────────────
+async function doSearch() {
+  const q  = document.getElementById('search-input').value.trim();
+  const el = document.getElementById('search-results');
+  if (!q) return;
+  el.innerHTML = '<p class="text-[10px] text-[#adaaaa]">Buscando...</p>';
+  try {
+    const r = await authFetch(`${API}/search?q=${encodeURIComponent(q)}&top_k=5`);
+    const d = await r.json();
+    if (!d.results?.length) { el.innerHTML = '<p class="text-[10px] text-[#adaaaa]">Sin resultados</p>'; return; }
+    el.innerHTML = d.results.map(res => `
+      <div class="bg-[#131313] p-2 border-l-2 border-[#494847]/40 text-[9px] text-[#adaaaa] leading-relaxed">${escHtml(res)}</div>`).join('');
+  } catch(e) { el.innerHTML = '<p class="text-[10px] text-error">Error</p>'; }
+}

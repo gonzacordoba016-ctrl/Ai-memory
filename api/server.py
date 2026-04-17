@@ -3,7 +3,7 @@
 # La lógica de cada dominio vive en api/routers/.
 
 from dotenv import load_dotenv
-load_dotenv()  # sin override: Railway/sistema tiene prioridad sobre .env local
+load_dotenv(override=True)  # .env local tiene prioridad; Railway no usa .env
 
 import os
 import sys
@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 
 # Log de diagnóstico: muestra el provider y key en uso al arrancar
 _provider = os.getenv("LLM_PROVIDER", "ollama")
-_key = os.getenv("OPENROUTER_API_KEY", "") or os.getenv("AETHERMIND_API_KEY", "")
+_key = os.getenv("OPENROUTER_API_KEY", "")
 _log.info(f"[STARTUP] LLM_PROVIDER={_provider} | key prefix={_key[:15]}... | model={os.getenv('OPENROUTER_MODEL', os.getenv('OLLAMA_MODEL', '?'))}")
 _log.info(f"[STARTUP] PORT={os.getenv('PORT', '8000')} | MEMORY_DB={os.getenv('MEMORY_DB_PATH', './database/memory.db')}")
 
