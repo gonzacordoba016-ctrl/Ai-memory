@@ -160,6 +160,41 @@ function _addCopyButtons(container) {
   });
 }
 
+// ── TTS ───────────────────────────────────────────────────────────────────
+let _ttsActive = false;
+function _ttsSpeak(btn) {
+  if (!window.speechSynthesis) return;
+  if (_ttsActive) {
+    window.speechSynthesis.cancel();
+    _ttsActive = false;
+    document.querySelectorAll('.tts-btn').forEach(b => b.classList.remove('text-primary'));
+    return;
+  }
+  const msg = btn.closest('[data-raw]');
+  const text = msg ? msg.dataset.raw : btn.closest('.bg-\\[\\#131313\\]')?.querySelector('.agent-content')?.innerText || '';
+  if (!text) return;
+  const utt = new SpeechSynthesisUtterance(text.replace(/[#*`_~]/g, ''));
+  utt.lang = 'es-AR';
+  utt.rate = 1.1;
+  utt.onend = () => { _ttsActive = false; btn.classList.remove('text-primary'); };
+  window.speechSynthesis.speak(utt);
+  _ttsActive = true;
+  btn.classList.add('text-primary');
+}
+
+function _exportMD(btn) {
+  const msg  = btn.closest('[data-raw]');
+  const text = msg ? msg.dataset.raw : '';
+  if (!text) return;
+  const blob = new Blob([text], { type: 'text/markdown' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `stratum_${new Date().toISOString().slice(0,10)}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function addMessage(role, content, agents = [], streaming = false) {
   const msgs = document.getElementById('messages');
   const ts   = new Date().toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
@@ -184,7 +219,7 @@ function addMessage(role, content, agents = [], streaming = false) {
       return `<span class="px-1 py-0.5 bg-[#131313] ${c} text-[8px] font-bold uppercase border border-current/20">AGNT_${a.toUpperCase()}</span>`;
     }).join('');
 
-    div.className = 'flex flex-col items-start';
+    div.className = 'flex flex-col items-start group';
     div.innerHTML = `
       <div class="bg-[#131313] border-l-2 border-primary p-4 max-w-2xl font-mono text-sm tracking-tight">
         <div class="flex items-center gap-2 mb-2 flex-wrap">
@@ -192,6 +227,14 @@ function addMessage(role, content, agents = [], streaming = false) {
           <div class="flex gap-1 agent-badges">${badges}</div>
         </div>
         <div class="agent-content prose-stratum leading-relaxed${streaming ? ' blinking-cursor' : ''}">${streaming ? '' : renderMarkdown(content)}</div>
+        <div class="flex items-center gap-3 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button class="tts-btn flex items-center gap-1 text-[8px] text-[#494847] hover:text-primary font-mono transition-colors" onclick="_ttsSpeak(this)" title="Escuchar">
+            <span class="material-symbols-outlined text-[10px]">volume_up</span>TTS
+          </button>
+          <button class="flex items-center gap-1 text-[8px] text-[#494847] hover:text-primary font-mono transition-colors" onclick="_exportMD(this)" title="Exportar markdown">
+            <span class="material-symbols-outlined text-[10px]">download</span>MD
+          </button>
+        </div>
       </div>`;
     if (!streaming) _addCopyButtons(div);
   }
@@ -232,7 +275,9 @@ function finishStreaming(data) {
       if (bubble) bubble.remove();
     } else {
       currentAgentEl.innerHTML = renderMarkdown(rawText);
-      _addCopyButtons(currentAgentEl.closest('.flex.flex-col.items-start') || currentAgentEl);
+      const outerDiv = currentAgentEl.closest('.flex.flex-col.items-start');
+      if (outerDiv) outerDiv.dataset.raw = rawText;
+      _addCopyButtons(outerDiv || currentAgentEl);
 
       if (data?.agents_used?.length) {
         const container = currentAgentEl.closest('.bg-\\[\\#131313\\]')?.querySelector('.agent-badges');

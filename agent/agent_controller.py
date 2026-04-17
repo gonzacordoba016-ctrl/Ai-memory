@@ -174,10 +174,24 @@ class AgentController:
             return {}
 
     def _build_base_context(self) -> str:
+        parts = []
         facts = self.state.get_all_facts()
-        if not facts:
-            return ""
-        return "Hechos del usuario: " + ", ".join(f"{k}={v}" for k, v in facts.items())
+        if facts:
+            parts.append("Hechos del usuario: " + ", ".join(f"{k}={v}" for k, v in facts.items()))
+        try:
+            project = self.sql_memory.get_active_project()
+            if project:
+                p_ctx = f"PROYECTO ACTIVO: {project['name']}"
+                if project.get('mcu'):
+                    p_ctx += f" | MCU: {project['mcu']}"
+                if project.get('components'):
+                    p_ctx += f" | Componentes: {project['components']}"
+                if project.get('description'):
+                    p_ctx += f" | Descripción: {project['description']}"
+                parts.append(p_ctx)
+        except Exception:
+            pass
+        return "\n".join(parts)
 
     def _store_episode(self, user_input: str, response: str):
         try:

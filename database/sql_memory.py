@@ -3,6 +3,7 @@
 import sqlite3
 import os
 import uuid as _uuid
+from datetime import datetime, timezone
 
 from core.config import SQL_DB_PATH
 
@@ -113,6 +114,21 @@ class SQLMemory:
                 )
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id, last_msg_at)")
+
+            # ── Tabla de proyectos activos ────────────────────────────────
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS projects (
+                    id          TEXT PRIMARY KEY,
+                    user_id     TEXT NOT NULL DEFAULT 'default',
+                    name        TEXT NOT NULL,
+                    description TEXT DEFAULT '',
+                    mcu         TEXT DEFAULT '',
+                    components  TEXT DEFAULT '',
+                    active      INTEGER NOT NULL DEFAULT 0,
+                    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
             conn.commit()
 
     # ======================
@@ -289,6 +305,72 @@ class SQLMemory:
         if not row:
             return None
         return {"user_id": row[0], "username": row[1], "display_name": row[2]}
+
+
+    # ======================
+    # PROYECTOS ACTIVOS
+    # ======================
+
+    def list_projects(self, user_id: str = "default") -> list:
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                "SELECT id, name, description, mcu, components, active, created_at, updated_at "
+                "FROM projects WHERE user_id = ? ORDER BY updated_at DESC", (user_id,)
+            ).fetchall()
+        return [{"id":r[0],"name":r[1],"description":r[2],"mcu":r[3],"components":r[4],"active":bool(r[5]),"created_at":r[6],"updated_at":r[7]} for r in rows]
+
+    def create_project(self, name: str, description: str = "", mcu: str = "", components: str = "", user_id: str = "default") -> dict:
+        import uuid as _u
+        pid = str(_u.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        with self._get_connection() as conn:
+            conn.execute(
+                "INSERT INTO projects (id, user_id, name, description, mcu, components, active, created_at, updated_at) VALUES (?,?,?,?,?,?,0,?,?)",
+                (pid, user_id, name, description, mcu, components, now, now)
+            )
+            conn.commit()
+        return {"id": pid, "name": name, "description": description, "mcu": mcu, "components": components, "active": False}
+
+    def activate_project(self, project_id: str, user_id: str = "default") -> bool:
+        with self._get_connection() as conn:
+            row = conn.execute("SELECT id FROM projects WHERE id = ? AND user_id = ?", (project_id, user_id)).fetchone()
+            if not row:
+                return False
+            conn.execute("UPDATE projects SET active = 0 WHERE user_id = ?", (user_id,))
+            conn.execute("UPDATE projects SET active = 1, updated_at = ? WHERE id = ?",
+                         (datetime.now(timezone.utc).isoformat(), project_id))
+            conn.commit()
+        return True
+
+    def deactivate_projects(self, user_id: str = "default"):
+        with self._get_connection() as conn:
+            conn.execute("UPDATE projects SET active = 0 WHERE user_id = ?", (user_id,))
+            conn.commit()
+
+    def get_active_project(self, user_id: str = "default") -> dict | None:
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT id, name, description, mcu, components FROM projects WHERE user_id = ? AND active = 1 LIMIT 1", (user_id,)
+            ).fetchone()
+        if not row:
+            return None
+        return {"id": row[0], "name": row[1], "description": row[2], "mcu": row[3], "components": row[4]}
+
+    def update_project(self, project_id: str, data: dict, user_id: str = "default") -> bool:
+        fields = {k: v for k, v in data.items() if k in ("name","description","mcu","components")}
+        if not fields:
+            return True
+        sets = ", ".join(f"{k} = ?" for k in fields)
+        vals = list(fields.values()) + [datetime.now(timezone.utc).isoformat(), project_id, user_id]
+        with self._get_connection() as conn:
+            cur = conn.execute(f"UPDATE projects SET {sets}, updated_at = ? WHERE id = ? AND user_id = ?", vals)
+            conn.commit()
+        return cur.rowcount > 0
+
+    def delete_project(self, project_id: str, user_id: str = "default"):
+        with self._get_connection() as conn:
+            conn.execute("DELETE FROM projects WHERE id = ? AND user_id = ?", (project_id, user_id))
+            conn.commit()
 
 
 # ======================

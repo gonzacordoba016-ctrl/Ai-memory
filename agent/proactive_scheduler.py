@@ -7,6 +7,13 @@ from core.logger import logger
 from database.hardware_memory import hardware_memory
 from tools.hardware_detector import detect_devices
 
+async def _push(title: str, body: str):
+    try:
+        from tools.push_notifier import send_push_to_all
+        await asyncio.to_thread(send_push_to_all, title, body)
+    except Exception:
+        pass
+
 # ── Intervalos de chequeo (en segundos) ──────────────────────────────────────
 CHECK_CONNECTED_INTERVAL  = 60     # Detectar nuevos dispositivos USB
 CHECK_INACTIVE_INTERVAL   = 3600   # Chequear dispositivos inactivos (1h)
@@ -119,6 +126,7 @@ class ProactiveScheduler:
                 "port":    port,
                 "action":  "program" if has_history else "new",
             })
+            await _push("Dispositivo conectado", f"{name} en {port}")
 
         self._known_ports = current_ports
 
@@ -162,6 +170,7 @@ class ProactiveScheduler:
                         "days_inactive": days_inactive,
                         "last_task":     current["task"],
                     })
+                    await _push("Proyecto pausado", f"{device['name']} inactivo {days_inactive} días")
 
             except Exception as e:
                 logger.error(f"[Proactive] Error procesando dispositivo {device.get('name')}: {e}")

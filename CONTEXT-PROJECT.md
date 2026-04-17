@@ -1,6 +1,6 @@
 # STRATUM — Contexto del Proyecto
 > Última actualización: 2026-04-17
-> Versión actual: **v3.7.0**
+> Versión actual: **v3.8.0**
 > Tagline: _"Tu memoria técnica siempre disponible"_
 > Estado: **Production-ready** (local + Railway)
 
@@ -303,7 +303,7 @@ Cambiar perfil → tono y contexto cambian en el siguiente mensaje sin reiniciar
 ✅ `BRIDGE_TOKEN` para autenticar el bridge client.
 
 ### 4.12 Frontend Web
-✅ CSS + JS extraídos a `styles.css` y 14 módulos JS (plain `<script>` tags para mantener scope global necesario por `onclick=`).
+✅ CSS + JS extraídos a `styles.css` y 15 módulos JS (plain `<script>` tags para mantener scope global necesario por `onclick=`).
 ✅ Chat streaming token a token con **markdown progresivo** (render parcial cada 120ms, no solo al finalizar).
 ✅ **Textarea auto-expandible** para el input (crece hasta 220px, scroll interno, Enter=enviar, Shift+Enter=nueva línea, Esc=limpiar).
 ✅ **Contador de caracteres** en el input (visible >50 chars, rojo >3000).
@@ -318,6 +318,14 @@ Cambiar perfil → tono y contexto cambian en el siguiente mensaje sin reiniciar
 ✅ **URLs producción correctas**: `https://` + `wss://` en Railway, `http://` + `ws://` en localhost (sin puerto hardcodeado).
 ✅ **Health dots correctos**: LLM verde con OpenRouter (`llm_provider` set), Qdrant verde si `not_initialized` (opcional).
 ✅ **Historial de sesión en orden correcto**: `loadSessionHistory` no invierte mensajes (ya vienen cronológicos del backend).
+✅ **TTS (Text-to-Speech)**: botón en cada mensaje del agente — Web Speech API, idioma es-AR, cancela al reclickear.
+✅ **Export MD**: descarga el mensaje del agente como `.md` con un click.
+✅ **Snippets `/`**: tipear `/` en el input muestra menú con 15 plantillas de ingeniería (↑↓ navegar, Enter seleccionar, Esc cerrar). 
+✅ **Ctrl+K buscar**: modal de búsqueda semántica en memoria vectorial — resultados clickeables inyectan texto en el input.
+✅ **Proyecto Activo**: sección en sidebar con lista de proyectos, activar/desactivar, crear (nombre, MCU, componentes, descripción). El proyecto activo se inyecta en el contexto de cada conversación vía `_build_base_context()`.
+✅ **Adjuntar archivos**: botón clip en input — `.ino`, `.txt`, `.cpp`, `.py`, `.json`, imágenes. Texto se inserta como bloque de código en el prompt; imágenes como `[Imagen adjunta: nombre]`.
+✅ **Firmware diff**: botón DIFF en vista de historial de dispositivo — muestra diff coloreado (verde/rojo) entre las últimas 2 versiones de firmware.
+✅ **Push notifications backend**: `proactive_scheduler.py` llama `send_push_to_all()` en eventos `device_connected` e `device_inactive`.
 
 ---
 
@@ -450,6 +458,7 @@ Posibles mejoras futuras:
 - Test e2e offline (mockear el servidor en pytest)
 - Wokwi simulator: integración más profunda para simulación interactiva
 - App mobile: publicar en Play Store / App Store (requiere `google-services.json` FCM)
+- Upload de archivos con procesamiento backend (imágenes → VisionAgent, PDFs → KB indexer)
 
 ---
 
@@ -471,3 +480,4 @@ Posibles mejoras futuras:
 | v3.5.0  | 2026-04-16  | electrical_formulas.py → 6 módulos; KiCad v5 Union-Find parser; hardware_agent → 4 mixins |
 | v3.6.0  | 2026-04-17  | Eliminar Aethermind; URLs rotas JS (decisions/stock/schematics); polling consolidado (30s/60s); healthcheck /api/health; load_dotenv override=True; Railway deploy funcional con volumen /data |
 | v3.7.0  | 2026-04-17  | Fix wss/https en producción; fix health dots (LLM+Qdrant); fix historial orden doble-reverse; textarea auto-expandible; markdown streaming progresivo; botón COPY en código; scroll inteligente; rate limit countdown; contador chars; Esc limpia input; título sesión por IA; Qdrant Cloud configurado; 7 archivos KB técnica indexados |
+| v3.8.0  | 2026-04-17  | TTS en mensajes; Export MD; snippets `/` (15 plantillas ingeniería); Ctrl+K búsqueda semántica modal; Proyecto Activo sidebar (CRUD + activar + inyección en contexto LLM); adjuntar archivos en chat (.ino/.txt/.cpp/imagen); firmware diff coloreado en hardware view; push notifications en eventos proactivos |

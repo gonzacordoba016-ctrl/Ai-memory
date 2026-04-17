@@ -49,7 +49,19 @@ async function loadDeviceHistory(name) {
     const d = await r.json();
     const el = document.getElementById('devices-list');
     let html = `<button onclick="loadHardware()" class="text-[8px] text-secondary mb-2 hover:underline">← BACK</button>
-      <div class="text-[10px] font-bold mb-2">${escHtml(name)}</div>`;
+      <div class="flex items-center justify-between mb-2">
+        <div class="text-[10px] font-bold">${escHtml(name)}</div>
+        <div class="flex gap-2">
+          <button onclick="loadFirmwareDiff('${escHtml(name)}')"
+            class="text-[7px] font-mono text-[#494847] hover:text-secondary border border-[#494847]/40 hover:border-secondary/60 px-2 py-0.5 transition-colors">
+            DIFF
+          </button>
+          <a href="${API}/hardware/firmware/${encodeURIComponent(name)}/platformio.zip"
+            class="text-[7px] font-mono text-[#494847] hover:text-primary border border-[#494847]/40 hover:border-primary/60 px-2 py-0.5 transition-colors">
+            PIO.ZIP
+          </a>
+        </div>
+      </div>`;
     if (d.current) {
       html += `<div class="bg-[#131313] p-2 border-l-2 border-primary mb-2">
         <span class="text-[8px] text-primary block mb-1">CURRENT_FIRMWARE</span>
@@ -57,14 +69,45 @@ async function loadDeviceHistory(name) {
         <pre class="text-[8px] text-secondary bg-black p-1 mt-1 overflow-x-auto">${escHtml((d.current.code || '').slice(0,200))}</pre>
       </div>`;
     }
+    html += `<div id="diff-panel" class="hidden mb-2"></div>`;
     (d.history || []).forEach(h => {
       html += `<div class="bg-[#131313] p-2 mb-1 border-l-2 ${h.success ? 'border-primary/40' : 'border-error/40'}">
-        <p class="text-[9px] text-[#adaaaa]">${escHtml(h.task.slice(0,60))}</p>
-        <span class="text-[8px] text-[#494847]">${h.timestamp}</span>
+        <p class="text-[9px] text-[#adaaaa]">${escHtml((h.task||'').slice(0,60))}</p>
+        <span class="text-[8px] text-[#494847]">${h.timestamp||''}</span>
       </div>`;
     });
     el.innerHTML = html;
   } catch(e) {}
+}
+
+async function loadFirmwareDiff(name) {
+  const panel = document.getElementById('diff-panel');
+  if (!panel) return;
+  panel.innerHTML = '<span class="text-[8px] text-[#494847]">Cargando diff...</span>';
+  panel.classList.remove('hidden');
+  try {
+    const r = await authFetch(`${API}/hardware/firmware/${encodeURIComponent(name)}/diff`);
+    const d = await r.json();
+    if (!d.diff) {
+      panel.innerHTML = `<div class="text-[8px] text-[#494847] p-2">${escHtml(d.message || 'Sin diff')}</div>`;
+      return;
+    }
+    const lines = d.diff.split('\n').map(line => {
+      const cls = line.startsWith('+') && !line.startsWith('+++')
+        ? 'text-primary'
+        : line.startsWith('-') && !line.startsWith('---')
+        ? 'text-error'
+        : line.startsWith('@')
+        ? 'text-secondary'
+        : 'text-[#adaaaa]';
+      return `<div class="${cls}">${escHtml(line)}</div>`;
+    }).join('');
+    panel.innerHTML = `
+      <div class="text-[7px] text-[#494847] mb-1">DIFF: ${escHtml(d.old_ts?.slice(0,10)||'')} → ${escHtml(d.new_ts?.slice(0,10)||'')}</div>
+      <pre class="text-[8px] bg-black p-2 overflow-x-auto leading-relaxed max-h-48 overflow-y-auto border-l-2 border-[#494847]/40">${lines}</pre>`;
+  } catch(e) {
+    panel.innerHTML = '<div class="text-[8px] text-error p-2">Error cargando diff</div>';
+  }
 }
 
 // ── JOBS ─────────────────────────────────────────────────────────────────

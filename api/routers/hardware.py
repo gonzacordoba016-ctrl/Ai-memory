@@ -41,6 +41,31 @@ async def get_device_firmware(device_name: str):
     return {"device": device_name, "current": current, "history": history}
 
 
+@router.get("/firmware/{device_name}/diff")
+async def get_firmware_diff(device_name: str):
+    """Retorna diff entre las últimas 2 versiones del firmware."""
+    history = hardware_memory.get_device_history(device_name, limit=2)
+    if len(history) < 2:
+        return {"device": device_name, "diff": None, "message": "Menos de 2 versiones"}
+    import difflib
+    old_code = (history[1].get("code") or "").splitlines(keepends=True)
+    new_code = (history[0].get("code") or "").splitlines(keepends=True)
+    diff = list(difflib.unified_diff(
+        old_code, new_code,
+        fromfile=f"v_prev ({history[1].get('timestamp','')[:10]})",
+        tofile=f"v_current ({history[0].get('timestamp','')[:10]})",
+        lineterm=""
+    ))
+    return {
+        "device":   device_name,
+        "diff":     "".join(diff),
+        "old_task": history[1].get("task", ""),
+        "new_task": history[0].get("task", ""),
+        "old_ts":   history[1].get("timestamp", ""),
+        "new_ts":   history[0].get("timestamp", ""),
+    }
+
+
 @router.get("/stats")
 async def get_hardware_stats():
     return {"stats": hardware_memory.get_stats()}

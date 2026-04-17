@@ -122,6 +122,45 @@
     </div>
   </div>
 
+  <!-- PROYECTO ACTIVO ─────────────────────────────────────────────────── -->
+  <div id="projects-section" class="border-t border-[#a4ffb9]/10 flex-shrink-0">
+    <div class="flex items-center justify-between px-4 py-2">
+      <div class="flex items-center gap-2">
+        <span class="material-symbols-outlined text-[10px] text-[#494847]">folder_open</span>
+        <span class="text-[8px] text-[#494847] tracking-widest">PROYECTO</span>
+        <span id="active-project-badge"
+          class="hidden text-[7px] font-mono text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.5 max-w-[90px] truncate">—</span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <button onclick="deactivateAllProjects()" title="Desactivar proyecto" class="text-[7px] text-[#494847] hover:text-error transition-colors">✕</button>
+        <button onclick="toggleCreateProjectForm()" class="text-[8px] text-[#494847] hover:text-primary transition-colors">+</button>
+      </div>
+    </div>
+
+    <!-- Lista de proyectos -->
+    <div id="projects-list" class="max-h-28 overflow-y-auto">
+      <div class="text-[9px] text-[#494847] px-3 py-1.5">Cargando...</div>
+    </div>
+
+    <!-- Form nuevo proyecto (colapsado) -->
+    <div id="create-project-form" class="hidden bg-[#0a0a0a] border-t border-[#494847]/20 p-3 space-y-1.5">
+      <input id="proj-name" type="text" placeholder="Nombre del proyecto *"
+        class="w-full bg-black border border-[#494847]/40 text-[9px] font-mono text-white px-2 py-1.5 focus:border-primary/60 focus:outline-none placeholder-[#494847]"/>
+      <div class="flex gap-1">
+        <input id="proj-mcu" type="text" placeholder="MCU (ej: ESP32)"
+          class="flex-1 bg-black border border-[#494847]/40 text-[9px] font-mono text-white px-2 py-1 focus:border-primary/60 focus:outline-none placeholder-[#494847]"/>
+        <input id="proj-comps" type="text" placeholder="Componentes"
+          class="flex-1 bg-black border border-[#494847]/40 text-[9px] font-mono text-white px-2 py-1 focus:border-primary/60 focus:outline-none placeholder-[#494847]"/>
+      </div>
+      <input id="proj-desc" type="text" placeholder="Descripción"
+        class="w-full bg-black border border-[#494847]/40 text-[9px] font-mono text-white px-2 py-1 focus:border-primary/60 focus:outline-none placeholder-[#494847]"/>
+      <div class="flex gap-1 pt-0.5">
+        <button onclick="toggleCreateProjectForm()" class="flex-1 py-1 border border-[#494847]/30 text-[8px] text-[#494847] hover:border-[#adaaaa]">CANCEL</button>
+        <button onclick="saveNewProject()" class="flex-1 py-1 bg-primary/10 border border-primary/40 text-[8px] text-primary hover:bg-primary/20">CREAR</button>
+      </div>
+    </div>
+  </div>
+
   <!-- MÓDULOS — siempre visible, compacto -->
   <div id="modules-section" class="border-t border-[#a4ffb9]/10 flex-shrink-0">
 
@@ -768,13 +807,23 @@
 
   <!-- Input area -->
   <div class="bg-[#0e0e0e] px-6 pt-4 pb-3 border-t border-[#a4ffb9]/10">
+
+    <!-- Snippet menu (floats above input) -->
+    <div id="snippet-menu" class="hidden mb-2 bg-[#0a0a0a] border border-[#494847]/40 max-h-48 overflow-y-auto"></div>
+
     <div class="flex gap-4 border-b border-secondary/30 focus-within:border-secondary transition-colors pb-2 items-end">
       <span class="text-secondary font-mono text-sm mb-1">&gt;</span>
       <textarea id="prompt" rows="1"
         class="bg-transparent border-none focus:ring-0 w-full font-mono text-sm placeholder:opacity-30 placeholder:text-[#adaaaa] focus:outline-none resize-none overflow-y-auto leading-relaxed"
         style="max-height:220px; min-height:1.5rem;"
-        placeholder="CONSULTA DE INGENIERÍA — circuitos, microcontroladores, PLCs, potencia, sensores..."></textarea>
+        placeholder="CONSULTA DE INGENIERÍA — / para snippets, Ctrl+K para buscar..."></textarea>
       <div class="flex items-center gap-3 mb-1 flex-shrink-0">
+        <!-- File upload -->
+        <input type="file" id="file-upload-input" class="hidden"
+          accept=".txt,.ino,.h,.cpp,.c,.py,.md,.json,.yaml,.yml,image/*"/>
+        <button onclick="triggerFileUpload()" class="text-[#adaaaa] hover:text-primary transition-colors" title="Adjuntar archivo (.ino, .txt, imagen...)">
+          <span class="material-symbols-outlined text-sm">attach_file</span>
+        </button>
         <button id="voice-btn" onclick="toggleVoice()" class="text-[#adaaaa] hover:text-primary transition-colors" title="Dictado por voz">
           <span class="material-symbols-outlined text-sm">mic</span>
         </button>
@@ -787,7 +836,7 @@
       </div>
     </div>
     <div class="flex items-center mt-1">
-      <span class="text-[8px] text-[#494847]">Enter para enviar · Shift+Enter nueva línea · Esc para limpiar</span>
+      <span class="text-[8px] text-[#494847]">Enter · Shift+Enter · Esc · <kbd class="border border-[#494847]/40 px-1 text-[7px]">Ctrl+K</kbd> buscar · <kbd class="border border-[#494847]/40 px-1 text-[7px]">/</kbd> snippets</span>
       <span id="prompt-counter" class="ml-auto text-[8px] font-mono text-[#494847]"></span>
     </div>
     <div class="flex gap-4 mt-2 items-center">
@@ -1138,6 +1187,26 @@
 <script src="/static/modules/metrics.js"></script>
 <script src="/static/modules/decisions.js"></script>
 <script src="/static/modules/proactive.js"></script>
+<script src="/static/modules/projects.js"></script>
 <script src="/static/app.js"></script>
+
+<!-- ── CTRL+K SEARCH MODAL ───────────────────────────────────────────────── -->
+<div id="search-modal" class="hidden fixed inset-0 z-[200] flex items-start justify-center pt-24 bg-black/70 backdrop-blur-sm">
+  <div class="w-full max-w-xl bg-[#0a0a0a] border border-[#494847]/60 shadow-2xl font-mono">
+    <!-- Header -->
+    <div class="flex items-center gap-3 px-4 py-3 border-b border-[#494847]/30">
+      <span class="material-symbols-outlined text-sm text-[#494847]">search</span>
+      <input id="search-modal-input" type="text" placeholder="Buscar en memoria, KB, conversaciones..."
+        class="flex-1 bg-transparent text-sm text-white placeholder-[#494847] focus:outline-none"/>
+      <kbd class="text-[8px] border border-[#494847]/40 px-1.5 py-0.5 text-[#494847] cursor-pointer" onclick="closeSearchModal()">ESC</kbd>
+    </div>
+    <!-- Results -->
+    <div id="search-modal-results" class="max-h-80 overflow-y-auto"></div>
+    <!-- Footer hint -->
+    <div class="px-4 py-2 border-t border-[#494847]/20 flex gap-4 text-[7px] text-[#494847]">
+      <span>↑↓ navegar</span><span>Enter usar resultado</span><span>Esc cerrar</span>
+    </div>
+  </div>
+</div>
 </body>
 </html>
