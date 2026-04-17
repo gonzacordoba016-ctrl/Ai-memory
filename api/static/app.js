@@ -1,8 +1,13 @@
 // ── GLOBAL STATE ──────────────────────────────────────────────────────────
-const API          = `http://${location.hostname}:8000/api`;
-const WS_URL       = `ws://${location.hostname}:8000/ws/chat`;
-const WS_SIGNAL    = `ws://${location.hostname}:8000/ws/signal`;
-const WS_PROACTIVE = `ws://${location.hostname}:8000/ws/proactive`;
+const _isSecure    = location.protocol === 'https:';
+const _isLocal     = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+const _apiBase     = _isLocal ? `http://${location.hostname}:8000` : `${location.protocol}//${location.host}`;
+const _wsProto     = _isSecure ? 'wss' : 'ws';
+const _wsHost      = _isLocal ? `${location.hostname}:8000` : location.host;
+const API          = `${_apiBase}/api`;
+const WS_URL       = `${_wsProto}://${_wsHost}/ws/chat`;
+const WS_SIGNAL    = `${_wsProto}://${_wsHost}/ws/signal`;
+const WS_PROACTIVE = `${_wsProto}://${_wsHost}/ws/proactive`;
 
 let ws, wsSignal, wsProactive;
 let isStreaming = false;
