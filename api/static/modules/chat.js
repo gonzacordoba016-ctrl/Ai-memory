@@ -60,7 +60,7 @@ function connectWS() {
 async function loadSessionHistory(sid) {
   try {
     const d = await authFetch(`${API}/history?session_id=${encodeURIComponent(sid)}&limit=20`).then(r => r.json());
-    const msgs = (d.messages || []).reverse();
+    const msgs = d.messages || [];
     if (!msgs.length) return;
     // Limpiar DOM antes de cargar para evitar duplicados
     const area = document.getElementById('messages');
