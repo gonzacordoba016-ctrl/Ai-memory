@@ -1,6 +1,6 @@
 # STRATUM — Contexto del Proyecto
-> Última actualización: 2026-04-16
-> Versión actual: **v3.5.0**
+> Última actualización: 2026-04-17
+> Versión actual: **v3.7.0**
 > Tagline: _"Tu memoria técnica siempre disponible"_
 > Estado: **Production-ready** (local + Railway)
 
@@ -29,7 +29,7 @@ Stratum es un **asistente de ingeniería electrónica con memoria persistente**.
 | Embeddings     | sentence-transformers/all-MiniLM-L6-v2 (384 dims)                  |
 | Visión         | GPT-4o-mini via OpenRouter (detección de provider en runtime)       |
 | Renderizado    | svgwrite (esquemáticos SVG, PCB, breadboard)                        |
-| Deploy         | Docker · Railway (Dockerfile, PORT injection, healthcheck `/health`)|
+| Deploy         | Docker · Railway (Dockerfile, PORT injection, healthcheck `/api/health`)|
 | Push           | Firebase Cloud Messaging (FCM) — opcional (`FIREBASE_SERVER_KEY`)   |
 
 ---
@@ -280,7 +280,7 @@ Helpers compartidos en `formulas_basic`: `_E24`, `_FUSE_STD`, `_nearest_e24()`, 
 - Al completar: `/ws/proactive` emite `{ "type": "job_complete", ... }`
 
 ### 4.7 Sesiones WebSocket Persistentes
-✅ `/ws/chat?session=<uuid>`: carga los últimos 20 mensajes de SQLite, inyecta en el agente. Auto-título con el primer mensaje. Reconexión con backoff exponencial (2s → 4s → … → 30s).
+✅ `/ws/chat?session=<uuid>`: carga los últimos 20 mensajes de SQLite, inyecta en el agente. Título generado por IA (LLM, 5 palabras) tras el primer intercambio completo. Reconexión con backoff exponencial (2s → 4s → … → 8s).
 
 ### 4.8 Hardware Bridge (Programación Remota)
 ✅ Arquitectura: `[Celular/web] → [Railway] → /ws/hardware-bridge → [PC+Arduino]`
@@ -304,12 +304,20 @@ Cambiar perfil → tono y contexto cambian en el siguiente mensaje sin reiniciar
 
 ### 4.12 Frontend Web
 ✅ CSS + JS extraídos a `styles.css` y 14 módulos JS (plain `<script>` tags para mantener scope global necesario por `onclick=`).
-✅ Chat streaming token a token. Rate limiting WS 3s.
+✅ Chat streaming token a token con **markdown progresivo** (render parcial cada 120ms, no solo al finalizar).
+✅ **Textarea auto-expandible** para el input (crece hasta 220px, scroll interno, Enter=enviar, Shift+Enter=nueva línea, Esc=limpiar).
+✅ **Contador de caracteres** en el input (visible >50 chars, rojo >3000).
+✅ **Botón COPY** en cada bloque de código (aparece al hover, usa Clipboard API).
+✅ **Scroll inteligente**: solo fuerza scroll al fondo si el usuario ya estaba ahí.
+✅ **Rate limit countdown**: el botón enviar muestra `3s → 2s → 1s` en vez de burbuja de error.
 ✅ Tab calculadora eléctrica (25 fórmulas con formularios específicos).
 ✅ Tab INTEL: gestión de perfiles AI + fuentes de conocimiento.
-✅ Sesiones múltiples: sidebar con lista, switcheo, delete, auto-título.
+✅ Sesiones múltiples: sidebar con lista, switcheo, delete, título IA.
 ✅ Motor proactivo vía `/ws/proactive`.
 ✅ Offline queue: mensajes enviados sin conexión se persisten y se reintentan al reconectar.
+✅ **URLs producción correctas**: `https://` + `wss://` en Railway, `http://` + `ws://` en localhost (sin puerto hardcodeado).
+✅ **Health dots correctos**: LLM verde con OpenRouter (`llm_provider` set), Qdrant verde si `not_initialized` (opcional).
+✅ **Historial de sesión en orden correcto**: `loadSessionHistory` no invierte mensajes (ya vienen cronológicos del backend).
 
 ---
 
@@ -349,23 +357,31 @@ vector_memory.store(): guarda episodio → Qdrant
 ### Variables de entorno requeridas (Railway)
 ```
 OPENROUTER_API_KEY=...
-LLM_MODEL=openai/gpt-4o-mini
+LLM_PROVIDER=openrouter
+OPENROUTER_MODEL=openai/gpt-4o-mini
 LLM_MODEL_FAST=openai/gpt-4o-mini
 LLM_MODEL_SMART=openai/gpt-4o
-LLM_PROVIDER=openrouter
-QDRANT_URL=https://...qdrant.io:6333
-QDRANT_API_KEY=...
-ALLOWED_ORIGINS=https://tu-app.up.railway.app
-MULTI_USER=true
-SECRET_KEY=...
-BRIDGE_TOKEN=...            # Opcional, para hardware bridge
-FIREBASE_SERVER_KEY=...     # Opcional, para push notifications
+MULTI_USER=false
+JWT_SECRET=...
+MEMORY_DECAY_RATE=0.01
+MEMORY_DB_PATH=/data/database/memory.db
+VECTOR_DB_PATH=/data/memory_db
+GRAPH_DB_PATH=/data/database/graph_memory.json
+QDRANT_COLLECTION=agent_memory
+VECTOR_COLLECTION=agent_memory
+QDRANT_URL=https://<cluster>.cloud.qdrant.io      # Qdrant Cloud (configurado)
+QDRANT_API_KEY=...                                 # JWT key de Qdrant Cloud (configurado)
+ALLOWED_ORIGINS=https://tu-app.up.railway.app      # Opcional
+BRIDGE_TOKEN=...                                   # Opcional, para hardware bridge
+FIREBASE_SERVER_KEY=...                            # Opcional, para push notifications
 ```
+> Railway no lee `.env` — todas las variables se configuran en el dashboard de Railway.
+> `QDRANT_URL` y `QDRANT_API_KEY` configurados y operativos con Qdrant Cloud (us-west-2).
 
 ### Railway deploy
 - Builder: Dockerfile (`python:3.11-slim`, pre-descarga embedding model en build time)
 - Start: `python run.py serve --no-reload`
-- Health check: `GET /health` (timeout 120s)
+- Health check: `GET /api/health` (timeout 120s)
 - Restart: on_failure, max 3 reintentos
 - Volumen: `/data` para SQLite, Qdrant local, graph_memory.json
 
@@ -409,9 +425,25 @@ eval/test_full_integration.py::test_kicad_legacy_connectivity   ✅  (parser v5 
 
 ---
 
-## 9. PENDIENTE / PRÓXIMOS PASOS
+## 9. KNOWLEDGE BASE TÉCNICA
 
-Sin tareas pendientes confirmadas al 2026-04-16. El proyecto está en estado production-ready.
+Archivos en `agent_files/knowledge/` — indexados automáticamente al startup via `index_knowledge_base()`:
+
+| Archivo | Contenido |
+|---|---|
+| `01_electronica_analogica.txt` | Ley de Ohm, filtros RC/RLC, op-amps, BJT, MOSFET, diodos, capacitores, inductores |
+| `02_microcontroladores.txt` | Arduino UNO/MEGA, ESP32, ESP8266, STM32, Pico RP2040, I2C/SPI/UART/interrupciones |
+| `03_electronica_potencia.txt` | Buck/Boost/Flyback, IGBT, MOSFET potencia, drivers de gate, motores, baterías, transformadores |
+| `04_plc_automatizacion.txt` | Siemens S7, IEC 61131-3, Ladder, variadores VFD, servos, redes industriales, sensores 4-20mA |
+| `05_sensores_protocolos.txt` | DHT/BMP/MPU, INA219, HX711, MQTT, HTTP, WebSocket, BLE, LoRa, Zigbee, SD/FRAM |
+| `06_instalaciones_electricas.txt` | Normas IEC/AEA, secciones cables, MCB/RCD, puesta a tierra, motores, cuadros, iluminación |
+| `07_formulas_calculos.txt` | Conversiones, caída de tensión, corrección FP, mecánica, hidráulica, PID, Fourier, ADC |
+
+---
+
+## 10. PENDIENTE / PRÓXIMOS PASOS
+
+Sin tareas pendientes confirmadas al 2026-04-17. El proyecto está en estado production-ready y corriendo en Railway.
 
 Posibles mejoras futuras:
 - Parser KiCad v5: usar coordenadas de pines reales desde el `.lib` si está disponible (actualmente usa `P X Y` del componente como fallback)
@@ -421,7 +453,7 @@ Posibles mejoras futuras:
 
 ---
 
-## 10. HISTORIAL DE VERSIONES
+## 11. HISTORIAL DE VERSIONES
 
 | Versión | Fecha       | Cambios principales |
 |---------|-------------|---------------------|
@@ -437,3 +469,5 @@ Posibles mejoras futuras:
 | v3.3.0  | 2026-04-13  | ElectricalCalcAgent routing fix, markdown UI mejorado, server-restart detection |
 | v3.4.0  | 2026-04-14  | hardware_memory.py → 4 sub-DB + facade; proactive_engine → 3 clases; electrical_calc_agent → prompts externos |
 | v3.5.0  | 2026-04-16  | electrical_formulas.py → 6 módulos; KiCad v5 Union-Find parser; hardware_agent → 4 mixins |
+| v3.6.0  | 2026-04-17  | Eliminar Aethermind; URLs rotas JS (decisions/stock/schematics); polling consolidado (30s/60s); healthcheck /api/health; load_dotenv override=True; Railway deploy funcional con volumen /data |
+| v3.7.0  | 2026-04-17  | Fix wss/https en producción; fix health dots (LLM+Qdrant); fix historial orden doble-reverse; textarea auto-expandible; markdown streaming progresivo; botón COPY en código; scroll inteligente; rate limit countdown; contador chars; Esc limpia input; título sesión por IA; Qdrant Cloud configurado; 7 archivos KB técnica indexados |
