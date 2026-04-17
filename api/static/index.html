@@ -786,7 +786,10 @@
         </button>
       </div>
     </div>
-    <div class="text-[8px] text-[#494847] mt-1">Enter para enviar · Shift+Enter nueva línea</div>
+    <div class="flex items-center mt-1">
+      <span class="text-[8px] text-[#494847]">Enter para enviar · Shift+Enter nueva línea · Esc para limpiar</span>
+      <span id="prompt-counter" class="ml-auto text-[8px] font-mono text-[#494847]"></span>
+    </div>
     <div class="flex gap-4 mt-2 items-center">
       <span id="agents-label" class="text-[8px] text-[#adaaaa] tracking-widest hidden"></span>
       <button onclick="exportChat()" title="DEV — exportar chat como JSON" class="ml-auto text-[8px] font-mono text-[#f59e0b] border border-[#f59e0b]/40 hover:border-[#f59e0b] hover:bg-[#f59e0b]/10 px-2 py-0.5 transition-colors flex items-center gap-1">

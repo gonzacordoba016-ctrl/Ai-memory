@@ -10,7 +10,11 @@
   ::-webkit-scrollbar-thumb { background: #494847; }
   ::-webkit-scrollbar-thumb:hover { background: #a4ffb9; }
   .blinking-cursor::after { content: '█'; animation: blink 1s step-start infinite; }
+  .blinking-cursor-inline { animation: blink 1s step-start infinite; color: #a4ffb9; font-size: 0.85em; }
   @keyframes blink { 50% { opacity: 0; } }
+  .prose-stratum pre { position: relative; }
+  .copy-btn { opacity: 0; transition: opacity 0.15s; }
+  .prose-stratum pre:hover .copy-btn { opacity: 1; }
   .nav-item.active { color: #a4ffb9 !important; background: #131313; border-left: 2px solid #a4ffb9; }
   .session-item.active-session { border-left-color: #a4ffb9 !important; background: #131313; }
   .tab-content { display: none; }

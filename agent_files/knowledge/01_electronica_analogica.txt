@@ -1,0 +1,80 @@
+CONOCIMIENTO TÉCNICO: ELECTRÓNICA ANALÓGICA
+Indexá todo esto como referencia técnica permanente.
+
+=== LEY DE OHM Y POTENCIA ===
+V = I × R | I = V/R | R = V/I
+P = V × I = I²×R = V²/R
+Eficiencia: η = P_salida / P_entrada × 100%
+
+=== DIVISOR DE TENSIÓN ===
+Vout = Vin × R2 / (R1 + R2)
+Para no cargar el divisor: R_carga >= 10 × (R1 ∥ R2)
+Thevenin: Vth = Vout en vacío | Rth = R1 ∥ R2
+
+=== FILTROS RC ===
+Frecuencia de corte: fc = 1 / (2π × R × C)
+Paso bajo: Vout/Vin = 1 / √(1 + (f/fc)²)  → atenúa altas frecuencias
+Paso alto: Vout/Vin = (f/fc) / √(1 + (f/fc)²) → atenúa bajas frecuencias
+Constante de tiempo: τ = R × C (tiempo al 63.2% de carga)
+A f=fc: atenuación = -3dB = 0.707 × Vin
+
+=== FILTROS RLC ===
+Frecuencia resonante: f0 = 1 / (2π × √(L×C))
+Factor de calidad: Q = f0 / BW = (1/R) × √(L/C)
+Impedancia inductiva: XL = 2π × f × L
+Impedancia capacitiva: XC = 1 / (2π × f × C)
+En resonancia serie: Z = R (mínima), corriente máxima
+En resonancia paralelo: Z = R×Q² (máxima), corriente mínima
+
+=== AMPLIFICADORES OPERACIONALES ===
+Inversor: Vout = -(Rf/Rin) × Vin
+No inversor: Vout = (1 + Rf/R1) × Vin
+Seguidor de tensión (buffer): Vout = Vin, Zin = infinita
+Sumador inversor: Vout = -Rf × (V1/R1 + V2/R2 + V3/R3)
+Diferencial: Vout = (R4/R3) × (1 + R2/R1) × (V+ - V-)
+Integrador: Vout = -(1/RC) × ∫Vin dt
+Derivador: Vout = -RC × dVin/dt
+Comparador: sin realimentación negativa, salida = VCC o GND
+Slew rate típico UA741: 0.5V/μs | LM358: 0.6V/μs | TL071: 13V/μs
+
+=== TRANSISTORES BJT ===
+NPN activo: Ic = β × Ib | Ie = Ic + Ib
+β (hFE) típico: BC547=110-800 | 2N2222=100-300 | TIP31=10-50
+Saturación: Vce_sat ≈ 0.2V | Vbe_on ≈ 0.7V
+Corte: Ib=0, Ic=0, transistor abierto
+Como switch: Ib = Vb / Rb, asegurar Ib > Ic_max / β × factor_saturación(5-10)
+Resistencia de base para 5V lógico, carga 100mA, β=100: Rb = (5-0.7)/(100m/100×5) = 860Ω → usar 1kΩ
+
+=== MOSFET ===
+NMOS: conduce cuando Vgs > Vth (típico 2-4V logic, 1-2V logic-level)
+PMOS: conduce cuando Vgs < Vth (Vgs negativo)
+Rds_on bajo = menos pérdidas (IRLZ44N: 22mΩ | IRF540N: 44mΩ)
+Gate charge: determina velocidad de conmutación
+Para cargas inductivas: diodo flyback obligatorio en MOSFET/BJT
+
+=== DIODOS ===
+Vf silicio: 0.6-0.7V | Germanio: 0.2-0.3V | Schottky: 0.15-0.4V | LED: 1.8-3.5V
+Zener: regulación de tensión, trabaja en ruptura inversa
+Resistencia para LED: R = (Vcc - Vf) / If_deseado
+LED rojo 5mm: Vf=2V, If=20mA → R = (5-2)/0.02 = 150Ω
+Rectificador onda completa puente: Vdc = 0.9 × Vac_rms - 1.4V (2 diodos en serie)
+
+=== CAPACITORES ===
+Carga: Q = C × V | Energía: E = ½ × C × V²
+Capacitores en paralelo: Ctotal = C1 + C2 + C3
+Capacitores en serie: 1/Ctotal = 1/C1 + 1/C2 + 1/C3
+Filtro de rizado: C = I_carga / (2 × f × ΔV)
+Para 1A, 100Hz, rizado 100mV: C = 1/(2×100×0.1) = 50000μF = 50mF
+Desacoplamiento digital: 100nF cerámico cerca del IC + 10μF electrolítico
+
+=== INDUCTORES ===
+VL = L × dI/dt | Energía: E = ½ × L × I²
+Inductores en serie: Ltotal = L1 + L2
+Inductores en paralelo: 1/Ltotal = 1/L1 + 1/L2
+Tiempo de subida corriente: t = L × ΔI / V
+
+=== RUIDO Y SEÑAL ===
+SNR (dB) = 20×log(Vseñal/Vruido)
+Apantallamiento: conectar blindaje a GND en un solo extremo
+Ground loops: evitar múltiples caminos a GND
+Desacoplamiento: capacitor 100nF a GND lo más cerca posible del pin de alimentación

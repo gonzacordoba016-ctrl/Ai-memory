@@ -1,0 +1,109 @@
+CONOCIMIENTO TÉCNICO: INSTALACIONES ELÉCTRICAS
+Indexá todo esto como referencia técnica permanente.
+
+=== NORMAS Y REGLAMENTOS ===
+Argentina: REBT (Reglamento Electrotécnico Baja Tensión) AEA 90364 (IEC 60364)
+España/Europa: IEC 60364, REBT (RD 842/2002), UNE-HD 60364
+EEUU/Canadá: NEC (NFPA 70), CEC (CSA C22.1)
+IEC 60529: grados de protección IP (Ingress Protection)
+  IP20: dedos | IP44: salpicaduras | IP54: polvo+salpicaduras | IP65: polvo+chorro | IP67: inmersión 1m/30min | IP68: sumergible
+IEC 60529 IK: protección mecánica IK07=2J, IK08=5J, IK10=20J
+
+=== SECCIONES DE CONDUCTORES ===
+Criterio térmico (capacidad de corriente típica, Cu, instalación B2, PVC 70°C, Ta=30°C):
+  1.5mm²: 13-16A | 2.5mm²: 18-22A | 4mm²: 24-30A | 6mm²: 31-38A
+  10mm²: 42-52A | 16mm²: 56-70A | 25mm²: 73-90A | 35mm²: 88-110A
+  50mm²: 105-135A | 70mm²: 130-165A | 95mm²: 155-200A | 120mm²: 180-230A
+Factores de corrección: temperatura, agrupamiento, tipo de instalación (ver IEC 60364-5-52)
+Criterio de caída de tensión: max 3% en derivación final, 5% total (instalaciones interiores)
+  ΔV% = (√3 × I × L × (R×cosφ + X×sinφ)) / Vn × 100 (trifásico)
+  ΔV% = (2 × I × L × (R×cosφ + X×sinφ)) / Vn × 100 (monofásico)
+  Resistividad Cu: ρ = 0.0225 Ω·mm²/m a 20°C | Al: ρ = 0.036 Ω·mm²/m
+  Para cables < 35mm²: X ≈ 0 (despreciable vs R)
+
+=== PROTECCIONES ELÉCTRICAS ===
+Interruptor Magnetotérmico (MCB):
+  Curva B: disparo magnético 3-5In (residencial, cables largos)
+  Curva C: disparo magnético 5-10In (comercial/industrial estándar)
+  Curva D: disparo magnético 10-20In (motores, transformadores, alta corriente arranque)
+  Poder de corte: mínimo = Icc en punto de instalación
+  Coordinación: fusible aguas arriba > MCB aguas abajo (selectividad)
+
+Interruptor Diferencial (RCD/RCCB):
+  30mA: protección personas (obligatorio en circuitos con humedad)
+  100-300mA: protección incendio | 500mA-1A: protección instalación
+  Tipo AC: corrientes sinusoidales | Tipo A: + corriente pulsante DC | Tipo B: + corriente continua pura
+  Selectividad temporal: retardado (S) aguas arriba + instantáneo aguas abajo
+
+Interruptor Automático con Diferencial (RCBO): MCB + RCD en 1 módulo, 1 polo+N o 2 polos
+
+Fusibles:
+  gG/gL: uso general | aM: protección motores | gR/aR: semiconductores
+  NH/NHG: baja tensión, alta capacidad de ruptura (instalaciones industriales)
+
+Seccionador y Seccionador-Fusible:
+  Corte visible, bloqueable con candado (LOTO - Lockout Tagout)
+  Interruptor de potencia: corte bajo carga
+
+=== PUESTA A TIERRA ===
+Sistemas de puesta a tierra IEC: TT, TN-S, TN-C, TN-CS, IT
+  TT: neutro del transformador a tierra propio, masas a tierra independiente (más común en residencial)
+  TN-S: neutro y PE separados en toda la instalación (más seguro)
+  TN-C: PEN combinado (neutro + tierra) — solo hasta cuadro principal
+  IT: neutro aislado, primer fallo no corta, detector de aislamiento
+
+Resistencia de tierra: < 5Ω para protección contra contacto indirecto (AEA)
+  Pica: R = ρ / (2π×L) × ln(4L/d) | ρ = resistividad suelo (Ω·m)
+  Resistividad típica: arcilla húmeda 20-100Ω·m | arenisca 150-500Ω·m | granito 1500-10000Ω·m
+Mallas de tierra: plantas industriales, celdas de MT, equipos críticos
+Tensión de paso y contacto: criterios de seguridad en subestaciones
+
+=== CORRIENTE DE CORTOCIRCUITO ===
+Icc trifásico: Icc = Vn / (√3 × Ztotal)
+Impedancia red: Zred = Vn² / Scc (Scc potencia de cortocircuito de la red)
+Impedancia transformador: Zt = Vcc% × Vn² / (100 × Sn)
+  Vcc típico: 4% para trafo distribución hasta 1MVA | 6% hasta 10MVA
+Cálculo simplificado: Icc ≈ In_trafo / Vcc%
+  Trafo 630kVA, 400V, Vcc=4%: In=909A → Icc_secundario ≈ 909/0.04 = 22.7kA
+Poder de corte MCB: 6kA (tipo B doméstico) | 10kA | 15kA | 25kA | 50kA (industrial)
+
+=== CANALIZACIÓN Y BANDEJAS ===
+Conductos: rígidos PVC (aislaminto clase II), metálicos (requieren tierra), flexibles
+  Llenado máximo: 40% sección (varios cables) | 53% (un cable)
+Bandeja escalera: hasta 30% llenado (capa única), ventilada
+Bandeja perforada: hasta 40% llenado
+Bandeja ciega (trunking): cables protegidos, no expuestos al ambiente
+Separación señal/potencia: mínimo 150mm o barrera metálica tierra entre IT y AT
+
+=== MOTORES ELÉCTRICOS ===
+Motor asíncrono jaula de ardilla (NEMA/IEC):
+  P = √3 × V × I × cosφ × η | Par: T = P × 9550 / n (W, RPM, N·m) | T = P × 60 / (2π×n)
+  Corriente arranque directo: 5-8 × In
+  Métodos arranque: directo (DOL), estrella-triángulo (reduce Ip/√3), variador (VFD)
+  Clase de aislamiento: B(130°C), F(155°C), H(180°C)
+  Grado IP: IP54 o IP55 para uso industrial estándar | IP65 para húmedos
+  Eficiencia: IE1(estándar), IE2(alta), IE3(premium), IE4(super premium)
+  NEMA frames: 56,143T,145T,182T,184T,213T,215T... (distancias de montaje estandarizadas)
+  IEC frames: 56,63,71,80,90,100,112,132,160...
+
+Arrancador suave (Soft Starter):
+  Rampa tensión en arranque, reduce corriente pico a 2-3×In
+  Parámetros: tensión inicial arranque (30-70%), tiempo rampa (1-30s)
+  Marcas: Siemens 3RW, ABB PSR/PST, Schneider ATS
+
+=== CUADROS ELÉCTRICOS ===
+Embarrado: Cu o Al. Corriente: J = I/A (A/mm²). Copper: 1.5-3A/mm²
+Separación entre barras: mínimo 10mm (BT), más para AT
+Temperatura máx embarrado: 70°C sobre el de referencia
+Dimensionamiento: Icn (corte nominal) ≥ Icc en punto instalación
+Verificación térmica: t × I² ≤ k² × S² (k=115 para Cu/PVC, 143 para Cu/EPR)
+Grado IP cuadro: IP30 interior seco | IP44 maquinaria | IP54 exterior | IP65 intemperie severa
+
+=== ILUMINACIÓN ===
+Lux: flujo luminoso por unidad de área (lm/m²)
+  Pasillos: 100lx | Oficinas: 500lx | Talleres: 300-750lx | Cirugía: 1000-100000lx
+Eficiencia luminosa: lm/W. LED: 80-150lm/W | Fluorescente: 60-100 | HPS: 100-130 | Metal Halide: 75-100
+Temperatura de color: 2700K(cálido) 3000K(blanco cálido) 4000K(neutro) 5000K(luz día) 6500K(frío)
+IRC (CRI): >80 comercial | >90 tiendas de ropa/museos
+Factor de potencia LED: > 0.9 (driver con corrección PF)
+Regulación LED: regulador 0-10V, DALI (digital), Triac, PWM

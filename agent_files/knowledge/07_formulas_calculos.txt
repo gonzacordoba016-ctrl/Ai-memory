@@ -1,0 +1,139 @@
+CONOCIMIENTO TÉCNICO: FÓRMULAS Y CÁLCULOS DE INGENIERÍA
+Indexá todo esto como referencia técnica permanente.
+
+=== SISTEMAS DE NUMERACIÓN ===
+Decimal → Binario: divisiones sucesivas por 2, leer restos de abajo arriba
+Decimal → Hex: divisiones por 16, A=10,B=11,C=12,D=13,E=14,F=15
+BCD: cada dígito decimal se codifica en 4 bits (9 = 1001)
+Complemento a 2: invertir bits + 1 (para números negativos en binario)
+Bit más significativo (MSB) a la izquierda, menos significativo (LSB) a la derecha
+IEEE 754 float 32-bit: 1 bit signo + 8 bits exponente + 23 bits mantisa
+
+=== CONVERSIONES UNIDADES COMUNES ===
+Potencia: 1HP = 746W | 1kW = 1.341HP
+Energía: 1kWh = 3.6MJ | 1BTU = 1055J | 1cal = 4.184J
+Presión: 1bar = 100kPa | 1atm = 101.325kPa | 1PSI = 6894.76Pa | 1mmHg = 133.32Pa
+  1kgf/cm² ≈ 98066.5Pa ≈ 0.981bar ≈ 14.22PSI
+Temperatura: °C = (°F-32)/1.8 | °F = °C×1.8+32 | K = °C+273.15
+Velocidad: 1m/s = 3.6km/h | 1km/h = 0.2778m/s
+Flujo: 1m³/h = 16.67L/min | 1GPM = 3.785L/min | 1CFM = 28.317L/min
+Fuerza: 1N = 0.10197kgf | 1kgf = 9.80665N | 1lbf = 4.44822N
+Par (torque): 1N·m = 0.10197kgf·m | 1kgf·m = 9.80665N·m | 1lb·ft = 1.35582N·m
+Longitud: 1in = 25.4mm | 1ft = 304.8mm | 1yard = 914.4mm | 1mile = 1609.34m
+AWG → mm²: AWG4=21.2mm² | AWG6=13.3mm² | AWG8=8.37mm² | AWG10=5.26mm² | AWG12=3.31mm² | AWG14=2.08mm² | AWG16=1.31mm² | AWG18=0.82mm²
+
+=== MATEMÁTICAS PARA INGENIERÍA ===
+Logaritmos:
+  log₁₀(x×y) = log(x)+log(y) | log(x/y) = log(x)-log(y) | log(xⁿ) = n×log(x)
+  dB de potencia: G(dB) = 10×log(P2/P1)
+  dB de tensión/corriente: G(dB) = 20×log(V2/V1)
+  0dB = P2/P1=1 | 3dB = ×2 | 10dB = ×10 | 20dB = ×100 | -3dB = 0.5 | -20dB = 0.01
+
+Trigonometría:
+  sin²θ + cos²θ = 1 | tan θ = sin/cos
+  Ley de senos: a/sin A = b/sin B = c/sin C
+  Ley de cosenos: c² = a² + b² - 2ab×cos C
+  Fasores: A∠θ = A×(cosθ + j×sinθ) = A×e^(jθ)
+
+Números complejos (fasores AC):
+  Z = R + jX | |Z| = √(R²+X²) | φ = atan(X/R)
+  Admitancia: Y = 1/Z = G + jB
+  Potencia: P = V×I×cosφ (activa, W) | Q = V×I×sinφ (reactiva, VAR) | S = V×I (aparente, VA)
+  Factor de potencia: FP = cosφ = P/S | φ = atan(Q/P)
+
+=== CÁLCULOS ELÉCTRICOS AVANZADOS ===
+Caída de tensión (trifásico):
+  ΔV = √3 × I × L × (R×cosφ + X×sinφ) [V]
+  %ΔV = ΔV/Vn × 100
+
+Corrección factor de potencia:
+  Q_condensadores = P × (tan φ1 - tan φ2) [kVAR]
+  C = Q / (2π × f × V²) [F]
+  Para llevar FP de 0.75 a 0.95 con P=10kW: φ1=41.4°,φ2=18.2° → Q=10k×(0.879-0.329)=5.5kVAR
+
+Dimensionado de conductor por caída de tensión:
+  S_mm² = 2 × ρ × L × I × cosφ / (ΔV%/100 × Vn) (monofásico)
+  S_mm² = √3 × ρ × L × I × cosφ / (ΔV%/100 × Vn) (trifásico)
+  ρ_Cu = 0.0225 Ω·mm²/m | ρ_Al = 0.036 Ω·mm²/m
+
+Potencia trifásica:
+  P = √3 × VL × IL × cosφ = 3 × VF × IF × cosφ
+  VL = √3 × VF (línea vs fase)
+  IL = IF (estrella) | IL = √3 × IF (triángulo)
+
+Transformadores:
+  Relación: a = N1/N2 = V1/V2 = I2/I1
+  Regulación: εv = (V2_vacío - V2_carga) / V2_nominal × 100%
+  Pérdidas en cobre: Pcu = I² × Rcu | Pérdidas en hierro: Pfe (constantes)
+  Rendimiento: η = Pout/(Pout+Pcu+Pfe) × 100%
+  Punto rendimiento máximo: I_carga = In × √(Pfe/Pcu_nominal)
+
+=== MECÁNICA Y RESISTENCIA DE MATERIALES ===
+Tensión normal: σ = F/A [Pa=N/m²] | Deformación: ε = ΔL/L
+Módulo de Young: E = σ/ε | Cu: 117GPa | Al: 70GPa | Acero: 200GPa | PVC: 2.5-4GPa
+Tensión de fluencia (yield): límite elástico — acero A36: 250MPa | A572Gr50: 345MPa
+Factor de seguridad: FS = Tensión_rotura / Tensión_trabajo (mínimo 2-4 para estructuras)
+
+Pandeo columnas (Euler):
+  Pcr = π² × E × I / (K×L)²
+  K: condición de extremos: empotrado-empotrado=0.5, pivote-pivote=1, libre=2
+
+Momento de inercia secciones:
+  Rectángulo: I = b×h³/12 | Círculo: I = π×d⁴/64 | Tubo: I = π(d_ext⁴-d_int⁴)/64
+  Módulo resistente: W = I/(h/2)
+
+Tuercas y tornillos:
+  Par de apriete: M = K × d × F (K≈0.2 sin lubricar, 0.15 lubricado)
+  Resistencia tornillo: Clase 4.6(Rm=400MPa), 8.8(Rm=800MPa), 10.9(Rm=1000MPa)
+  Rosca métrica paso grueso: M6×1, M8×1.25, M10×1.5, M12×1.75, M16×2, M20×2.5
+
+=== HIDRÁULICA Y NEUMÁTICA ===
+Caudal: Q = A × v = π×d²/4 × v [m³/s]
+Ecuación de Bernoulli: P1 + ½ρv1² + ρgh1 = P2 + ½ρv2² + ρgh2
+Pérdida de carga Darcy-Weisbach: hf = f × (L/D) × v²/2g [m]
+  f de Moody: laminar (Re<2300): f=64/Re | turbulento: Colebrook
+  Re = ρ × v × D / μ (adimensional) | agua 20°C: μ=1×10⁻³ Pa·s, ρ=998kg/m³
+Golpe de ariete: ΔP = ρ × a × Δv | a = velocidad onda (1000-1500m/s agua)
+Potencia bomba: P = Q × ΔP / η [W] | P = ρ × g × Q × H / η [W]
+NPSH: altura neta de succión positiva requerida (cavitación)
+  NPSHa > NPSHr + margen de seguridad (0.5-1m)
+
+Neumática:
+  Ley gases ideales: P×V = n×R×T | R=8.314 J/(mol·K)
+  Caudal libre (FAD): caudal a condiciones estándar (0°C, 1atm)
+  Calor de compresión adiabática: T2 = T1 × (P2/P1)^((γ-1)/γ) | γ_aire=1.4
+  Potencia compresor: P = Q × P2 × (γ/γ-1) × [(P2/P1)^((γ-1)/γ) - 1] / η
+
+=== CONTROL AUTOMÁTICO ===
+Lazo cerrado PID:
+  u(t) = Kp×e(t) + Ki×∫e(t)dt + Kd×de(t)/dt
+  Kp: proporcional (respuesta) | Ki: integral (elimina error estático) | Kd: derivativo (amortigua)
+  Función transferencia: G(s) = Kp + Ki/s + Kd×s
+
+Sintonización Ziegler-Nichols lazo abierto:
+  Obtener curva de reacción: τ(retardo), T(constante tiempo), K(ganancia)
+  PID: Kp=1.2T/(K×τ), Ti=2τ, Td=0.5τ
+
+Criterios de estabilidad:
+  Margen de fase: >45° (robusto >60°) | Margen de ganancia: >6dB
+  Polos en semiplano izquierdo → sistema estable
+
+Transformada Z (sistemas discretos):
+  x[n]=x(nT) | Z{x[n]}=∑x[n]z^(-n)
+  Integrador: 1/s → T/(1-z^(-1)) (Euler adelante) o T×z^(-1)/(1-z^(-1)) (Euler atrás)
+  Estabilidad: polos dentro del círculo unitario en plano Z
+
+=== SEÑALES Y SISTEMAS ===
+Transformada de Fourier:
+  F(ω) = ∫f(t)×e^(-jωt)dt | Parseval: energía en tiempo = energía en frecuencia
+  Serie de Fourier: f(t) = a0 + Σ[an×cos(nω0t) + bn×sin(nω0t)]
+  Onda cuadrada: armónicos impares 1, 1/3, 1/5, 1/7...
+
+Muestreo y teorema Nyquist:
+  fs ≥ 2×fmax (frecuencia de muestreo mínima para evitar aliasing)
+  Antialiasing: filtro paso-bajo a fs/2 antes del ADC
+
+Cuantización ADC:
+  Resolución: LSB = Vref / 2^N (N=bits)
+  SNR máximo: SNR = 6.02×N + 1.76 dB (para señal sinusoidal)
+  12-bit → SNR máx = 74dB | 16-bit → SNR máx = 98dB | 24-bit → SNR máx = 146dB

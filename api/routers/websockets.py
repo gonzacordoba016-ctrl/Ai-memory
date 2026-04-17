@@ -110,12 +110,8 @@ async def ws_chat(websocket: WebSocket, session: str = None, token: str = ""):
             # Persistir mensaje del usuario en la sesión
             sql_db.store_message("user", user_input, session_id=session_id)
             sql_db.touch_session(session_id)
-            # Auto-título: usar primeras palabras del primer mensaje
             _msgs_so_far = sql_db.get_conversation_by_session(session_id, limit=2)
-            if len(_msgs_so_far) <= 1:
-                _auto_title = user_input[:60].strip()
-                if _auto_title:
-                    sql_db.update_session_title(session_id, _auto_title)
+            _is_first_msg = len(_msgs_so_far) <= 1
 
             async def on_token(token: str):
                 await websocket.send_text(json.dumps({"type": "token", "content": token}))
@@ -139,12 +135,37 @@ async def ws_chat(websocket: WebSocket, session: str = None, token: str = ""):
             if response:
                 sql_db.store_message("assistant", response, session_id=session_id)
 
+            # Título generado por IA tras el primer intercambio completo
+            ai_title = None
+            if _is_first_msg and response:
+                try:
+                    from llm.async_client import call_llm_text
+                    raw = await asyncio.wait_for(
+                        call_llm_text(
+                            messages=[{"role": "user", "content":
+                                f"Resume en máximo 5 palabras, en español, el tema de esta consulta. "
+                                f"Solo devolvé el título, sin puntuación ni comillas.\n\nConsulta: {user_input[:200]}"}],
+                            temperature=0,
+                            timeout=15,
+                            agent_id="title-gen",
+                            agent_name="TitleGen",
+                        ),
+                        timeout=15,
+                    )
+                    ai_title = raw.strip()[:60] if raw else None
+                    if ai_title:
+                        sql_db.update_session_title(session_id, ai_title)
+                except Exception:
+                    ai_title = user_input[:60].strip()
+                    sql_db.update_session_title(session_id, ai_title)
+
             await websocket.send_text(json.dumps({
                 "type":        "done",
                 "content":     response,
                 "facts":       sql_db.get_all_facts(),
                 "graph":       graph_memory.stats(),
                 "agents_used": getattr(agent, '_last_agents_used', []),
+                "session_title": ai_title,
             }))
 
     except WebSocketDisconnect:

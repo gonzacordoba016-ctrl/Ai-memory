@@ -1,0 +1,104 @@
+CONOCIMIENTO TÉCNICO: SENSORES Y PROTOCOLOS IoT
+Indexá todo esto como referencia técnica permanente.
+
+=== SENSORES COMUNES MICROCONTROLADORES ===
+DHT11: temperatura ±2°C (0-50°C), humedad ±5% (20-80%). Protocolo 1-wire propio. Lectura cada 1s mínimo
+DHT22/AM2302: temperatura ±0.5°C (-40 a +80°C), humedad ±2% (0-100%). Más preciso que DHT11
+SHT31: I2C, temperatura ±0.3°C, humedad ±2%, 10ms respuesta. Mucho mejor que DHT
+BME280: temperatura, humedad, presión barométrica. I2C/SPI. Ideal para estación meteorológica
+BMP280: temperatura + presión (sin humedad). Muy común en proyectos de altitud
+MPU6050: acelerómetro 3 ejes + giroscopio 3 ejes. I2C 0x68/0x69. DMP interno
+MPU9250: MPU6050 + magnetómetro AK8963 integrado (9 DOF)
+ADXL345: acelerómetro ±16g, I2C/SPI, detección de golpe y caída libre
+HC-SR04: ultrasonido, rango 2-400cm, precisión ±3mm. Trigger 10μs → Echo mide tiempo
+  Distancia = (tiempo echo / 2) × 0.0343 cm/μs
+GP2Y0A21YK: IR distancia analógica 10-80cm (no lineal, usar tabla o ecuación)
+VL53L0X: TOF laser, I2C, rango hasta 2m, ±3% precisión, 50Hz
+PIR HC-SR501: detección movimiento, ángulo 120°, rango 3-7m ajustable
+MQ-2: gas combustible/humo. MQ-3: alcohol. MQ-7: CO. MQ-135: calidad aire
+  Preheat: 24-48h para lecturas estables. Sensible a temperatura y humedad
+INA219: sensor corriente/potencia I2C. Hasta 32V/3.2A. Resistencia shunt 0.1Ω incluida
+INA226: mayor precisión, hasta 36V, corriente configurable
+ACS712: efecto Hall, ±5A/±20A/±30A. Salida analógica, 185mV/A (5A version)
+HX711: ADC 24-bit para celdas de carga. SPI bit-bang. Ganancia 64/128
+DS18B20: temperatura 1-Wire, múltiples sensores en un cable, -55 a +125°C ±0.5°C
+  Cada sensor tiene ID único de 64-bit. Parásito o alimentación externa
+MAX31855: termopar K a SPI, -200 a +1350°C, compensación unión fría
+DS3231: RTC de alta precisión, I2C, ±2ppm, temperatura compensada, batería CR2032
+AS5600: encoder magnético absoluto 12-bit I2C, sin contacto, 0-360°
+ZMPT101B: sensor tensión AC, transformador miniatura, salida analógica
+
+=== CÁMARA Y VISIÓN ===
+OV7670: VGA 640x480, paralelo, requiere FIFO o procesador rápido
+OV2640: 2MP, JPEG, I2C control, usado en ESP32-CAM
+ESP32-CAM: módulo ESP32 + OV2640, streaming MJPEG, servidor HTTP integrado
+Raspberry Pi Camera: MIPI CSI, hasta 12MP (v2), integración perfecta con RPi
+
+=== PROTOCOLO MQTT ===
+Broker: servidor central. Mosquitto (open source), HiveMQ, AWS IoT, CloudMQTT
+Publish/Subscribe: cliente publica en topic, suscriptores reciben
+QoS 0: fire and forget | QoS 1: al menos una vez | QoS 2: exactamente una vez
+Retain: último mensaje guardado en broker para nuevos suscriptores
+Last Will: mensaje automático si cliente se desconecta inesperadamente
+Topics: jerarquía con /. Wildcard + (un nivel) y # (múltiples niveles)
+  Ejemplo: casa/sala/temperatura | casa/+/temperatura | casa/#
+Puerto: 1883 (sin TLS), 8883 (con TLS), 8083 (WebSocket)
+Librería Arduino/ESP32: PubSubClient | Python: paho-mqtt
+Conexión ESP32:
+  WiFiClient client; PubSubClient mqtt(client);
+  mqtt.setServer(host, 1883); mqtt.connect(id, user, pass);
+  mqtt.publish("topic", "payload"); mqtt.subscribe("topic");
+  mqtt.loop(); // llamar en loop() para mantener conexión
+
+=== PROTOCOLO HTTP/REST ===
+Métodos: GET(leer), POST(crear), PUT(reemplazar), PATCH(actualizar parcial), DELETE
+Headers: Content-Type: application/json | Authorization: Bearer token
+Códigos: 200 OK, 201 Created, 400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found, 500 Server Error
+ESP32 cliente HTTP:
+  HTTPClient http; http.begin("http://url"); int code = http.GET();
+  String response = http.getString(); http.end();
+ESP32 servidor HTTP: WebServer server(80); server.on("/path", handler); server.begin();
+
+=== PROTOCOLO WEBSOCKET ===
+Full-duplex sobre TCP. Handshake HTTP → upgrade WebSocket
+Librería ESP32: WebSocketsClient (arduinoWebSockets)
+Ideal para datos en tiempo real, streaming de sensores
+
+=== BLUETOOTH / BLE ===
+Classic Bluetooth: streaming audio, SPP (Serial Port Profile), hasta 3Mbps
+BLE 4.x: bajo consumo, perfiles GATT, MTU 20-512 bytes por paquete
+  GATT: Service → Characteristic → Descriptor
+  Advertising: broadcast de datos sin conexión (beacons)
+ESP32 BLE: BLEServer, BLEService, BLECharacteristic
+HC-05: Bluetooth clásico maestro/esclavo, AT commands, SPP
+HC-06: solo esclavo, más simple
+HM-10: BLE 4.0, AT commands, UART
+
+=== ZIGBEE / Z-WAVE / LORA ===
+Zigbee: 2.4GHz, malla, hasta 65000 nodos, alcance 10-100m por salto
+  CC2530/CC2652, módulo Xbee, Coordinator + Router + End Device
+  Protocolos: Zigbee2MQTT (con adaptador USB CC2531)
+Z-Wave: 868/908MHz, malla, hasta 232 nodos, propietario (Silicon Labs)
+LoRa: largo alcance (1-15km), bajo consumo, baja tasa de datos (0.3-50kbps)
+  Bandas: 433MHz (Asia), 868MHz (Europa), 915MHz (EEUU/Latam)
+  Spreading Factor SF7-SF12: mayor SF = mayor alcance, menor velocidad
+  LoRaWAN: protocolo sobre LoRa, TTN (The Things Network) gratis
+  Módulos: SX1276/78 (chip), RFM95W, Ra-02, E32-915T30D
+  ESP32 + LORA: TTGO LoRa32, Heltec WiFi LoRa 32
+
+=== WIFI AVANZADO ESP32 ===
+Modos: STA (cliente), AP (access point), STA+AP simultáneo
+WPA2 Enterprise (PEAP/TTLS): WiFi.begin(ssid, WPA2_AUTH_PEAP, ...)
+WiFiManager: configuración WiFi via captive portal (librería)
+mDNS: esp32.local en vez de IP. MDNS.begin("nombre")
+NTP: sincronización de tiempo. configTime(offset, dstOffset, "pool.ntp.org")
+OTA (Over The Air): ArduinoOTA o AsyncElegantOTA para actualizar firmware sin cable
+Modo bajo consumo: WiFi.disconnect(); WiFi.mode(WIFI_OFF); btStop();
+
+=== ALMACENAMIENTO LOCAL ===
+EEPROM Arduino: 1KB, 100K ciclos escritura, byte a byte
+Preferences ESP32: clave-valor en NVS flash, 100K ciclos, recomendado sobre EEPROM
+SPIFFS/LittleFS ESP32: sistema de archivos en flash, archivos HTML/JS/config
+SD Card: SPI, FAT32, archivos grandes, datalogger
+  CS=GPIO5(VSPI), SD.begin(5); File f = SD.open("/data.csv", FILE_APPEND);
+FRAM (Ferroelectric RAM): 10^14 ciclos escritura, velocidad SPI/I2C, MB85RS serie

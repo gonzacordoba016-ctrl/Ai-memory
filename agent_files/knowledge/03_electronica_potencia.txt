@@ -1,0 +1,123 @@
+CONOCIMIENTO TÉCNICO: ELECTRÓNICA DE POTENCIA
+Indexá todo esto como referencia técnica permanente.
+
+=== FUENTES CONMUTADAS (SMPS) ===
+Buck (reductor): Vout = D × Vin | D = duty cycle 0-1
+  Corriente inductor: ΔIL = (Vin-Vout)×D / (f×L)
+  Capacitor salida: Cout = ΔIL / (8×f×ΔVout)
+  IC comunes: LM2596 (3A), LM2576 (3A), XL4016 (8A), MP2307 (3A)
+
+Boost (elevador): Vout = Vin / (1-D)
+  Corriente pico inductor: Ipico = Iout/(1-D) + ΔIL/2
+  IC comunes: LM2577, XL6009, MT3608 (2A), SX1308 (2A)
+
+Buck-Boost (inversor): Vout = -Vin × D/(1-D)
+  Para fuentes simétricas ±12V, ±15V
+
+Flyback: múltiples salidas aisladas, diseño por transformador
+  Controladores: UC3842, UC3844, TOP switch
+
+Parámetros clave SMPS:
+  Eficiencia típica: 85-95%
+  Rizado salida: < 1% de Vout ideal
+  Frecuencia conmutación: 50kHz-2MHz (mayor f → menor L y C)
+  EMI: agregar filtro LC a entrada, layout crítico (loops pequeños)
+
+=== REGULADORES LINEALES ===
+LM7805: 5V/1A | LM7812: 12V/1A | LM7815: 15V/1A | LM7905: -5V | LM7912: -12V
+LM317 ajustable: Vout = 1.25 × (1 + R2/R1) + Iadj×R2
+  R1=240Ω fijo, ajustar R2: para 5V → R2=720Ω | para 12V → R2=2.16kΩ
+LM337: versión negativa del LM317
+AMS1117: LDO 1A | MCP1700: LDO 250mA bajo ruido
+Disipación: P = (Vin-Vout) × Iout → necesita heatsink si P > 1W
+Condensadores mínimos: 0.1μF entrada + 1μF salida (ver datasheet)
+
+=== TRANSISTORES DE POTENCIA ===
+IGBT: alto voltaje (>600V), corrientes altas, pérdidas switching mayores
+  IRG4BC30KD: 600V/16A | FGA25N120: 1200V/25A
+  Gate drive: 15V ON, -5V a 0V OFF | resistencia gate: 10-47Ω
+MOSFET potencia: bajas pérdidas a baja tensión
+  IRF540N: 100V/33A/44mΩ | IRFP250: 200V/30A | FDP86AN15A: 150V/86A
+  Para 230VAC: mínimo 400V, recomendado 500-600V
+SiC MOSFET: alta frecuencia, alta temperatura: SCT3040KR, C3M0065090D
+GaN FET: ultra alta frecuencia: GS61008P, EPC2001C
+
+=== DRIVERS DE GATE ===
+Aislados: HCPL-314J, Si8261 (2A), UCC21520 (4A)
+No aislados: IR2110/IR2112 (bootstrap, high/low side), TC4420/TC4429 (9A)
+Bootstrap: capacitor 100nF-1μF entre VS y VB, diodo 1N4148 o UF4007
+Dead time mínimo: 100-300ns para evitar shoot-through
+Protecciones: desaturación (IGBT), undervoltage lockout, UVLO
+
+=== RECTIFICADORES Y PUENTES ===
+Media onda: Vdc = 0.45×Vac | Onda completa puente: Vdc = 0.9×Vac - 1.4V
+Capacitor filtro: C = Idc / (2×f×Vrizado) para onda completa
+Puentes integrados: BR1010 (1A/100V) | KBPC3510 (35A/1000V) | GBU810 (8A/1000V)
+PFC (Power Factor Correction): boost seguidor senoidal, PF>0.95
+  IC: L6561, UCC28019, NCP1654
+
+=== CONVERTIDORES DC-DC AISLADOS ===
+Push-Pull: 2 transistores, transformador con punto central
+Half-Bridge: 2 transistores, 2 capacitores, transformador
+Full-Bridge: 4 transistores (H-bridge), máxima potencia
+Razón de transformación: n = Vout×2 / (Vin×D) para push-pull
+
+=== TIRISTORES Y TRIACS ===
+SCR: conmuta ON con pulso gate, OFF cortando Ianode
+  BT151 (7.5A/600V) | MCR100-6 (0.8A/600V) | T2500D (25A)
+TRIAC: bidireccional, control AC, disparo en cuadrantes
+  BT136 (4A/600V) | BT138 (12A/600V) | BTA16 (16A/600V)
+DIAC: disparo simétrico ~30V, usado con TRIAC para control de fase
+Optoacopladores con SCR/TRIAC: MOC3020, MOC3041, MOC3061 (zero-cross)
+  Aislamiento: 5kV, circuito snubber R=47-100Ω + C=100nF en paralelo con TRIAC
+
+=== MOTORES Y DRIVERS ===
+Motor DC brushed:
+  H-Bridge: L298N (2A/46V), TB6612FNG (1.2A/15V), DRV8833 (1.5A/10V)
+  PWM frecuencia: 1-20kHz (audible <20kHz)
+  Freno regenerativo vs freno activo
+Motor DC brushless (BLDC):
+  ESC comercial o driver dedicado: DRV8305, L6234, VESC
+  Sensores Hall para posición o back-EMF (sensorless)
+Stepper motor:
+  Bipolar: A4988 (2A), DRV8825 (2.2A), TMC2208 (2A silencioso)
+  Modos: full step, half step, 1/4, 1/8, 1/16, 1/32
+  Torque máx a baja velocidad, caída a alta velocidad
+  Vref = Imax × 8 × Rsense (A4988 con Rsense=0.2Ω, 1A → Vref=1.6V... espera, fórmula A4988: Vref = 8 × Rsense × Imax... para A4988 típico: Vref = Imax × 0.4 con Rsense=0.05Ω cada fase)
+Servo:
+  PWM 50Hz, pulso 1ms=0°, 1.5ms=90°, 2ms=180°
+  Corriente pico: 1-3A (no alimentar del regulador del microcontrolador)
+
+=== BATERÍAS ===
+Li-Ion/LiPo: 3.7V nominal, 4.2V cargado, 3.0V mínimo
+  C-rate: 1C = capacidad en 1h. 2000mAh a 2C = 4A
+  Carga: CC-CV (corriente constante hasta 4.2V, luego tensión constante)
+  Protección: BMS obligatorio (sobrecarga, sobredescarga, cortocircuito)
+  Energía específica: 150-250Wh/kg
+LiFePO4: 3.2V nominal, 3.65V cargado, 2.5V mínimo
+  Más segura, mayor ciclos de vida (2000+), menos densidad energética
+Plomo-ácido: 12V nominal (6 celdas×2V), 13.8V cargado
+  Carga float 13.8V | Carga bulk 14.4-14.8V | No descargar <10.5V (12V)
+  Capacidad reducida con temperatura: -20°C = 50% de capacidad nominal
+18650 típico: 3.7V, 2500-3500mAh, máx continua 10-35A según celda
+  Celdas comunes: Samsung 30Q (3000mAh/15A), LG HG2 (3000mAh/20A)
+
+=== TRANSFORMADORES ===
+Relación de transformación: a = N1/N2 = V1/V2 = I2/I1
+Potencia: P = V × I (ambos lados, ignorando pérdidas)
+Pérdidas en núcleo: histéresis + corrientes de Foucault
+Pérdidas en cobre: I²×R en devanados
+Frecuencia: 50Hz núcleo laminado | >20kHz núcleo ferrita
+VA requeridos = Watts / factor de potencia carga
+Temperatura: rise típico 40-60°C sobre ambiente para clase F
+
+=== PROTECCIONES ===
+Fusibles: tiempo-corriente inverso | rápidos para semiconductores (fusibles tipo aR/gR)
+  Selección: In = 1.5-2× Inominal | Rupt = al menos Icc disponible
+Varistores (MOV): clamping de transientes, energía = ½×C×V²
+  S05K275: 275Vac, energía 1.5J | S10K275: 275Vac, energía 4.5J
+TVS diodos: más rápidos que MOV (picosegundos), menor energía
+Gas Discharge Tube (GDT): alta energía, más lento
+Coordinación: GDT → MOV → TVS (de mayor a menor energía)
+Relé térmico: protección sobrecarga motores
+Guardamotor: protección electromagnética + térmica combinada

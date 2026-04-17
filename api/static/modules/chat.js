@@ -1,3 +1,12 @@
+// ── SCROLL INTELIGENTE ────────────────────────────────────────────────────
+function _isNearBottom(el, threshold = 80) {
+  return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+}
+function _scrollToBottom(force = false) {
+  const msgs = document.getElementById('messages');
+  if (msgs && (force || _isNearBottom(msgs))) msgs.scrollTop = msgs.scrollHeight;
+}
+
 // ── WEBSOCKET CHAT ───────────────────────────────────────────────────────
 function connectWS() {
   const wsUrl = _wsTokenParam(WS_URL + (_session_id ? `?session=${encodeURIComponent(_session_id)}` : ''));
@@ -48,11 +57,21 @@ function connectWS() {
     } else if (data.type === 'done') {
       finishStreaming(data);
       if (data.facts) updateFacts(data.facts);
+      if (data.session_title) {
+        const el = document.querySelector(`#sess-${_session_id} .text-\\[10px\\]`);
+        if (el) el.textContent = data.session_title;
+      }
       loadStats();
       loadSessions();
     } else if (data.type === 'error') {
       finishStreaming(null);
-      addMessage('agent', `Error: ${data.content}`, []);
+      // Detectar rate limit y mostrar countdown en lugar de burbuja de error
+      const rlMatch = data.content && data.content.match(/Esperá (\d+)s/);
+      if (rlMatch) {
+        _showRateLimit(parseInt(rlMatch[1]));
+      } else {
+        addMessage('agent', `Error: ${data.content}`, []);
+      }
     }
   };
 }
@@ -73,6 +92,30 @@ async function loadSessionHistory(sid) {
   } catch(e) {}
 }
 
+// ── RATE LIMIT COUNTDOWN ─────────────────────────────────────────────────
+let _rateLimitTimer = null;
+function _showRateLimit(seconds) {
+  const btn = document.getElementById('send-btn');
+  if (!btn) return;
+  let s = seconds;
+  btn.classList.add('opacity-40', 'pointer-events-none');
+  btn.querySelector('span').textContent = s + 's';
+  clearInterval(_rateLimitTimer);
+  _rateLimitTimer = setInterval(() => {
+    s--;
+    if (s <= 0) {
+      clearInterval(_rateLimitTimer);
+      if (!isStreaming) {
+        btn.classList.remove('opacity-40', 'pointer-events-none');
+        btn.querySelector('span').textContent = 'send';
+        btn.querySelector('span').className = 'material-symbols-outlined';
+      }
+    } else {
+      btn.querySelector('span').textContent = s + 's';
+    }
+  }, 1000);
+}
+
 // ── CHAT ─────────────────────────────────────────────────────────────────
 function sendMessage() {
   const input = document.getElementById('prompt');
@@ -80,6 +123,9 @@ function sendMessage() {
   if (!text || isStreaming) return;
   input.value = '';
   input.style.height = 'auto';
+  // reset char counter
+  const counter = document.getElementById('prompt-counter');
+  if (counter) counter.textContent = '';
 
   // Sin conexión → encolar
   if (!ws || ws.readyState !== 1) {
@@ -95,17 +141,41 @@ function sendMessage() {
   ws.send(JSON.stringify({ message: text }));
 }
 
+function _addCopyButtons(container) {
+  container.querySelectorAll('pre').forEach(pre => {
+    if (pre.querySelector('.copy-btn')) return;
+    const btn = document.createElement('button');
+    btn.className = 'copy-btn absolute top-2 right-2 text-[8px] font-mono text-[#494847] hover:text-primary border border-[#494847]/40 hover:border-primary/60 px-1.5 py-0.5 transition-colors bg-[#0e0e0e]';
+    btn.textContent = 'COPY';
+    btn.onclick = () => {
+      const code = pre.querySelector('code')?.innerText || pre.innerText;
+      navigator.clipboard.writeText(code).then(() => {
+        btn.textContent = 'COPIED';
+        btn.classList.add('text-primary');
+        setTimeout(() => { btn.textContent = 'COPY'; btn.classList.remove('text-primary'); }, 1500);
+      });
+    };
+    pre.style.position = 'relative';
+    pre.appendChild(btn);
+  });
+}
+
 function addMessage(role, content, agents = [], streaming = false) {
   const msgs = document.getElementById('messages');
   const ts   = new Date().toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
   const div  = document.createElement('div');
+  const wasAtBottom = _isNearBottom(msgs);
 
   if (role === 'user') {
+    const lines = content.split('\n');
+    const preview = lines.length > 4
+      ? escHtml(lines.slice(0, 4).join('\n')) + `<span class="text-[#494847]">… +${lines.length-4} líneas</span>`
+      : escHtml(content);
     div.className = 'flex flex-col items-end';
     div.innerHTML = `
       <div class="bg-[#201f1f] border-r-2 border-secondary p-4 max-w-xl font-mono text-sm tracking-tight text-secondary">
         <div class="text-[9px] mb-2 opacity-50">OPERATOR_OVERRIDE // ${ts}</div>
-        ${escHtml(content)}
+        <div class="whitespace-pre-wrap">${preview}</div>
       </div>`;
   } else {
     const badges = (agents || []).map(a => {
@@ -121,36 +191,48 @@ function addMessage(role, content, agents = [], streaming = false) {
           <span class="text-[9px] text-primary opacity-50">STRATUM_ENGINE // AI_CORE // ${ts}</span>
           <div class="flex gap-1 agent-badges">${badges}</div>
         </div>
-        <div class="agent-content prose-stratum leading-relaxed${streaming ? ' blinking-cursor' : ''}">${streaming ? escHtml(content) : renderMarkdown(content)}</div>
+        <div class="agent-content prose-stratum leading-relaxed${streaming ? ' blinking-cursor' : ''}">${streaming ? '' : renderMarkdown(content)}</div>
       </div>`;
+    if (!streaming) _addCopyButtons(div);
   }
 
   msgs.appendChild(div);
-  msgs.scrollTop = msgs.scrollHeight;
+  if (wasAtBottom) msgs.scrollTop = msgs.scrollHeight;
   return role === 'agent' ? div.querySelector('.agent-content') : null;
 }
 
+// Streaming acumulado para render markdown progresivo
+let _streamBuffer = '';
+let _streamRenderTimer = null;
+
 function appendToken(token) {
   if (!currentAgentEl) return;
-  currentAgentEl.classList.remove('blinking-cursor');
-  currentAgentEl.textContent += token;
+  _streamBuffer += token;
   currentAgentEl.classList.add('blinking-cursor');
-  document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+
+  // Render markdown progresivo cada 120ms para no saturar el DOM
+  if (!_streamRenderTimer) {
+    _streamRenderTimer = setTimeout(() => {
+      _streamRenderTimer = null;
+      if (!currentAgentEl) return;
+      currentAgentEl.innerHTML = renderMarkdown(_streamBuffer) + '<span class="blinking-cursor-inline">▋</span>';
+      _scrollToBottom();
+    }, 120);
+  }
 }
 
 function finishStreaming(data) {
+  if (_streamRenderTimer) { clearTimeout(_streamRenderTimer); _streamRenderTimer = null; }
   if (currentAgentEl) {
     currentAgentEl.classList.remove('blinking-cursor');
-
-    const rawText = currentAgentEl.textContent || '';
+    const rawText = _streamBuffer || currentAgentEl.textContent || '';
 
     if (!rawText.trim()) {
-      // Burbuja vacía (timeout sin tokens) — eliminarla del DOM
       const bubble = currentAgentEl.closest('.flex.flex-col.items-start');
       if (bubble) bubble.remove();
     } else {
-      // Re-renderizar el texto acumulado como markdown
       currentAgentEl.innerHTML = renderMarkdown(rawText);
+      _addCopyButtons(currentAgentEl.closest('.flex.flex-col.items-start') || currentAgentEl);
 
       if (data?.agents_used?.length) {
         const container = currentAgentEl.closest('.bg-\\[\\#131313\\]')?.querySelector('.agent-badges');
@@ -164,11 +246,14 @@ function finishStreaming(data) {
       }
     }
   }
+  _streamBuffer  = '';
   isStreaming    = false;
   currentAgentEl = null;
   document.getElementById('send-btn').classList.remove('opacity-40', 'pointer-events-none');
+  document.getElementById('send-btn').querySelector('span').textContent = 'send';
   updateStatusText('READY_FOR_INPUT', true);
   addLog('Response complete', 'info');
+  _scrollToBottom(true);
 }
 
 function updateStatusText(text, ok) {

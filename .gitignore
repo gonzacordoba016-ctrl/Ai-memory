@@ -13,7 +13,6 @@ database/memory.db
 database/graph_memory.json
 memory_db/
 agent_files/firmware/
-agent_files/knowledge/
 
 # ── Backups de memoria ────────────────────────────────────
 stratum_backup_*.zip

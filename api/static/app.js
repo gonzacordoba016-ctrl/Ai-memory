@@ -149,10 +149,17 @@ const _promptEl = document.getElementById('prompt');
 function _autoResizePrompt() {
   _promptEl.style.height = 'auto';
   _promptEl.style.height = Math.min(_promptEl.scrollHeight, 220) + 'px';
+  const counter = document.getElementById('prompt-counter');
+  if (counter) {
+    const len = _promptEl.value.length;
+    counter.textContent = len > 50 ? `${len} chars` : '';
+    counter.className = `text-[8px] font-mono ${len > 3000 ? 'text-error' : 'text-[#494847]'}`;
+  }
 }
 _promptEl.addEventListener('input', _autoResizePrompt);
 _promptEl.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  if (e.key === 'Escape') { _promptEl.value = ''; _autoResizePrompt(); }
 });
 document.getElementById('search-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') doSearch();

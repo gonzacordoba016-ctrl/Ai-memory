@@ -1,0 +1,133 @@
+CONOCIMIENTO TÉCNICO: PLCs Y AUTOMATIZACIÓN INDUSTRIAL
+Indexá todo esto como referencia técnica permanente.
+
+=== CONCEPTOS BÁSICOS PLC ===
+PLC: Controlador Lógico Programable. Escaneo cíclico: lectura entradas → ejecución programa → escritura salidas
+Tiempo de ciclo: 1-20ms típico | Watchdog: reinicia si ciclo supera tiempo máximo
+Retentivos: variables que mantienen valor al apagarse (marcas M, contadores C, temporizadores T con batería)
+NVRAM / Flash: almacenamiento del programa sin batería en PLCs modernos
+
+=== LENGUAJES IEC 61131-3 ===
+LD (Ladder Diagram): diagrama escalera, lógica de relés
+  Contacto NA: --| |-- | Contacto NC: --|/|-- | Bobina: --( )--
+  Bobina SET: --(S)-- | Bobina RESET: --(R)--
+FBD (Function Block Diagram): bloques funcionales conectados
+IL (Instruction List): lenguaje ensamblador de PLCs (obsoleto)
+ST (Structured Text): similar a Pascal/C, para algoritmos complejos
+SFC (Sequential Function Chart): máquinas de estado, procesos secuenciales
+
+=== MARCAS Y OPERANDOS SIEMENS S7 ===
+Entradas: I0.0-I127.7 | Salidas: Q0.0-Q127.7
+Marcas: M0.0-M255.7 | Marcas retentivas: configurables en propiedades CPU
+Temporizadores: T0-T255 | Contadores: C0-C255
+Bloques: OB(organización), FB(función con memoria), FC(función sin memoria), DB(datos)
+OB1: ciclo principal | OB30-OB38: interrupciones cíclicas | OB35: 100ms default
+OB40-OB47: interrupciones por hardware | OB80-OB87: manejo de errores
+CALL FC/FB: llamada a subrutina | DB: instancia de FB o datos globales
+
+=== INSTRUCCIONES LADDER BÁSICAS ===
+AND lógico: contactos en serie
+OR lógico: contactos en paralelo
+NOT: contacto normalmente cerrado
+Temporizador TON: retardo a la conexión. IN=enable, PT=preset, Q=salida, ET=tiempo actual
+Temporizador TOF: retardo a la desconexión
+Temporizador TP: pulso de duración fija
+Contador CTU: cuenta ascendente. CU=pulso, R=reset, PV=preset, Q=(CV>=PV), CV=valor actual
+Contador CTD: cuenta descendente. CD=pulso, LD=load, PV=preset
+Contador CTUD: ascendente/descendente
+
+=== VARIADORES DE FRECUENCIA (VFD) ===
+Principio: rectifica AC → DC → invierte a AC variable en f y V
+Relación V/Hz: mantener constante para torque constante (ej: 400V/50Hz = 8V/Hz)
+Frecuencia base (fn): frecuencia nominal del motor (50/60Hz)
+Por encima de fn: debilitamiento de campo, torque decae, potencia constante
+Parámetros básicos a configurar:
+  - Tensión nominal motor (V)
+  - Corriente nominal motor (A)
+  - Frecuencia nominal (Hz)
+  - Velocidad nominal (RPM)
+  - Rampa aceleración/desaceleración (segundos a f-nominal)
+  - Frecuencia mínima/máxima
+  - Tipo de control: V/Hz, vectorial sin sensor, vectorial con encoder
+Protecciones: sobrecorriente, sobretensión DC-link, baja tensión, sobretemperatura, fallo a tierra
+Frenado: resistencia de frenado para cargas con alta inercia
+Filtros EMC: filtro de entrada para cumplir normas | reactor de línea para armónicos
+Marcas: ABB (ACS355/ACS580), Siemens (G110/G120), Schneider (Altivar), Danfoss (FC302)
+Comunicación: Modbus RTU, PROFIBUS, PROFINET, EtherNet/IP, DeviceNet
+
+=== SERVOACCIONAMIENTOS ===
+Lazo de posición → lazo de velocidad → lazo de corriente (más interno = más rápido)
+Encoder: incremental (pulsos A/B/Z) o absoluto (SSI, EnDat, BISS)
+Resolución típica: 2500-20000 ppr | Absoluto: 17-26 bits por vuelta
+Sintonización: Kp, Ki, Kd | auto-tuning disponible en mayoría de drives
+Marcas: Siemens SINAMICS S120, Allen-Bradley Kinetix, Mitsubishi MR-J4, Panasonic MINAS
+
+=== REDES INDUSTRIALES ===
+PROFIBUS DP: RS485, hasta 12Mbps, hasta 126 nodos, máx 1200m a 93.75kbps
+  Terminación 220Ω en extremos de bus
+PROFINET: Ethernet industrial, RT y IRT (isócrono), hasta 100Mbps
+Modbus RTU: RS485/RS232, hasta 247 esclavos, simple y robusto
+  Registros: Coils(0x), Discrete Inputs(1x), Input Registers(3x), Holding Registers(4x)
+  Función 03: leer holding | 06: escribir 1 holding | 16: escribir múltiples
+Modbus TCP: sobre Ethernet, puerto 502
+EtherNet/IP: Ethernet estándar, protocolo CIP, Allen-Bradley
+DeviceNet: CAN 125/250/500kbps, 64 nodos, Allen-Bradley
+CANopen: CAN, hasta 1Mbps, estándar IEC, muy usado en maquinaria europea
+IO-Link: punto a punto, sensor/actuador inteligente, hasta 230kbps
+
+=== SENSORES INDUSTRIALES ===
+Temperatura:
+  PT100: 100Ω a 0°C, 0.385Ω/°C, rango -200 a +850°C, muy preciso
+  PT1000: 1000Ω a 0°C, misma curva, menor efecto de resistencia de cables
+  Termopar K: 41μV/°C, rango -270 a +1372°C, robusto, menos preciso
+  Termopar J: 52μV/°C, rango -210 a +1200°C, hierro-constantan
+  Termopar T: 43μV/°C, rango -270 a +400°C, cobre-constantan, alta humedad
+  LM35: 10mV/°C, 0-100°C, lineal, salida analógica directa
+
+Presión:
+  4-20mA: estándar industrial. 4mA=0% escala, 20mA=100% escala
+  Detección de cable roto: <4mA = falla | Detección de cortocircuito: >20mA
+  Alimentación loop: 24VDC, R_shunt = 250Ω → 1-5V
+  Tipos: manométrica, absoluta, diferencial
+
+Nivel:
+  Ultrasónico: sin contacto, medición de distancia, afectado por espuma y vapor
+  Flotante: simple y robusto, contacto discreto
+  Por presión hidrostática: P = ρ×g×h, transmisor 4-20mA
+  Capacitivo: para sólidos y líquidos, calibración necesaria
+  Radar: alta precisión, no afectado por condiciones de proceso
+
+Proximidad:
+  Inductivo: solo metales, rango 1-50mm, DC 3 hilos PNP/NPN o 2 hilos AC
+  Capacitivo: cualquier material, rango mayor, más susceptible a suciedad
+  Fotoeléctrico: barrera (rango largo), reflexivo (requiere reflector), difuso (corto rango)
+  Encoders: incremental (A,B,Z) o absoluto (paralelo/serial/SSI)
+
+Corriente (4-20mA) cableado:
+  2 hilos: alimentación por el loop. Transmisor en serie con fuente y receptor
+  3 hilos: alimentación separada. GND común o no
+  4 hilos: alimentación y señal totalmente separadas
+
+=== SEGURIDAD FUNCIONAL ===
+Niveles: SIL1, SIL2, SIL3 (IEC 61508/61511) | PLa-PLe (ISO 13849)
+PLC de seguridad: CPU redundante, E/S diagnósticadas, prueba de discrepancia
+Relés de seguridad: PNOZ (Pilz), guardas, paros de emergencia, barreras
+Categorías de parada: Cat0 (inmediata, sin freno) | Cat1 (con freno) | Cat2 (manteniendo velocidad cero)
+STO: Safe Torque Off — función de seguridad en variadores, deshabilita torque sin cortar potencia
+Botón E-Stop: NC, evaluado por relé de seguridad o módulo STO
+Rearme manual: obligatorio para funciones de seguridad SIL≥1
+
+=== NEUMÁTICA Y ELECTRONEUMÁTICA ===
+Electroválvulas: 5/2 (5 vías, 2 posiciones), 5/3 (centro bloqueado/abierto/exhaust), 4/2, 3/2
+Símbolo: cuadro por posición, flechas de flujo, resorte, solenoide
+Fuerza cilindro: F = P × A (avance) | F = P × (A - A_vástago) (retroceso)
+Presión trabajo: 4-8 bar típico industrial
+Velocidad: reguladores de caudal unidireccionales en salida del cilindro
+Filtro-Regulador-Lubricador (FRL): preparación del aire comprimido
+
+=== AUTOMATIZACIÓN SCADA/HMI ===
+HMI: pantalla operador local. Marcas: Siemens (KTP), Schneider (Magelis), Weintek
+SCADA: supervisión y control distribuido. Wonderware, Ignition, WinCC, InTouch
+OPC UA: estándar comunicación SCADA-PLC, seguro, orientado a objetos
+Historian: base de datos de series temporales para tendencias. OSIsoft PI, InfluxDB
+Alarmas: clasificación SAE-ISA-18.2, prioridades, gestión de silenciamiento
