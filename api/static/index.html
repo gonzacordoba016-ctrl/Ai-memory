@@ -767,22 +767,26 @@
   </div>
 
   <!-- Input area -->
-  <div class="bg-[#0e0e0e] p-6 border-t border-[#a4ffb9]/10">
-    <div class="flex items-center gap-4 border-b border-secondary/30 focus-within:border-secondary transition-colors pb-2">
-      <span class="text-secondary font-mono text-sm">&gt;</span>
-      <input id="prompt"
-        class="bg-transparent border-none focus:ring-0 w-full font-mono text-sm uppercase placeholder:opacity-30 placeholder:text-[#adaaaa] focus:outline-none"
-        placeholder="CONSULTA DE INGENIERÍA — circuitos, microcontroladores, PLCs, potencia, sensores..." type="text"/>
-      <button id="voice-btn" onclick="toggleVoice()" class="text-[#adaaaa] hover:text-primary transition-colors" title="Dictado por voz">
-        <span class="material-symbols-outlined text-sm">mic</span>
-      </button>
-      <button id="vision-btn" onclick="openVisionModal()" class="text-[#adaaaa] hover:text-secondary transition-colors" title="Analizar circuito">
-        <span class="material-symbols-outlined text-sm">photo_camera</span>
-      </button>
-      <button id="send-btn" onclick="sendMessage()" class="text-secondary hover:text-primary transition-colors">
-        <span class="material-symbols-outlined">send</span>
-      </button>
+  <div class="bg-[#0e0e0e] px-6 pt-4 pb-3 border-t border-[#a4ffb9]/10">
+    <div class="flex gap-4 border-b border-secondary/30 focus-within:border-secondary transition-colors pb-2 items-end">
+      <span class="text-secondary font-mono text-sm mb-1">&gt;</span>
+      <textarea id="prompt" rows="1"
+        class="bg-transparent border-none focus:ring-0 w-full font-mono text-sm placeholder:opacity-30 placeholder:text-[#adaaaa] focus:outline-none resize-none overflow-y-auto leading-relaxed"
+        style="max-height:220px; min-height:1.5rem;"
+        placeholder="CONSULTA DE INGENIERÍA — circuitos, microcontroladores, PLCs, potencia, sensores..."></textarea>
+      <div class="flex items-center gap-3 mb-1 flex-shrink-0">
+        <button id="voice-btn" onclick="toggleVoice()" class="text-[#adaaaa] hover:text-primary transition-colors" title="Dictado por voz">
+          <span class="material-symbols-outlined text-sm">mic</span>
+        </button>
+        <button id="vision-btn" onclick="openVisionModal()" class="text-[#adaaaa] hover:text-secondary transition-colors" title="Analizar circuito">
+          <span class="material-symbols-outlined text-sm">photo_camera</span>
+        </button>
+        <button id="send-btn" onclick="sendMessage()" class="text-secondary hover:text-primary transition-colors">
+          <span class="material-symbols-outlined">send</span>
+        </button>
+      </div>
     </div>
+    <div class="text-[8px] text-[#494847] mt-1">Enter para enviar · Shift+Enter nueva línea</div>
     <div class="flex gap-4 mt-2 items-center">
       <span id="agents-label" class="text-[8px] text-[#adaaaa] tracking-widest hidden"></span>
       <button onclick="exportChat()" title="DEV — exportar chat como JSON" class="ml-auto text-[8px] font-mono text-[#f59e0b] border border-[#f59e0b]/40 hover:border-[#f59e0b] hover:bg-[#f59e0b]/10 px-2 py-0.5 transition-colors flex items-center gap-1">

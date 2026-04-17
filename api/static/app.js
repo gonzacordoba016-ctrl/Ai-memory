@@ -145,7 +145,13 @@ function toggleModulesSection() {
 document.getElementById('session-time').textContent =
   'SESSION_INIT :: ' + new Date().toISOString().replace('T', '_').slice(0, 19);
 
-document.getElementById('prompt').addEventListener('keydown', e => {
+const _promptEl = document.getElementById('prompt');
+function _autoResizePrompt() {
+  _promptEl.style.height = 'auto';
+  _promptEl.style.height = Math.min(_promptEl.scrollHeight, 220) + 'px';
+}
+_promptEl.addEventListener('input', _autoResizePrompt);
+_promptEl.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
 document.getElementById('search-input').addEventListener('keydown', e => {

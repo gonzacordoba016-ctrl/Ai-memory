@@ -79,6 +79,7 @@ function sendMessage() {
   const text  = input.value.trim();
   if (!text || isStreaming) return;
   input.value = '';
+  input.style.height = 'auto';
 
   // Sin conexión → encolar
   if (!ws || ws.readyState !== 1) {
