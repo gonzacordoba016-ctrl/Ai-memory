@@ -155,7 +155,7 @@ function _autoResizePrompt() {
   const counter = document.getElementById('prompt-counter');
   if (counter) {
     const len = _promptEl.value.length;
-    counter.textContent = String(len).padStart(4, '0');
+    counter.textContent = len > 0 ? `${len}` : '';
     counter.style.color = len > 3000 ? 'var(--error)' : '';
   }
 }

@@ -124,7 +124,6 @@ function sendMessage() {
   if (!text || isStreaming) return;
   input.value = '';
   input.style.height = 'auto';
-  // reset char counter
   const counter = document.getElementById('prompt-counter');
   if (counter) counter.textContent = '';
 

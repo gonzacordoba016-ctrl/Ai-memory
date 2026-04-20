@@ -53,16 +53,11 @@
     .app > aside#left-sidebar[data-open="true"] { transform: translateX(0); }
     #sidebar-scrim { display: none; }
     aside#left-sidebar[data-open="true"] ~ #sidebar-scrim { display: block; }
-    /* main no necesita padding-bottom — composer y bottom nav son fixed */
     main { padding-bottom: 0; }
   }
   .view-scroll { overflow: auto; height: 100%; }
   .hljs { background: transparent !important; padding: 0 !important; }
-  /* Composer: desktop = pegado al fondo, mobile = sobre bottom nav */
   .composer-fixed { bottom: 0; }
-  @media (max-width: 900px) {
-    .composer-fixed { bottom: calc(60px + env(safe-area-inset-bottom, 0px)); }
-  }
   /* Chat section llena toda la altura disponible */
   .chat-section {
     min-height: 100%;
@@ -264,7 +259,10 @@
   <main class="view-scroll" style="background: var(--bg)">
 
     <!-- mobile sub-header -->
-    <div class="md:hidden sticky top-0 z-20 flex items-center px-3 gap-2 border-b" style="background: var(--overlay); backdrop-filter: blur(10px); border-color: var(--rule); height: 40px">
+    <div class="md:hidden sticky top-0 z-20 flex items-center px-3 gap-2 border-b" style="background: var(--overlay); backdrop-filter: blur(10px); border-color: var(--rule); height: 44px">
+      <button class="btn btn-icon btn-ghost" onclick="toggleMobileSidebar()" style="width:32px;height:32px">
+        <span class="material-symbols-outlined" style="font-size:20px">menu</span>
+      </button>
       <span class="label label-accent">[</span>
       <span id="view-title" class="label label-accent">CHAT</span>
       <span class="label label-accent">]</span>
@@ -310,15 +308,7 @@
         <div id="snippet-menu" class="hidden snippet-menu max-w-5xl mx-auto" style="margin-bottom: -1px;"></div>
         <div class="max-w-5xl mx-auto">
           <div class="composer panel-cnr">
-            <div class="flex items-center gap-2 px-3 pt-2">
-              <span class="label label-accent">USER</span>
-              <span class="label label-dim">›</span>
-              <span class="label label-dim" style="font-size:9.5px" id="h-active-profile-bar">CTX · STRATUM</span>
-              <span class="ml-auto mono" style="font-size:10px; color: var(--fg-3)">
-                <span id="prompt-counter">0000</span> / 8192
-              </span>
-            </div>
-            <textarea id="prompt" placeholder="Preguntá sobre circuitos, código o cálculos… (Shift+Enter nueva línea)"></textarea>
+            <textarea id="prompt" placeholder="Preguntá sobre circuitos, código o cálculos…"></textarea>
             <div class="composer-bar">
               <div class="flex items-center gap-1">
                 <button class="btn btn-ghost" onclick="triggerFileUpload()" style="height:26px; padding:0 8px; font-size:10px">
@@ -327,9 +317,9 @@
                 <button id="voice-btn" class="btn btn-ghost" onclick="toggleVoice()" style="height:26px; padding:0 8px; font-size:10px">
                   <span class="material-symbols-outlined" style="font-size:14px">mic</span> VOICE
                 </button>
+                <span id="prompt-counter" class="label label-dim" style="font-size:9px; padding-left:4px"></span>
               </div>
               <div class="flex items-center gap-2">
-                <span class="label label-dim hidden sm:inline" style="font-size:9.5px">⏎ ENVIAR · Shift+⏎ nueva línea</span>
                 <button id="send-btn" class="btn btn-primary" onclick="sendMessage()">
                   <span class="material-symbols-outlined" style="font-size:14px">send</span> ENVIAR
                 </button>
@@ -712,42 +702,6 @@
   </main>
 </div>
 
-<!-- ================================================================
-     BOTTOM NAV (mobile)
-     ================================================================ -->
-<nav class="bn">
-  <button class="bn-item" data-nav="chat" data-active="true" onclick="switchView('chat')">
-    <span class="material-symbols-outlined">forum</span><span>CHAT</span>
-  </button>
-  <button class="bn-item" data-nav="kb" onclick="switchView('kb')">
-    <span class="material-symbols-outlined">database</span><span>KB</span>
-  </button>
-  <button class="bn-item" data-nav="calc" onclick="switchView('calc')">
-    <span class="material-symbols-outlined">function</span><span>CALC</span>
-  </button>
-  <button class="bn-item" data-nav="devices" onclick="switchView('devices')">
-    <span class="material-symbols-outlined">memory</span><span>DEVICES</span>
-  </button>
-  <button id="overflow-btn" class="bn-item" onclick="toggleOverflowSheet()">
-    <span class="material-symbols-outlined">more_horiz</span><span>MÁS</span>
-  </button>
-</nav>
-
-<!-- overflow sheet -->
-<div id="overflow-sheet" class="sheet" data-open="false">
-  <div class="ruler" data-coord="MÁS"></div>
-  <div class="p-3 grid grid-cols-3 gap-2">
-    <button class="btn btn-ghost" style="height:72px; flex-direction:column; display:flex; align-items:center; gap:6px" onclick="switchView('intel')">
-      <span class="material-symbols-outlined" style="font-size:20px">hub</span>INTEL
-    </button>
-    <button class="btn btn-ghost" style="height:72px; flex-direction:column; display:flex; align-items:center; gap:6px" onclick="switchView('metrics')">
-      <span class="material-symbols-outlined" style="font-size:20px">monitoring</span>METRICS
-    </button>
-    <button class="btn btn-ghost" style="height:72px; flex-direction:column; display:flex; align-items:center; gap:6px" onclick="switchView('system')">
-      <span class="material-symbols-outlined" style="font-size:20px">settings</span>SYSTEM
-    </button>
-  </div>
-</div>
 
 <!-- ================================================================
      TWEAKS PANEL
