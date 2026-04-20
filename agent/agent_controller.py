@@ -50,9 +50,10 @@ class AgentController:
 
     async def process_input(self, user_input: str, on_token=None) -> str:
 
-        # 1. Guardar input
+        # 1. Guardar input + detectar plataforma
         self.state.add_message("user", user_input)
         self.short_memory.add(user_input)
+        self._detect_and_set_platform(user_input)
 
         # 2. Extraer hechos y relaciones en paralelo (async, no bloquean)
         import asyncio
@@ -84,6 +85,12 @@ class AgentController:
             self.state.add_message("assistant", hw_result)
             self._store_episode(user_input, hw_result)
             self.profiler.update_from_interaction(user_input, hw_result)
+            # Guardar firmware draft si la respuesta contiene código C++
+            if "```cpp" in hw_result or "void setup()" in hw_result or "void loop()" in hw_result:
+                import re
+                code_blocks = re.findall(r'```(?:cpp|c|arduino)?\n(.*?)```', hw_result, re.DOTALL)
+                if code_blocks:
+                    self.state.set_firmware_draft(code_blocks[0])
             if on_token:
                 for char in hw_result:
                     await on_token(char)
@@ -151,7 +158,19 @@ class AgentController:
         self._store_episode(user_input, response)
         self.profiler.update_from_interaction(user_input, response)
 
+        # 8. Auto-fetch datasheets en background (no bloquea)
+        asyncio.create_task(self._auto_fetch_datasheets(user_input + " " + response))
+
         return response
+
+    async def _auto_fetch_datasheets(self, text: str):
+        try:
+            from tools.datasheet_fetcher import auto_fetch_and_index
+            indexed = await asyncio.to_thread(auto_fetch_and_index, text)
+            if indexed:
+                logger.info(f"[AgentController] Datasheets indexados: {indexed}")
+        except Exception as e:
+            logger.warning(f"[AgentController] Error en auto_fetch_datasheets: {e}")
 
     def consolidate_on_exit(self):
         """
@@ -173,6 +192,22 @@ class AgentController:
             logger.error(f"Error en consolidación al salir: {e}")
             return {}
 
+    _PLATFORM_KEYWORDS = {
+        "arduino": ["arduino ide", "arduino", ".ino", "#include <arduino"],
+        "micropython": ["micropython", "from machine import", "import machine", "thonny"],
+        "esp-idf": ["esp-idf", "idf.py", "menuconfig", "sdkconfig"],
+        "platformio": ["platformio", "platform.ini", "pio run"],
+    }
+
+    def _detect_and_set_platform(self, text: str):
+        t = text.lower()
+        for platform, keywords in self._PLATFORM_KEYWORDS.items():
+            if any(kw in t for kw in keywords):
+                if self.state.get_platform() != platform:
+                    self.state.set_platform(platform)
+                    logger.info(f"[AgentController] Plataforma detectada: {platform}")
+                return
+
     def _build_base_context(self) -> str:
         parts = []
         facts = self.state.get_all_facts()
@@ -191,6 +226,18 @@ class AgentController:
                 parts.append(p_ctx)
         except Exception:
             pass
+
+        # Plataforma detectada en sesión
+        platform = self.state.get_platform()
+        if platform:
+            parts.append(f"PLATAFORMA DE SESIÓN: {platform} — usá esta plataforma por defecto para todo el código")
+
+        # Firmware draft disponible
+        draft = self.state.get_firmware_draft()
+        if draft:
+            preview = draft[:300].replace('\n', ' ')
+            parts.append(f"FIRMWARE ACTUAL EN SESIÓN (primeras líneas): {preview}…")
+
         return "\n".join(parts)
 
     def _store_episode(self, user_input: str, response: str):

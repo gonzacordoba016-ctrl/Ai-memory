@@ -10,14 +10,15 @@ from database.hardware_memory import hardware_memory
 from agent.agents.hardware_keywords import (
     INTENT_PROMPT, _normalize,
     SAVE_DECISION_KEYWORDS, SAVE_CIRCUIT_KEYWORDS, QUERY_KEYWORDS,
-    SIGNAL_KEYWORDS, DEBUG_KEYWORDS, PROGRAM_KEYWORDS, DESIGN_KEYWORDS,
+    SIGNAL_KEYWORDS, DEBUG_KEYWORDS, PROGRAM_KEYWORDS, DESIGN_KEYWORDS, MODIFY_KEYWORDS,
 )
 from agent.agents.hardware_firmware import _FirmwareMixin
 from agent.agents.hardware_memory_ops import _MemoryOpsMixin
 from agent.agents.hardware_design import _DesignMixin
+from agent.agents.hardware_diff import _DiffMixin
 
 
-class HardwareAgent(_FirmwareMixin, _MemoryOpsMixin, _DesignMixin):
+class HardwareAgent(_FirmwareMixin, _MemoryOpsMixin, _DesignMixin, _DiffMixin):
 
     name        = "HardwareAgent"
     description = "Programá hardware conectado: Arduino, ESP32, ESP8266 y más"
@@ -32,6 +33,7 @@ class HardwareAgent(_FirmwareMixin, _MemoryOpsMixin, _DesignMixin):
         if intent == "signal":        return self._start_signal_mode(task)
         if intent == "debug":         return self._debug_mode(task)
         if intent == "design":        return self._design_consult(task, context)
+        if intent == "modify":        return self._modify_firmware(task, context)
         return self._program_device(task, context)
 
     # ======================
@@ -78,6 +80,8 @@ class HardwareAgent(_FirmwareMixin, _MemoryOpsMixin, _DesignMixin):
             return "signal"
         if any(_normalize(kw) in t for kw in DESIGN_KEYWORDS):
             return "design"
+        if any(_normalize(kw) in t for kw in MODIFY_KEYWORDS):
+            return "modify"
         if any(_normalize(kw) in t for kw in PROGRAM_KEYWORDS):
             return "program"
         # Default: si mencionan hardware sin contexto claro, consulta de diseño

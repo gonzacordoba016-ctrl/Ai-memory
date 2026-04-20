@@ -8,6 +8,19 @@ def _normalize(s: str) -> str:
     return unicodedata.normalize("NFD", s).encode("ascii", "ignore").decode("ascii")
 
 
+MODIFY_KEYWORDS = [
+    "modificá", "modifica", "cambiá", "cambia", "actualizá", "actualiza",
+    "agregá", "agrega", "añadí", "añadi", "quitá", "quita", "sacá", "saca",
+    "hacelo más", "hacelo menos", "hacelo más rápido", "más rápido",
+    "más lento", "más brillante", "más suave", "más fuerte",
+    "agregá el sensor", "agrega el sensor", "agregá wifi", "agrega wifi",
+    "agregá mqtt", "agrega mqtt", "agregá ota", "agrega ota",
+    "cambiá el pin", "cambia el pin", "cambiá el delay", "cambia el delay",
+    "modificá el código", "modifica el código", "actualizá el firmware",
+    "el código anterior", "en el código que me diste", "en ese código",
+    "al firmware anterior", "al código anterior",
+]
+
 INTENT_PROMPT = """Clasificá esta consulta de hardware en UNA sola palabra:
 
 - save_decision: guardar una decisión de diseño, razonamiento técnico, por qué elegí un componente
@@ -17,16 +30,19 @@ INTENT_PROMPT = """Clasificá esta consulta de hardware en UNA sola palabra:
 - signal:        leer señal analógica, voltaje, osciloscopio, monitorear pin
 - debug:         corregir error, algo no funciona, falla, arreglar, diagnosticar
 - design:        ESCRIBIR código/ejemplo/función/firmware para un microcontrolador (aunque no esté conectado), diseñar circuito, asesoramiento técnico, dimensionar componentes, potencia, motor, PLC, regulador, fuente, esquema, cálculos eléctricos
+- modify:        MODIFICAR, cambiar, actualizar o agregar algo AL CÓDIGO/FIRMWARE ANTERIOR que ya se generó en esta sesión
 
 Ejemplos:
 - "escribí un ejemplo en C para ESP32" → design
 - "qué tiene programado el arduino" → query
 - "flasheá el firmware" → program
 - "calculá la resistencia" → design
+- "hacelo más rápido" → modify
+- "agregá wifi al código anterior" → modify
 
 Consulta: "{task}"
 
-Respondé SOLO con una de estas 7 palabras: save_decision, save_circuit, query, program, signal, debug, design"""
+Respondé SOLO con una de estas 8 palabras: save_decision, save_circuit, query, program, signal, debug, design, modify"""
 
 
 # ── KEYWORDS exhaustivas por categoría ───────────────────────────────────────

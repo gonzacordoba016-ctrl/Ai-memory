@@ -211,3 +211,29 @@ async def start_signal(port: str, baudrate: int = 9600):
 async def stop_signal():
     signal_reader.stop()
     return {"status": "stopped"}
+
+
+# ── Wokwi simulate ───────────────────────────────────────────────────
+
+@router.get("/wokwi/{device_name}")
+async def get_wokwi_url(device_name: str):
+    """Genera un diagram.json de Wokwi para el circuito guardado del dispositivo."""
+    try:
+        circuit = hardware_memory.get_circuit_context(device_name)
+        if not circuit:
+            return {"url": "https://wokwi.com/projects/new", "diagram_json": None, "has_circuit": False}
+
+        from tools.wokwi_simulator import generate_wokwi_diagram
+        import json
+        diagram = generate_wokwi_diagram(circuit)
+        diagram_json = json.dumps(diagram, indent=2)
+
+        return {
+            "url": "https://wokwi.com/projects/new",
+            "diagram_json": diagram_json,
+            "has_circuit": True,
+            "device": device_name,
+        }
+    except Exception as e:
+        logger.error(f"[Wokwi] Error generando diagrama: {e}")
+        return {"url": "https://wokwi.com/projects/new", "diagram_json": None, "has_circuit": False}

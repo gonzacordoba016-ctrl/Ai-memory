@@ -176,9 +176,9 @@ class ProactiveScheduler:
                 logger.error(f"[Proactive] Error procesando dispositivo {device.get('name')}: {e}")
 
     async def _check_recurring_errors(self):
-        """Detecta si un dispositivo tuvo 2+ fallos recientes."""
+        """Detecta errores recurrentes en hardware Y en memoria de chat."""
+        # 1. Errores de hardware (flash failures)
         devices = await asyncio.to_thread(hardware_memory.get_all_devices)
-
         for device in devices:
             try:
                 history = await asyncio.to_thread(
@@ -186,35 +186,58 @@ class ProactiveScheduler:
                 )
                 if len(history) < 2:
                     continue
-
                 recent_failures = [h for h in history if not h.get("success", True)]
-
                 if len(recent_failures) >= 2:
-                    failure_notes = [
-                        f["notes"][:80] for f in recent_failures if f.get("notes")
-                    ]
+                    failure_notes = [f["notes"][:80] for f in recent_failures if f.get("notes")]
                     note_summary = (
                         "\nErrores detectados:\n" +
                         "\n".join(f"  • {n}" for n in failure_notes[:2])
                         if failure_notes else ""
                     )
-
                     await self._broadcast({
                         "type":    "recurring_error",
                         "title":   "Errores recurrentes detectados",
                         "message": (
                             f"**{device['name']}** tuvo **{len(recent_failures)} fallos** "
                             f"en sus últimas {len(history)} sesiones."
-                            f"{note_summary}\n"
-                            f"¿Querés que analice el problema?"
+                            f"{note_summary}\n¿Querés que analice el problema?"
                         ),
                         "device":           device["name"],
                         "failure_count":    len(recent_failures),
                         "suggested_action": "debug",
                     })
-
             except Exception as e:
                 logger.error(f"[Proactive] Error en check_errors para {device.get('name')}: {e}")
+
+        # 2. Patrones de error en memoria de chat
+        try:
+            from memory.vector_memory import search_memory_with_scores
+            error_patterns = [
+                ("no funciona", "funcionamiento"),
+                ("error de compilación", "compilación"),
+                ("no se conecta", "conectividad WiFi"),
+                ("adc2", "ADC2 con WiFi activo"),
+                ("watchdog", "watchdog reset"),
+            ]
+            for query, topic in error_patterns:
+                results = await asyncio.to_thread(search_memory_with_scores, query, 5)
+                high_score = [r for r in results if r.get("score", 0) > 0.7]
+                if len(high_score) >= 3:
+                    snippet = high_score[0]["text"][:100]
+                    await self._broadcast({
+                        "type":    "chat_error_pattern",
+                        "title":   f"Patrón detectado: {topic}",
+                        "message": (
+                            f"Detecté **{len(high_score)} menciones** de problemas con **{topic}** "
+                            f"en tu historial.\n"
+                            f"Ejemplo reciente: _{snippet}_\n"
+                            f"¿Querés que analice la causa raíz?"
+                        ),
+                        "pattern": query,
+                        "count":   len(high_score),
+                    })
+        except Exception as e:
+            logger.error(f"[Proactive] Error en check chat patterns: {e}")
 
     async def _emit_daily_summary(self):
         """Emite un resumen de actividad del día si hay datos relevantes."""

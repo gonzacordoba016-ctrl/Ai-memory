@@ -278,6 +278,9 @@
             <button class="btn btn-ghost" onclick="exportChat()">
               <span class="material-symbols-outlined" style="font-size:14px">download</span> EXPORT .MD
             </button>
+            <button class="btn btn-ghost" onclick="exportSessionZip()" title="Exportar ZIP (chat + firmware + decisiones)">
+              <span class="material-symbols-outlined" style="font-size:14px">folder_zip</span> ZIP
+            </button>
             <button class="btn btn-ghost" onclick="toggleSearchModal()">
               <span class="material-symbols-outlined" style="font-size:14px">search</span> Ctrl+K
             </button>
@@ -316,6 +319,9 @@
                 </button>
                 <button id="voice-btn" class="btn btn-ghost" onclick="toggleVoice()" style="height:26px; padding:0 8px; font-size:10px">
                   <span class="material-symbols-outlined" style="font-size:14px">mic</span> VOICE
+                </button>
+                <button id="voice-autosend-btn" class="btn btn-ghost" onclick="toggleVoiceAutoSend()" title="Activar auto-envío de voz" style="height:26px; padding:0 6px; font-size:10px">
+                  <span class="material-symbols-outlined" style="font-size:14px">send_time_extension</span>
                 </button>
                 <span id="prompt-counter" class="label label-dim" style="font-size:9px; padding-left:4px"></span>
               </div>

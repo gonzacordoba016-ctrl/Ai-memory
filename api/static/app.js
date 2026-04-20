@@ -21,7 +21,8 @@ let _sessions     = [];   // list of session objects from API
 let _activeView   = 'chat';
 
 // ── VOICE INPUT ───────────────────────────────────────────────────────────
-let _voiceRec = null, _voiceOn = false;
+let _voiceRec = null, _voiceOn = false, _voiceAutoSend = false;
+
 function _initVoice() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { alert('Tu navegador no soporta reconocimiento de voz.'); return false; }
@@ -32,12 +33,18 @@ function _initVoice() {
   _voiceRec.onstart = () => {
     _voiceOn = true;
     const b = document.getElementById('voice-btn');
-    if (b) b.classList.add('voice-active');
+    if (b) { b.classList.add('voice-active'); b.title = _voiceAutoSend ? 'Voz — auto-envío ON' : 'Voz'; }
   };
   _voiceRec.onresult = (e) => {
     const transcript = e.results[0][0].transcript;
     const inp = document.getElementById('prompt');
-    if (inp) { inp.value = transcript; inp.focus(); }
+    if (inp) {
+      inp.value = transcript;
+      _autoResizePrompt();
+      inp.focus();
+      // Auto-enviar si está en modo firmware directo
+      if (_voiceAutoSend) setTimeout(() => sendMessage(), 300);
+    }
   };
   _voiceRec.onend = () => {
     _voiceOn = false;
@@ -52,9 +59,20 @@ function _initVoice() {
   };
   return true;
 }
+
 function toggleVoice() {
   if (!_voiceRec && !_initVoice()) return;
   _voiceOn ? _voiceRec.stop() : _voiceRec.start();
+}
+
+function toggleVoiceAutoSend() {
+  _voiceAutoSend = !_voiceAutoSend;
+  const btn = document.getElementById('voice-autosend-btn');
+  if (btn) {
+    btn.style.color = _voiceAutoSend ? 'var(--accent)' : '';
+    btn.title = _voiceAutoSend ? 'Auto-envío ON — click para desactivar' : 'Activar auto-envío de voz';
+  }
+  addLog(_voiceAutoSend ? 'Voz: auto-envío activado' : 'Voz: auto-envío desactivado', 'info');
 }
 
 // ── MOBILE SIDEBAR ──────────────────────────────────────────────────────

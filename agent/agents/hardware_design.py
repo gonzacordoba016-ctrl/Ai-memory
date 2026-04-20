@@ -46,12 +46,31 @@ class _DesignMixin:
         except Exception:
             pass
 
+        # Determinar plataforma de la sesión si está disponible en context
+        platform_hint = ""
+        if context and "PLATAFORMA DE SESIÓN:" in context:
+            for line in context.splitlines():
+                if "PLATAFORMA DE SESIÓN:" in line:
+                    platform_hint = line.split("PLATAFORMA DE SESIÓN:")[-1].strip()
+                    break
+
+        if not platform_hint:
+            platform_hint = "arduino"  # default: C++/Arduino IDE
+
+        platform_instruction = (
+            f"Para ejemplos de código usá **C++ con Arduino IDE** (setup/loop, #include, Serial.begin) "
+            f"salvo que el usuario pida explícitamente MicroPython, ESP-IDF u otra plataforma."
+            if platform_hint == "arduino"
+            else f"Para ejemplos de código usá la plataforma **{platform_hint}** según el contexto de sesión."
+        )
+
         system_prompt = (
             "Sos un ingeniero electrónico y eléctrico senior especializado en circuitos de potencia, "
             "automatización industrial, microcontroladores y electrónica embebida. "
             "Respondé en español, de forma técnica y concisa. "
             "Incluí: componentes recomendados con valores, normas de seguridad relevantes, "
             "esquema de conexiones si aplica, y código de control si el usuario lo necesita. "
+            f"{platform_instruction} "
             "Si el diseño involucra alta tensión o alta potencia, siempre mencioná las consideraciones de seguridad."
         )
 

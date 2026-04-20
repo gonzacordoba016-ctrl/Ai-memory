@@ -2,7 +2,7 @@
 # Endpoints de memoria: facts, historial, búsqueda semántica, grafo, perfil, plugins, stats
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from datetime import datetime
 from pydantic import BaseModel
 
@@ -240,3 +240,56 @@ async def rename_session(session_id: str, body: SessionTitleRequest):
 async def delete_session(session_id: str):
     sql_db.delete_session(session_id)
     return {"ok": True}
+
+
+@router.get("/api/sessions/{session_id}/export")
+async def export_session(session_id: str):
+    """Exporta la sesión como ZIP con: chat.md, firmware.cpp (si hay), decisiones.md"""
+    import io
+    import zipfile
+    from database.sql_memory import SQLMemory
+    db = SQLMemory()
+    msgs = db.get_conversation_by_session(session_id, limit=500)
+    if not msgs:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada o vacía")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # chat.md
+        chat_lines = [f"# Stratum — Sesión {session_id[:8]}\n", f"Exportado: {datetime.utcnow().isoformat()}\n\n"]
+        firmware_blocks = []
+        for m in msgs:
+            role = "**Usuario**" if m["role"] == "user" else "**Agente**"
+            chat_lines.append(f"---\n{role}\n\n{m['content']}\n\n")
+            # Extraer bloques de firmware C++
+            if m["role"] == "assistant" and ("void setup()" in m["content"] or "```cpp" in m["content"]):
+                import re
+                blocks = re.findall(r'```(?:cpp|c|arduino)?\n(.*?)```', m["content"], re.DOTALL)
+                firmware_blocks.extend(blocks)
+        zf.writestr("chat.md", "".join(chat_lines))
+
+        # firmware.cpp (último bloque encontrado)
+        if firmware_blocks:
+            zf.writestr("firmware.cpp", firmware_blocks[-1])
+
+        # decisiones.md
+        try:
+            from database.design_decisions import get_decisions_db
+            decisions = get_decisions_db().get_all(limit=50)
+            if decisions:
+                dec_lines = ["# Decisiones de Diseño\n\n"]
+                for d in decisions:
+                    dec_lines.append(f"## [{d.get('project','—')}] {d.get('decision','')}\n")
+                    if d.get('reasoning'):
+                        dec_lines.append(f"_{d['reasoning']}_\n\n")
+                zf.writestr("decisiones.md", "".join(dec_lines))
+        except Exception:
+            pass
+
+    buf.seek(0)
+    filename = f"stratum_{session_id[:8]}_{datetime.utcnow().strftime('%Y%m%d')}.zip"
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )

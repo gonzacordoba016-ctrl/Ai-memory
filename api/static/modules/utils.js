@@ -126,6 +126,25 @@ function addLog(msg, type = 'info') {
   if (el.children.length > 200) el.removeChild(el.firstChild);
 }
 
+// ── EXPORT ZIP ───────────────────────────────────────────────────────────
+async function exportSessionZip() {
+  const sid = _session_id;
+  if (!sid) { alert('No hay sesión activa'); return; }
+  try {
+    const res = await authFetch(`${API}/sessions/${encodeURIComponent(sid)}/export`);
+    if (!res.ok) { alert('Error exportando sesión'); return; }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `stratum_${sid.slice(0,8)}_${new Date().toISOString().slice(0,10)}.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) {
+    alert('Error exportando: ' + e.message);
+  }
+}
+
 // ── DEV EXPORT ───────────────────────────────────────────────────────────
 async function exportChat() {
   const sid = _session_id;

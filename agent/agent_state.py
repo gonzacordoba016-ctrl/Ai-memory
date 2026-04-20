@@ -5,6 +5,8 @@ class AgentState:
         self.user_profile = {}
         self.conversation_history = []
         self.context = {}
+        self.session_platform: str | None = None   # "arduino", "micropython", "esp-idf", etc.
+        self.current_firmware_draft: str | None = None  # último firmware generado en sesión
 
     def add_message(self, role: str, content: str):
         """
@@ -35,3 +37,15 @@ class AgentState:
 
     def get_all_facts(self):
         return self.user_profile
+
+    def set_platform(self, platform: str):
+        self.session_platform = platform
+
+    def get_platform(self) -> str | None:
+        return self.session_platform
+
+    def set_firmware_draft(self, code: str):
+        self.current_firmware_draft = code
+
+    def get_firmware_draft(self) -> str | None:
+        return self.current_firmware_draft
