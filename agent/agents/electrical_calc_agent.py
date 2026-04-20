@@ -5,6 +5,7 @@
 # El LLM NO hace las cuentas — Python las hace. El LLM solo interpreta y explica.
 
 import json
+import math
 import re
 from core.logger import logger
 from llm.async_client import call_llm_text
@@ -56,9 +57,12 @@ class ElectricalCalcAgent:
             if stock_db and result.get("std_value"):
                 stock_info = await self._find_in_stock(stock_db, formula_key, result)
 
-            # ── Paso 5: Explicar con LLM ──────────────────────────────────────
-            response = await self._explain(task, result, stock_info)
-            return response
+            # ── Paso 5: Card HTML + explicación LLM ──────────────────────────
+            card = self._format_card_html(formula_key, params, result, stock_info)
+            explanation = await self._explain(task, result, stock_info)
+            if card:
+                return card + f'<div class="calc-card-explanation">{explanation}</div>'
+            return explanation
 
         except Exception as e:
             logger.error(f"[ElectricalCalc] Error: {e}")
@@ -201,6 +205,105 @@ class ElectricalCalcAgent:
         except Exception as e:
             logger.warning(f"[ElectricalCalc] Error buscando stock: {e}")
         return ""
+
+    # ── Result card HTML ──────────────────────────────────────────────────────
+
+    _CARD_META: dict = {
+        "resistor_voltage_divider": {"title": "DIVISOR DE TENSIÓN",       "formula": r"V_{out} = V_{in} \cdot \dfrac{R_2}{R_1+R_2}", "bode": None},
+        "resistor_for_led":         {"title": "RESISTENCIA PARA LED",      "formula": r"R = \dfrac{V_{cc}-V_f}{I_{LED}}",             "bode": None},
+        "resistor_power":           {"title": "POTENCIA EN RESISTENCIA",   "formula": r"P = I^2 \cdot R = \dfrac{V^2}{R}",            "bode": None},
+        "ohms_law":                 {"title": "LEY DE OHM",                "formula": r"V = I \cdot R",                               "bode": None},
+        "low_pass_rc":              {"title": "FILTRO PASO BAJO RC",       "formula": r"f_c = \dfrac{1}{2\pi R C}",                   "bode": "lowpass"},
+        "high_pass_rc":             {"title": "FILTRO PASO ALTO RC",       "formula": r"f_c = \dfrac{1}{2\pi R C}",                   "bode": "highpass"},
+        "capacitor_filter":         {"title": "FILTRO RC",                 "formula": r"C = \dfrac{1}{2\pi f_c R}",                   "bode": "lowpass"},
+        "rc_time_constant":         {"title": "CONSTANTE DE TIEMPO RC",    "formula": r"\tau = R \cdot C",                            "bode": None},
+        "capacitor_energy":         {"title": "ENERGÍA EN CAPACITOR",      "formula": r"E = \tfrac{1}{2} C V^2",                      "bode": None},
+        "power_dissipation":        {"title": "POTENCIA DISIPADA",         "formula": r"P = V \cdot I",                               "bode": None},
+        "buck_converter":           {"title": "CONVERTIDOR BUCK",          "formula": r"D = \dfrac{V_{out}}{V_{in}}",                 "bode": None},
+        "boost_converter":          {"title": "CONVERTIDOR BOOST",         "formula": r"D = 1 - \dfrac{V_{in}}{V_{out}}",             "bode": None},
+        "transformer_turns_ratio":  {"title": "TRANSFORMADOR",             "formula": r"\dfrac{N_p}{N_s} = \dfrac{V_p}{V_s}",         "bode": None},
+        "inverting_amp":            {"title": "AMPLIFICADOR INVERSOR",     "formula": r"A_v = -\dfrac{R_f}{R_{in}}",                  "bode": None},
+        "non_inverting_amp":        {"title": "AMPLIFICADOR NO INVERSOR",  "formula": r"A_v = 1 + \dfrac{R_2}{R_1}",                  "bode": None},
+        "battery_autonomy":         {"title": "AUTONOMÍA DE BATERÍA",      "formula": r"t = \dfrac{C_{mAh}}{I_{mA}}",                 "bode": None},
+        "fuse_rating":              {"title": "FUSIBLE RECOMENDADO",       "formula": r"I_{fuse} = I_{max} \times f_{seg}",           "bode": None},
+        "heat_sink_required":       {"title": "DISIPADOR TÉRMICO",         "formula": r"\theta_{sa} = \dfrac{T_j - T_a}{P} - \theta_{jc}", "bode": None},
+        "motor_torque":             {"title": "TORQUE DE MOTOR",           "formula": r"\tau = \dfrac{P \times 9550}{n}",             "bode": None},
+        "vfd_frequency_for_rpm":    {"title": "FRECUENCIA VFD",            "formula": r"f = \dfrac{n \times p}{120}",                 "bode": None},
+    }
+
+    def _fmt_val(self, v, unit="") -> str:
+        """Formatea un número con sufijo de magnitud."""
+        if not isinstance(v, (int, float)):
+            return str(v)
+        abs_v = abs(v)
+        if abs_v == 0:
+            return f"0 {unit}".strip()
+        if abs_v >= 1e6:
+            return f"{v/1e6:.3g} M{unit}"
+        if abs_v >= 1e3:
+            return f"{v/1e3:.3g} k{unit}"
+        if abs_v < 0.01:
+            return f"{v*1000:.3g} m{unit}"
+        return f"{v:.4g} {unit}".strip()
+
+    def _format_card_html(self, formula_key: str, params: dict, result: dict, stock_info: str) -> str:
+        meta = self._CARD_META.get(formula_key)
+        if not meta:
+            return ""
+
+        unit     = result.get("unit", "")
+        value    = result.get("value", 0)
+        std      = result.get("std_value")
+        warnings = result.get("warnings", [])
+        formula  = meta["formula"]
+        bode_type = meta.get("bode")
+
+        # Input rows
+        rows_html = ""
+        for k, v in params.items():
+            if v is None:
+                continue
+            label = PARAM_LABELS.get(k, k)
+            label = label.split("(")[0].strip()
+            rows_html += f'<div class="row"><span>{label}</span><span>{self._fmt_val(v)}</span></div>'
+
+        # Bode canvas (filters only)
+        bode_html = ""
+        if bode_type and isinstance(value, (int, float)) and value > 0:
+            fc = value
+            # For capacitor_filter / low_pass_rc the result IS C or R — fc is in params
+            if formula_key in ("low_pass_rc", "high_pass_rc", "capacitor_filter"):
+                fc = params.get("cutoff_hz") or params.get("freq_hz") or value
+            bode_html = (
+                f'<div class="calc-card-bode">'
+                f'<div style="font-size:8px;color:#494847;letter-spacing:.1em;margin-bottom:6px">RESPUESTA EN FRECUENCIA</div>'
+                f'<canvas data-bode=\'{{"type":"{bode_type}","fc":{fc}}}\'></canvas>'
+                f'</div>'
+            )
+
+        # Warnings
+        warn_html = "".join(
+            f'<div class="calc-result-warn">⚠ {w}</div>' for w in (warnings or [])
+        )
+        std_html = f'<div class="calc-result-std">→ usar {self._fmt_val(std, unit)} (E24)</div>' if std else ""
+
+        card = (
+            f'<div class="calc-card">'
+            f'  <div class="calc-card-type">{meta["title"]}</div>'
+            f'  <div class="calc-card-formula">\\[{formula}\\]</div>'
+            f'  <div class="calc-card-body">'
+            f'    <div class="calc-card-inputs">{rows_html}</div>'
+            f'    <div class="calc-card-result">'
+            f'      <div class="calc-result-label">RESULTADO</div>'
+            f'      <div class="calc-result-value">{self._fmt_val(value)}</div>'
+            f'      <div class="calc-result-unit">{unit}</div>'
+            f'      {std_html}{warn_html}'
+            f'    </div>'
+            f'  </div>'
+            f'  {bode_html}'
+            f'</div>'
+        )
+        return card
 
     async def _explain(self, task: str, result: dict, stock_info: str) -> str:
         """Formatea la respuesta final con LLM."""

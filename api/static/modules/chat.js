@@ -236,7 +236,10 @@ function addMessage(role, content, agents = [], streaming = false) {
           </button>
         </div>
       </div>`;
-    if (!streaming) _addCopyButtons(div);
+    if (!streaming) {
+      _addCopyButtons(div);
+      _postRender(div);
+    }
   }
 
   msgs.appendChild(div);
@@ -278,6 +281,7 @@ function finishStreaming(data) {
       const outerDiv = currentAgentEl.closest('.flex.flex-col.items-start');
       if (outerDiv) outerDiv.dataset.raw = rawText;
       _addCopyButtons(outerDiv || currentAgentEl);
+      _postRender(currentAgentEl);
 
       if (data?.agents_used?.length) {
         const container = currentAgentEl.closest('.bg-\\[\\#131313\\]')?.querySelector('.agent-badges');

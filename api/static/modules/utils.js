@@ -17,6 +17,83 @@ function renderMarkdown(text) {
   }
 }
 
+// ── POST-RENDER: KaTeX + highlight.js + Bode charts ─────────────────────
+function _postRender(el) {
+  if (!el) return;
+
+  // Syntax highlighting
+  if (typeof hljs !== 'undefined') {
+    el.querySelectorAll('pre code').forEach(block => {
+      if (!block.dataset.highlighted) hljs.highlightElement(block);
+    });
+  }
+
+  // Math rendering (KaTeX auto-render)
+  if (typeof renderMathInElement !== 'undefined') {
+    renderMathInElement(el, {
+      delimiters: [
+        { left: '$$',  right: '$$',  display: true  },
+        { left: '\\[', right: '\\]', display: true  },
+        { left: '$',   right: '$',   display: false },
+        { left: '\\(', right: '\\)', display: false },
+      ],
+      throwOnError: false,
+    });
+  }
+
+  // Bode plot charts (data-bode attribute)
+  el.querySelectorAll('canvas[data-bode]').forEach(canvas => {
+    try {
+      const cfg = JSON.parse(canvas.dataset.bode);
+      delete canvas.dataset.bode;
+      _renderBode(canvas, cfg);
+    } catch(e) { console.warn('Bode parse error', e); }
+  });
+}
+
+function _renderBode(canvas, { type, fc }) {
+  const pts = 80;
+  const labels = [], gain = [], phase = [];
+  for (let i = 0; i < pts; i++) {
+    const f = fc * Math.pow(10, (i - pts / 2) / (pts / 4));
+    const ratio = f / fc;
+    const mag = type === 'lowpass'
+      ? -20 * Math.log10(Math.sqrt(1 + ratio * ratio))
+      : 20 * Math.log10(ratio / Math.sqrt(1 + ratio * ratio));
+    const ph = type === 'lowpass'
+      ? -Math.atan(ratio) * 180 / Math.PI
+      : 90 - Math.atan(ratio) * 180 / Math.PI;
+    labels.push(f < 1000 ? f.toFixed(1) + 'Hz' : (f / 1000).toFixed(2) + 'kHz');
+    gain.push(parseFloat(mag.toFixed(2)));
+    phase.push(parseFloat(ph.toFixed(1)));
+  }
+  // Mark fc
+  const fcLabel = fc < 1000 ? fc.toFixed(1) + 'Hz' : (fc / 1000).toFixed(2) + 'kHz';
+  new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Ganancia (dB)', data: gain, borderColor: '#a4ffb9', borderWidth: 1.5, pointRadius: 0, yAxisID: 'y' },
+        { label: 'Fase (°)',      data: phase, borderColor: '#00cbfe', borderWidth: 1,   pointRadius: 0, yAxisID: 'y1', borderDash: [4,3] },
+      ],
+    },
+    options: {
+      responsive: true, animation: false,
+      plugins: {
+        legend: { labels: { color: '#adaaaa', font: { size: 9 } } },
+        annotation: {},
+        tooltip: { mode: 'index', intersect: false },
+      },
+      scales: {
+        x: { ticks: { color: '#494847', font: { size: 8 }, maxTicksLimit: 10 }, grid: { color: '#1a1a1a' } },
+        y:  { ticks: { color: '#a4ffb9', font: { size: 8 } }, grid: { color: '#1a1a1a' }, title: { display: true, text: 'dB', color: '#494847', font: { size: 8 } } },
+        y1: { position: 'right', ticks: { color: '#00cbfe', font: { size: 8 } }, grid: { drawOnChartArea: false }, title: { display: true, text: '°', color: '#494847', font: { size: 8 } } },
+      },
+    },
+  });
+}
+
 // ── LOGS ──────────────────────────────────────────────────────────────────
 function addLog(msg, type = 'info') {
   const el = document.getElementById('logs-list');

@@ -44,6 +44,30 @@
   .prose-stratum hr { border-color: #494847; margin: 0.5em 0; }
   .calc-warn { color:#ffd700; font-size:8px; margin-top:2px; }
   .calc-stock { color:#00cbfe; font-size:8px; margin-top:4px; border-top:1px solid #494847/30; padding-top:4px; }
+  /* ── Calc result cards ── */
+  .calc-card { background:#0a0a0a; border:1px solid #a4ffb9/30; border-left:3px solid #a4ffb9; padding:14px 16px; margin:8px 0; font-family:monospace; }
+  .calc-card-type { font-size:8px; letter-spacing:.2em; color:#494847; margin-bottom:8px; }
+  .calc-card-formula { font-size:13px; color:#a4ffb9; text-align:center; padding:10px 0; border-top:1px solid #494847/30; border-bottom:1px solid #494847/30; margin-bottom:12px; }
+  .calc-card-body { display:grid; grid-template-columns:1fr auto; gap:12px; align-items:start; }
+  .calc-card-inputs { font-size:9px; color:#adaaaa; space-y:2px; }
+  .calc-card-inputs .row { display:flex; justify-content:space-between; padding:2px 0; border-bottom:1px solid #494847/15; }
+  .calc-card-inputs .row span:first-child { opacity:.5; }
+  .calc-card-inputs .row span:last-child { color:#e0e0e0; }
+  .calc-card-result { text-align:right; }
+  .calc-result-label { font-size:8px; color:#494847; letter-spacing:.1em; }
+  .calc-result-value { font-size:22px; font-weight:700; color:#a4ffb9; line-height:1.1; }
+  .calc-result-unit { font-size:11px; color:#a4ffb9; opacity:.7; }
+  .calc-result-std { font-size:9px; color:#00cbfe; margin-top:3px; }
+  .calc-result-warn { font-size:8px; color:#ffd700; margin-top:6px; }
+  .calc-card-bode { margin-top:12px; border-top:1px solid #494847/30; padding-top:10px; }
+  .calc-card-bode canvas { max-height:160px; }
+  .calc-card-explanation { font-size:10px; color:#adaaaa; margin-top:12px; border-top:1px solid #494847/20; padding-top:8px; line-height:1.6; }
+  /* KaTeX overrides for dark theme */
+  .katex { color:#a4ffb9 !important; }
+  .katex-display { color:#a4ffb9 !important; }
+  .calc-card-formula .katex { font-size:1.1em !important; }
+  /* highlight.js overrides */
+  pre code.hljs { background:#070707 !important; font-size:0.82em !important; border-radius:0 !important; }
   /* ── Mobile responsive ── */
   @media (max-width: 767px) {
     #left-sidebar { transform: translateX(-100%); transition: transform 0.2s steps(4, end); }
