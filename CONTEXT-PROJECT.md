@@ -1,6 +1,6 @@
 # STRATUM — Contexto del Proyecto
 > Última actualización: 2026-04-20
-> Versión actual: **v3.9.0**
+> Versión actual: **v4.0.0**
 > Tagline: _"Tu memoria técnica siempre disponible"_
 > Estado: **Production-ready** (local + Railway)
 
@@ -270,7 +270,7 @@ Helpers compartidos en `formulas_basic`: `_E24`, `_FUSE_STD`, `_nearest_e24()`, 
 ✅ 4 loops independientes en background:
 - Cada 60s: detecta nuevos dispositivos USB → notifica en `/ws/proactive`
 - Cada 1h: avisa dispositivos inactivos (3+ días)
-- Cada 30min: detecta errores recurrentes
+- Cada 30min: detecta errores recurrentes en hardware **y en vector memory** (ADC2, watchdog, conectividad, etc.)
 - A medianoche: consolidación automática de memorias antiguas (`memory_consolidator`)
 
 ### 4.6 Cola de Jobs Async
@@ -304,9 +304,12 @@ Cambiar perfil → tono y contexto cambian en el siguiente mensaje sin reiniciar
 
 ### 4.12 Frontend Web
 ✅ CSS + JS extraídos a `styles.css` y 15 módulos JS (plain `<script>` tags para mantener scope global necesario por `onclick=`).
+✅ **Nuevo diseño CAD-instrument** (v4.0): design system completo con `panel-cnr`, `ruler`, `msg-user`/`msg-agent` diferenciados, acento azul cyan.
+✅ **Navegación mobile via hamburger** `☰`: sidebar deslizable con todos los módulos, sin bottom nav.
+✅ **Empty state chat**: cuando no hay mensajes muestra ícono + tags clickeables en lugar de void negro.
 ✅ Chat streaming token a token con **markdown progresivo** (render parcial cada 120ms, no solo al finalizar).
 ✅ **Textarea auto-expandible** para el input (crece hasta 220px, scroll interno, Enter=enviar, Shift+Enter=nueva línea, Esc=limpiar).
-✅ **Contador de caracteres** en el input (visible >50 chars, rojo >3000).
+✅ **Contador de caracteres** en el input (visible cuando hay texto, rojo >3000).
 ✅ **Botón COPY** en cada bloque de código (aparece al hover, usa Clipboard API).
 ✅ **Scroll inteligente**: solo fuerza scroll al fondo si el usuario ya estaba ahí.
 ✅ **Rate limit countdown**: el botón enviar muestra `3s → 2s → 1s` en vez de burbuja de error.
@@ -315,17 +318,40 @@ Cambiar perfil → tono y contexto cambian en el siguiente mensaje sin reiniciar
 ✅ Sesiones múltiples: sidebar con lista, switcheo, delete, título IA.
 ✅ Motor proactivo vía `/ws/proactive`.
 ✅ Offline queue: mensajes enviados sin conexión se persisten y se reintentan al reconectar.
-✅ **URLs producción correctas**: `https://` + `wss://` en Railway, `http://` + `ws://` en localhost (sin puerto hardcodeado).
-✅ **Health dots correctos**: LLM verde con OpenRouter (`llm_provider` set), Qdrant verde si `not_initialized` (opcional).
-✅ **Historial de sesión en orden correcto**: `loadSessionHistory` no invierte mensajes (ya vienen cronológicos del backend).
-✅ **TTS (Text-to-Speech)**: botón en cada mensaje del agente — Web Speech API, idioma es-AR, cancela al reclickear.
-✅ **Export MD**: descarga el mensaje del agente como `.md` con un click.
-✅ **Snippets `/`**: tipear `/` en el input muestra menú con 15 plantillas de ingeniería (↑↓ navegar, Enter seleccionar, Esc cerrar). 
-✅ **Ctrl+K buscar**: modal de búsqueda semántica en memoria vectorial — resultados clickeables inyectan texto en el input.
-✅ **Proyecto Activo**: sección en sidebar con lista de proyectos, activar/desactivar, crear (nombre, MCU, componentes, descripción). El proyecto activo se inyecta en el contexto de cada conversación vía `_build_base_context()`.
-✅ **Adjuntar archivos**: botón clip en input — `.ino`, `.txt`, `.cpp`, `.py`, `.json`, imágenes. Texto se inserta como bloque de código en el prompt; imágenes como `[Imagen adjunta: nombre]`.
-✅ **Firmware diff**: botón DIFF en vista de historial de dispositivo — muestra diff coloreado (verde/rojo) entre las últimas 2 versiones de firmware.
-✅ **Push notifications backend**: `proactive_scheduler.py` llama `send_push_to_all()` en eventos `device_connected` e `device_inactive`.
+✅ **TTS (Text-to-Speech)**: botón en cada mensaje del agente — Web Speech API, idioma es-AR.
+✅ **Export MD**: descarga el mensaje del agente como `.md`.
+✅ **Export ZIP**: botón `ZIP` en header — descarga `chat.md` + `firmware.cpp` + `decisiones.md` de la sesión.
+✅ **Snippets `/`**: tipear `/` muestra menú con 15 plantillas de ingeniería (↑↓, Enter, Esc).
+✅ **Ctrl+K buscar**: búsqueda semántica unificada en memoria de chat + KB, retorna `{text, score}`.
+✅ **Proyecto Activo**: CRUD en sidebar, se inyecta en contexto LLM vía `_build_base_context()`.
+✅ **Adjuntar archivos**: `.ino`, `.txt`, `.cpp`, `.py`, `.json`, imágenes.
+✅ **Voice auto-send**: botón `send_time_extension` — activado, tras reconocimiento de voz el mensaje se envía solo.
+✅ **Push notifications backend**: `proactive_scheduler.py` llama `send_push_to_all()` en eventos proactivos.
+
+### 4.13 Platform Context Persistente (v4.0)
+✅ `AgentState.session_platform` — detecta `arduino`/`micropython`/`esp-idf`/`platformio` en cada mensaje.
+✅ `AgentController._detect_and_set_platform()` — parsea keywords y actualiza el estado de sesión.
+✅ `HardwareAgent._design_consult()` — usa C++/Arduino como default, respeta la plataforma detectada.
+✅ Firmware draft en sesión: `AgentState.current_firmware_draft` guarda el último código generado.
+
+### 4.14 Firmware Iterativo con Diff (v4.0)
+✅ Intent `modify` en `HardwareAgent` — detectado por LLM y keywords ("hacelo más rápido", "agregá wifi", etc.).
+✅ `_DiffMixin._modify_firmware()` — toma el draft actual, aplica el cambio incremental via LLM, genera diff `unified`.
+✅ Respuesta incluye bloque `diff` coloreado (verde/rojo) + código completo actualizado.
+✅ El nuevo código se persiste en `AgentState` para futuras modificaciones encadenadas.
+
+### 4.15 Datasheet Auto-Fetch (v4.0)
+✅ `tools/datasheet_fetcher.py` — detecta nombres de CIs en texto via regex (`lm\d+`, `ne\d+`, `irf\d+`, etc.).
+✅ URLs directas para TI, ST, Microchip (LM317, LM7805, LM35, NE555, ULN2003, L298N, INA219...).
+✅ Fallback: búsqueda web DuckDuckGo → parseo PDF con `pdfplumber`.
+✅ Fallback final: resumen LLM si no encuentra el PDF.
+✅ Todo se cachea en `agent_files/datasheets/` e indexa en KB automáticamente en background.
+✅ Hook en `AgentController._auto_fetch_datasheets()` — se dispara como `asyncio.create_task` por cada mensaje.
+
+### 4.16 Wokwi Simulate (v4.0)
+✅ `GET /api/hardware/wokwi/{device_name}` — genera `diagram.json` del circuito guardado para el dispositivo.
+✅ Usa `tools/wokwi_simulator.py` existente + `hardware_memory.get_circuit_context()`.
+✅ Retorna `{url, diagram_json, has_circuit, device}`.
 
 ---
 
@@ -530,3 +556,4 @@ Las siguientes mejoras están ordenadas por impacto percibido vs herramientas ex
 | v3.7.0  | 2026-04-17  | Fix wss/https en producción; fix health dots (LLM+Qdrant); fix historial orden doble-reverse; textarea auto-expandible; markdown streaming progresivo; botón COPY en código; scroll inteligente; rate limit countdown; contador chars; Esc limpia input; título sesión por IA; Qdrant Cloud configurado; 7 archivos KB técnica indexados |
 | v3.8.0  | 2026-04-17  | TTS en mensajes; Export MD; snippets `/` (15 plantillas ingeniería); Ctrl+K búsqueda semántica modal; Proyecto Activo sidebar (CRUD + activar + inyección en contexto LLM); adjuntar archivos en chat (.ino/.txt/.cpp/imagen); firmware diff coloreado en hardware view; push notifications en eventos proactivos |
 | v3.9.0  | 2026-04-20  | Nuevo diseño UI CAD-instrument (design system completo); bottom nav eliminado → hamburger mobile; composer simplificado; empty state chat mobile; agent routing fix (escribí/código → design, no query); Ctrl+K unificado memoria+KB con {text,score}; 15 mensajes de sesión larga testeados; KB indexada con 10 documentos |
+| v4.0.0  | 2026-04-20  | Platform context persistente (C++ por default); firmware iterativo con diff coloreado (_DiffMixin, intent "modify"); datasheet auto-fetch + indexado KB en background; export ZIP sesión (chat.md + firmware.cpp + decisiones.md); error patterns en vector memory; Wokwi endpoint diagram.json; voice auto-send pipeline |
