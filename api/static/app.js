@@ -60,16 +60,12 @@ function toggleVoice() {
 // ── MOBILE SIDEBAR ──────────────────────────────────────────────────────
 function toggleMobileSidebar() {
   const sidebar = document.getElementById('left-sidebar');
-  const backdrop = document.getElementById('sidebar-backdrop');
-  const isOpen = sidebar.classList.contains('mobile-open');
-  if (isOpen) { closeMobileSidebar(); } else {
-    sidebar.classList.add('mobile-open');
-    backdrop.classList.add('visible');
-  }
+  if (!sidebar) return;
+  const isOpen = sidebar.getAttribute('data-open') === 'true';
+  sidebar.setAttribute('data-open', String(!isOpen));
 }
 function closeMobileSidebar() {
-  document.getElementById('left-sidebar')?.classList.remove('mobile-open');
-  document.getElementById('sidebar-backdrop')?.classList.remove('visible');
+  document.getElementById('left-sidebar')?.setAttribute('data-open', 'false');
 }
 
 // ── NAVIGATION ──────────────────────────────────────────────────────────
@@ -78,40 +74,29 @@ function switchView(name) {
   closeMobileSidebar();
 
   // Hide all views
-  document.querySelectorAll('[id^="view-"]').forEach(el => {
-    el.classList.add('hidden');
-    el.classList.remove('flex');
-  });
-
+  document.querySelectorAll('[data-view]').forEach(el => { el.style.display = 'none'; });
   // Show selected view
-  const view = document.getElementById(`view-${name}`);
-  if (view) { view.classList.remove('hidden'); view.classList.add('flex'); }
+  const view = document.querySelector(`[data-view="${name}"]`);
+  if (view) view.style.display = '';
 
-  // Update module nav active state
-  document.querySelectorAll('.nav-item').forEach(el => {
-    el.classList.remove('active');
-    el.classList.add('text-[#adaaaa]');
+  // Update nav active state (sidebar + bottom nav)
+  document.querySelectorAll('[data-nav]').forEach(el => {
+    el.setAttribute('data-active', String(el.dataset.nav === name));
   });
-  const navEl = document.getElementById(`nav-${name}`);
-  if (navEl) { navEl.classList.add('active'); navEl.classList.remove('text-[#adaaaa]'); }
 
-  // On first activation, reparent panel into its view slot
-  const slot = document.querySelector(`[data-panel="${name}"]`);
-  if (slot && slot.children.length === 0) {
-    const panel = document.getElementById(`panel-${name}`);
-    if (panel) {
-      slot.appendChild(panel);
-      panel.classList.remove('tab-content', 'hidden');
-      panel.style.display = '';
-    }
-  }
+  // Mobile sub-header title
+  const titles = { chat:'CHAT', kb:'KB', calc:'CALC', devices:'DEVICES', intel:'INTEL', metrics:'METRICS', system:'SYSTEM' };
+  const titleEl = document.getElementById('view-title');
+  if (titleEl) titleEl.textContent = titles[name] || name.toUpperCase();
+
+  // Close overflow sheet
+  document.getElementById('overflow-sheet')?.setAttribute('data-open', 'false');
 
   // Trigger data loads
   if (name === 'devices')  loadHardware();
-  if (name === 'system')   { loadMetrics(); webLoadStockSummary(); webSearchStock(''); loadWokwiStatus(); }
+  if (name === 'system')   { loadMetrics(); webLoadStockSummary(); webSearchStock?.(''); loadWokwiStatus?.(); }
   if (name === 'intel')    { loadIntelligence(); webLoadDecisions(); }
   if (name === 'metrics')  loadMetricsPanel();
-  if (name === 'calc')     calcSwitchForm(document.getElementById('calc-selector')?.value || 'resistor_for_led');
   if (name === 'chat')     document.getElementById('prompt')?.focus();
   if (name === 'kb')       kbLoadDocuments();
 }
@@ -158,20 +143,23 @@ function toggleModulesSection() {
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────
-document.getElementById('session-time').textContent =
+const _sessionTimeEl = document.getElementById('session-time');
+if (_sessionTimeEl) _sessionTimeEl.textContent =
   'SESSION_INIT :: ' + new Date().toISOString().replace('T', '_').slice(0, 19);
 
 const _promptEl = document.getElementById('prompt');
 function _autoResizePrompt() {
+  if (!_promptEl) return;
   _promptEl.style.height = 'auto';
   _promptEl.style.height = Math.min(_promptEl.scrollHeight, 220) + 'px';
   const counter = document.getElementById('prompt-counter');
   if (counter) {
     const len = _promptEl.value.length;
-    counter.textContent = len > 50 ? `${len} chars` : '';
-    counter.className = `text-[8px] font-mono ${len > 3000 ? 'text-error' : 'text-[#494847]'}`;
+    counter.textContent = String(len).padStart(4, '0');
+    counter.style.color = len > 3000 ? 'var(--error)' : '';
   }
 }
+if (_promptEl) {
 _promptEl.addEventListener('input', _autoResizePrompt);
 _promptEl.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -185,6 +173,7 @@ _promptEl.addEventListener('keydown', e => {
   if (e.key === 'ArrowUp'   && _snippetsVisible) { e.preventDefault(); _snippetIdx = Math.max(0, _snippetIdx-1); _renderSnippets(); }
   if (e.key === 'ArrowDown' && _snippetsVisible) { e.preventDefault(); _snippetIdx = Math.min(_filteredSnippets.length-1, _snippetIdx+1); _renderSnippets(); }
 });
+} // end if(_promptEl)
 
 // ── SNIPPETS ──────────────────────────────────────────────────────────────
 const _SNIPPETS = [
@@ -209,7 +198,7 @@ let _snippetsVisible  = false;
 let _filteredSnippets = [];
 let _snippetIdx       = 0;
 
-_promptEl.addEventListener('input', () => {
+if (_promptEl) _promptEl.addEventListener('input', () => {
   const val = _promptEl.value;
   if (val.startsWith('/') && val.length >= 1) {
     const q = val.toLowerCase();
@@ -354,7 +343,7 @@ function _useSearchResult(text) {
   _promptEl.focus();
   switchView('chat');
 }
-document.getElementById('search-input').addEventListener('keydown', e => {
+document.getElementById('search-input')?.addEventListener('keydown', e => {
   if (e.key === 'Enter') doSearch();
 });
 

@@ -99,7 +99,8 @@ function _showRateLimit(seconds) {
   if (!btn) return;
   let s = seconds;
   btn.classList.add('opacity-40', 'pointer-events-none');
-  btn.querySelector('span').textContent = s + 's';
+  const sp = btn.querySelector('span');
+  if (sp) sp.textContent = s + 's';
   clearInterval(_rateLimitTimer);
   _rateLimitTimer = setInterval(() => {
     s--;
@@ -107,11 +108,10 @@ function _showRateLimit(seconds) {
       clearInterval(_rateLimitTimer);
       if (!isStreaming) {
         btn.classList.remove('opacity-40', 'pointer-events-none');
-        btn.querySelector('span').textContent = 'send';
-        btn.querySelector('span').className = 'material-symbols-outlined';
+        if (sp) { sp.textContent = 'send'; sp.className = 'material-symbols-outlined'; }
       }
     } else {
-      btn.querySelector('span').textContent = s + 's';
+      if (sp) sp.textContent = s + 's';
     }
   }, 1000);
 }
@@ -134,8 +134,9 @@ function sendMessage() {
   }
 
   addMessage('user', text, []);
-  isStreaming   = true;
-  document.getElementById('send-btn').classList.add('opacity-40', 'pointer-events-none');
+  isStreaming = true;
+  const _sb = document.getElementById('send-btn');
+  if (_sb) _sb.classList.add('opacity-40', 'pointer-events-none');
   currentAgentEl = addMessage('agent', '', [], true);
   addLog(`CMD: ${text.slice(0, 60)}`, 'cmd');
   ws.send(JSON.stringify({ message: text }));
@@ -197,54 +198,59 @@ function _exportMD(btn) {
 
 function addMessage(role, content, agents = [], streaming = false) {
   const msgs = document.getElementById('messages');
-  const ts   = new Date().toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-  const div  = document.createElement('div');
+  if (!msgs) return null;
+  const ts = new Date().toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
   const wasAtBottom = _isNearBottom(msgs);
 
   if (role === 'user') {
+    const div = document.createElement('div');
+    div.className = 'msg-user';
     const lines = content.split('\n');
-    const preview = lines.length > 4
-      ? escHtml(lines.slice(0, 4).join('\n')) + `<span class="text-[#494847]">… +${lines.length-4} líneas</span>`
-      : escHtml(content);
-    div.className = 'flex flex-col items-end';
-    div.innerHTML = `
-      <div class="bg-[#201f1f] border-r-2 border-secondary p-4 max-w-xl font-mono text-sm tracking-tight text-secondary">
-        <div class="text-[9px] mb-2 opacity-50">OPERATOR_OVERRIDE // ${ts}</div>
-        <div class="whitespace-pre-wrap">${preview}</div>
-      </div>`;
-  } else {
-    const badges = (agents || []).map(a => {
-      const colors = { memory:'text-primary', hardware:'text-secondary', research:'text-[#adaaaa]', code:'text-[#8eff71]', proactive:'text-[#ffaa00]', direct:'text-[#adaaaa]' };
-      const c = colors[a] || 'text-[#adaaaa]';
-      return `<span class="px-1 py-0.5 bg-[#131313] ${c} text-[8px] font-bold uppercase border border-current/20">AGNT_${a.toUpperCase()}</span>`;
-    }).join('');
-
-    div.className = 'flex flex-col items-start group';
-    div.innerHTML = `
-      <div class="bg-[#131313] border-l-2 border-primary p-4 max-w-2xl font-mono text-sm tracking-tight">
-        <div class="flex items-center gap-2 mb-2 flex-wrap">
-          <span class="text-[9px] text-primary opacity-50">STRATUM_ENGINE // AI_CORE // ${ts}</span>
-          <div class="flex gap-1 agent-badges">${badges}</div>
-        </div>
-        <div class="agent-content prose-stratum leading-relaxed${streaming ? ' blinking-cursor' : ''}">${streaming ? '' : renderMarkdown(content)}</div>
-        <div class="flex items-center gap-3 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button class="tts-btn flex items-center gap-1 text-[8px] text-[#494847] hover:text-primary font-mono transition-colors" onclick="_ttsSpeak(this)" title="Escuchar">
-            <span class="material-symbols-outlined text-[10px]">volume_up</span>TTS
-          </button>
-          <button class="flex items-center gap-1 text-[8px] text-[#494847] hover:text-primary font-mono transition-colors" onclick="_exportMD(this)" title="Exportar markdown">
-            <span class="material-symbols-outlined text-[10px]">download</span>MD
-          </button>
-        </div>
-      </div>`;
-    if (!streaming) {
-      _addCopyButtons(div);
-      _postRender(div);
+    if (lines.length > 4) {
+      div.innerHTML = '> ' + escHtml(lines.slice(0, 4).join('\n')) +
+        `<span style="color:var(--fg-4)"> … +${lines.length - 4} líneas</span>`;
+    } else {
+      div.textContent = '> ' + content;
     }
-  }
+    msgs.appendChild(div);
+    if (wasAtBottom) msgs.scrollTop = msgs.scrollHeight;
+    return null;
+  } else {
+    const agentBadges = (agents || []).map(a =>
+      `<span class="chip" style="font-size:9px;height:18px;padding:0 5px">${a.toUpperCase()}</span>`
+    ).join('');
 
-  msgs.appendChild(div);
-  if (wasAtBottom) msgs.scrollTop = msgs.scrollHeight;
-  return role === 'agent' ? div.querySelector('.agent-content') : null;
+    const article = document.createElement('article');
+    article.className = 'msg-agent panel-cnr';
+    if (!streaming && content) article.dataset.raw = content;
+    article.innerHTML = `
+      <div class="msg-head">
+        <span class="dot${streaming ? ' dot-pulse' : ''}" style="color:var(--accent)"></span>
+        <span class="label label-accent">AGENT</span>
+        <span class="panel-sub">stratum-core · ${ts}</span>
+        <div class="ml-auto flex items-center gap-1 agent-badges">${agentBadges}</div>
+        <div class="flex gap-0 ml-1">
+          <button class="btn btn-ghost tts-btn" onclick="_ttsSpeak(this)" title="TTS"
+            style="height:22px;padding:0 6px;border-color:transparent;background:transparent">
+            <span class="material-symbols-outlined" style="font-size:12px">volume_up</span>
+          </button>
+          <button class="btn btn-ghost" onclick="_exportMD(this)" title="Export MD"
+            style="height:22px;padding:0 6px;border-color:transparent;background:transparent">
+            <span class="material-symbols-outlined" style="font-size:12px">download</span>
+          </button>
+        </div>
+      </div>
+      ${streaming ? '<div class="pulse-bar"></div>' : ''}
+      <div class="msg-body agent-content${streaming ? ' blinking-cursor' : ''}">${streaming ? '' : renderMarkdown(content)}</div>
+    `;
+    if (!streaming) {
+      _addCopyButtons(article);
+      _postRender(article.querySelector('.agent-content'));
+    }
+    msgs.appendChild(article);
+    if (wasAtBottom) msgs.scrollTop = msgs.scrollHeight;
+    return article.querySelector('.agent-content');
+  }
 }
 
 // Streaming acumulado para render markdown progresivo
@@ -272,34 +278,39 @@ function finishStreaming(data) {
   if (currentAgentEl) {
     currentAgentEl.classList.remove('blinking-cursor');
     const rawText = _streamBuffer || currentAgentEl.textContent || '';
+    const article = currentAgentEl.closest('article.msg-agent') || currentAgentEl.closest('.msg-agent');
 
     if (!rawText.trim()) {
-      const bubble = currentAgentEl.closest('.flex.flex-col.items-start');
-      if (bubble) bubble.remove();
+      if (article) article.remove();
     } else {
       currentAgentEl.innerHTML = renderMarkdown(rawText);
-      const outerDiv = currentAgentEl.closest('.flex.flex-col.items-start');
-      if (outerDiv) outerDiv.dataset.raw = rawText;
-      _addCopyButtons(outerDiv || currentAgentEl);
-      _postRender(currentAgentEl);
-
-      if (data?.agents_used?.length) {
-        const container = currentAgentEl.closest('.bg-\\[\\#131313\\]')?.querySelector('.agent-badges');
-        if (container) {
-          const colors = { memory:'text-primary', hardware:'text-secondary', research:'text-[#adaaaa]', code:'text-[#8eff71]', proactive:'text-[#ffaa00]', direct:'text-[#adaaaa]' };
-          container.innerHTML = data.agents_used.map(a => {
-            const c = colors[a] || 'text-[#adaaaa]';
-            return `<span class="px-1 py-0.5 bg-[#131313] ${c} text-[8px] font-bold uppercase border border-current/20">AGNT_${a.toUpperCase()}</span>`;
-          }).join('');
+      if (article) {
+        article.dataset.raw = rawText;
+        article.querySelector('.pulse-bar')?.remove();
+        const dot = article.querySelector('.dot');
+        if (dot) dot.classList.remove('dot-pulse');
+        _addCopyButtons(article);
+        if (data?.agents_used?.length) {
+          const badgeContainer = article.querySelector('.agent-badges');
+          if (badgeContainer) {
+            badgeContainer.innerHTML = data.agents_used.map(a =>
+              `<span class="chip" style="font-size:9px;height:18px;padding:0 5px">${a.toUpperCase()}</span>`
+            ).join('');
+          }
         }
       }
+      _postRender(currentAgentEl);
     }
   }
   _streamBuffer  = '';
   isStreaming    = false;
   currentAgentEl = null;
-  document.getElementById('send-btn').classList.remove('opacity-40', 'pointer-events-none');
-  document.getElementById('send-btn').querySelector('span').textContent = 'send';
+  const sendBtn = document.getElementById('send-btn');
+  if (sendBtn) {
+    sendBtn.classList.remove('opacity-40', 'pointer-events-none');
+    const sp = sendBtn.querySelector('span');
+    if (sp) { sp.textContent = 'send'; sp.className = 'material-symbols-outlined'; }
+  }
   updateStatusText('READY_FOR_INPUT', true);
   addLog('Response complete', 'info');
   _scrollToBottom(true);

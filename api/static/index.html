@@ -1,1229 +1,864 @@
-<!DOCTYPE html>
-<html class="dark" lang="es">
+<!doctype html>
+<html lang="es">
 <head>
 <meta charset="utf-8"/>
-<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>STRATUM // Engineering Memory Engine</title>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
-<!-- KaTeX — math rendering -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"/>
-<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<!-- highlight.js — syntax highlighting -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css"/>
-<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/build/highlight.min.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
-<link rel="stylesheet" href="/static/styles.css"/>
-<script id="tailwind-config">
-  tailwind.config = {
-    darkMode: "class",
-    theme: {
-      extend: {
-        colors: {
-          "primary-fixed": "#00fd87", "surface-container": "#1a1919",
-          "secondary": "#00cbfe", "surface-container-lowest": "#000000",
-          "tertiary-dim": "#2be800", "primary-fixed-dim": "#00ed7e",
-          "background": "#0e0e0e", "surface": "#0e0e0e",
-          "surface-container-low": "#131313", "error-container": "#9f0519",
-          "outline": "#777575", "on-error": "#490006",
-          "on-secondary": "#003e50", "on-background": "#ffffff",
-          "outline-variant": "#494847", "on-primary-container": "#005b2c",
-          "primary-dim": "#00ed7e", "surface-tint": "#a4ffb9",
-          "error": "#ff716c", "surface-dim": "#0e0e0e",
-          "primary": "#a4ffb9", "on-surface": "#ffffff",
-          "on-surface-variant": "#adaaaa", "surface-container-highest": "#262626",
-          "tertiary": "#8eff71", "surface-variant": "#262626",
-          "secondary-container": "#006782", "surface-bright": "#2c2c2c",
-          "surface-container-high": "#201f1f", "on-primary": "#006532",
-          "inverse-on-surface": "#565554", "inverse-surface": "#fcf8f8",
-          "primary-container": "#00fd87", "inverse-primary": "#006e37",
-          "tertiary-container": "#2ff801",
-        },
-        borderRadius: { "DEFAULT": "0px", "lg": "0px", "xl": "0px", "full": "9999px" },
-        fontFamily: { "headline": ["Space Grotesk"], "body": ["Space Grotesk"], "label": ["Space Grotesk"] }
-      },
-    },
-  }
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>STRATUM — Technical Memory Agent</title>
+
+<!-- Tailwind -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = { theme:{ extend:{
+    colors:{ bg:'#0d1117', surface:'#161b22' },
+    fontFamily:{ ui:['"Space Grotesk"','system-ui'], mono:['"JetBrains Mono"','ui-monospace'] }
+  }}};
 </script>
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,300,0,0" rel="stylesheet">
+
+<!-- KaTeX -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
+
+<!-- highlight.js -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/atom-one-dark.min.css">
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/build/highlight.min.js"></script>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<!-- marked.js -->
+<script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+
+<!-- Styles -->
+<link rel="stylesheet" href="/static/styles.css?v=5"/>
+
+<style>
+  body { overflow: hidden; }
+  .app { height: 100dvh; display: grid; grid-template-columns: 288px 1fr; grid-template-rows: auto 1fr; }
+  .app > header { grid-column: 1 / 3; }
+  #sidebar-scrim { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 65; display: none; }
+  @media (max-width: 900px) {
+    .app { grid-template-columns: 1fr; }
+    .app > aside#left-sidebar {
+      position: fixed; top: 0; bottom: 0; left: 0; width: 288px; z-index: 70;
+      transform: translateX(-101%); transition: transform .22s ease;
+      background: var(--surface); border-right: 1px solid var(--rule);
+    }
+    .app > aside#left-sidebar[data-open="true"] { transform: translateX(0); }
+    #sidebar-scrim { display: none; }
+    aside#left-sidebar[data-open="true"] ~ #sidebar-scrim { display: block; }
+    main { padding-bottom: 64px; }
+  }
+  .view-scroll { overflow: auto; height: 100%; }
+  .hljs { background: transparent !important; padding: 0 !important; }
+</style>
 </head>
-<body class="dark selection:bg-primary selection:text-on-primary">
-<div class="scanline-overlay"></div>
-<div class="data-grid"></div>
+<body class="bg-field">
 
-<!-- ── HEADER ──────────────────────────────────────────────────────────── -->
-<header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-6 h-14 bg-black/90 border-b border-[#a4ffb9]/20 shadow-[0_0_15px_rgba(164,255,185,0.1)]">
-  <div class="flex items-center gap-3 md:gap-6">
-    <button id="hamburger-btn" onclick="toggleMobileSidebar()" class="md:hidden p-1 text-[#adaaaa] hover:text-primary transition-colors" title="Menú">
-      <span class="material-symbols-outlined text-xl">menu</span>
+<div class="app">
+
+  <!-- ================================================================
+       HEADER
+       ================================================================ -->
+  <header class="relative border-b flex items-center gap-3 px-3 md:px-4" style="height:56px; border-color: var(--rule-strong); background: linear-gradient(to bottom, var(--surface-2), var(--bg));">
+    <!-- mobile hamburger -->
+    <button id="hamburger" onclick="toggleMobileSidebar()" class="btn btn-icon btn-ghost md:hidden" aria-label="menu">
+      <span class="material-symbols-outlined" style="font-size:18px">menu</span>
     </button>
-    <span class="text-2xl font-black text-[#a4ffb9] tracking-[-0.05em] cursor-pointer" onclick="switchView('chat')">STRATUM</span>
-    <div class="hidden md:flex items-center gap-1.5 font-mono text-[9px]">
-      <span id="conn-dot" class="w-1.5 h-1.5 bg-gray-500 rounded-full"></span>
-      <span id="conn-label" class="text-gray-500 tracking-widest">CONNECTING...</span>
-    </div>
-    <!-- Hidden legacy IDs for JS compatibility -->
-    <span id="svc-sqlite-dot" class="hidden"></span>
-    <span id="svc-qdrant-dot" class="hidden"></span>
-    <span id="svc-ollama-dot" class="hidden"></span>
-    <span id="svc-cache" class="hidden"></span>
-  </div>
-  <div class="flex items-center gap-4">
-    <div class="hidden md:flex gap-4 font-mono text-[10px] tracking-widest text-[#adaaaa]">
-      <div class="flex items-center gap-1.5">
-        <span class="text-[8px] opacity-50">FACTS</span>
-        <span id="h-facts" class="text-primary font-bold">0</span>
-      </div>
-      <div class="flex items-center gap-1.5 ml-1">
-        <span class="text-[8px] opacity-50">MSGS</span>
-        <span id="h-msgs" class="text-primary font-bold">0</span>
-      </div>
-      <div class="flex items-center gap-1.5 ml-1">
-        <span class="text-[8px] opacity-50">NODES</span>
-        <span id="h-nodes" class="text-secondary font-bold">0</span>
+
+    <!-- wordmark -->
+    <div class="flex items-center gap-3 cursor-pointer" onclick="switchView('chat')">
+      <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true" style="flex-shrink:0">
+        <rect x="0.5" y="0.5" width="27" height="27" fill="none" stroke="var(--accent)" stroke-width="1"/>
+        <polyline points="4,14 7,14 9,9 12,19 15,9 18,19 21,14 24,14"
+                  fill="none" stroke="var(--accent)" stroke-width="1.2" stroke-linejoin="miter"/>
+        <circle cx="4" cy="14" r="1.2" fill="var(--accent)"/>
+        <circle cx="24" cy="14" r="1.2" fill="var(--accent)"/>
+      </svg>
+      <div class="leading-tight">
+        <div class="font-ui font-semibold tracking-wide" style="font-size:15px">STRATUM</div>
+        <div class="label label-dim" style="font-size:9.5px; margin-top:-2px">TECHNICAL·MEMORY·v4.0</div>
       </div>
     </div>
-    <div class="hidden md:flex items-center gap-1.5 border-l border-[#a4ffb9]/20 pl-4">
-      <span class="material-symbols-outlined text-[10px] text-[#adaaaa]">psychology</span>
-      <span id="h-active-profile" class="text-[9px] font-mono tracking-widest text-[#adaaaa]">—</span>
-    </div>
-    <div class="flex gap-1 ml-2">
-      <button onclick="openVisionModal()" class="p-1.5 text-[#adaaaa] hover:text-[#8eff71] transition-colors" title="Analizar circuito con IA visual">
-        <span class="material-symbols-outlined text-sm">photo_camera</span>
-      </button>
-      <a href="/api/circuits/viewer" target="_blank" class="p-1.5 text-[#adaaaa] hover:text-[#8eff71] transition-colors" title="Circuit Viewer">
-        <span class="material-symbols-outlined text-sm">schema</span>
-      </a>
-      <button onclick="switchView('metrics')" class="p-1.5 text-[#adaaaa] hover:text-[#8eff71] transition-colors" title="Métricas">
-        <span class="material-symbols-outlined text-sm">bar_chart</span>
-      </button>
-    </div>
-  </div>
-</header>
 
-<!-- Mobile sidebar backdrop -->
-<div id="sidebar-backdrop" onclick="closeMobileSidebar()" class="hidden fixed inset-0 bg-black/70 z-[39]"></div>
-
-<!-- ── LEFT SIDEBAR — sessions + module nav ─────────────────────────────── -->
-<aside id="left-sidebar" class="fixed left-0 top-14 h-[calc(100vh-3.5rem)] flex flex-col z-40 bg-[#0a0a0a] w-72 border-r border-[#a4ffb9]/10 font-mono text-[0.6875rem] tracking-widest overflow-hidden">
-  <!-- CONVERSACIONES — sección colapsable, ocupa el espacio mayor -->
-  <div id="chats-section" class="flex flex-col flex-1 min-h-0 transition-all duration-200">
-
-    <!-- Header colapsable -->
-    <div class="flex items-center justify-between px-4 py-2.5 border-b border-[#a4ffb9]/10 flex-shrink-0 cursor-pointer hover:bg-[#0f0f0f] transition-colors"
-         onclick="toggleChatsSection()">
+    <!-- connection status (desktop) -->
+    <div class="hidden md:flex items-center gap-4 ml-6 pl-6 border-l" style="border-color: var(--rule)">
       <div class="flex items-center gap-2">
-        <span id="chats-chevron" class="material-symbols-outlined text-sm text-[#494847] transition-transform duration-200">expand_more</span>
-        <div>
-          <div class="text-[10px] text-[#a4ffb9] font-bold tracking-widest">CONVERSACIONES</div>
-          <div id="engine-status" class="text-[8px] text-[#494847]">STATUS: INITIALIZING</div>
+        <span id="conn-dot" class="dot" style="color: var(--fg-4)"></span>
+        <span id="conn-label" class="label label-dim">CONNECTING</span>
+      </div>
+    </div>
+
+    <!-- right: stats + buttons -->
+    <div class="ml-auto flex items-center gap-2 md:gap-3">
+      <div class="hidden md:flex items-center gap-3 pr-3 border-r" style="border-color: var(--rule)">
+        <div class="text-right">
+          <div class="label label-dim">FACTS</div>
+          <div id="h-facts" class="num" style="font-size:13px; color: var(--accent)">0</div>
+        </div>
+        <div class="text-right">
+          <div class="label label-dim">MSGS</div>
+          <div id="h-msgs" class="num" style="font-size:13px">0</div>
+        </div>
+        <div class="text-right">
+          <div class="label label-dim">NODES</div>
+          <div id="h-nodes" class="num" style="font-size:13px; color: var(--accent)">0</div>
+        </div>
+        <div class="text-right hidden">
+          <div id="h-active-profile" class="label label-dim" style="font-size:9px">—</div>
         </div>
       </div>
-      <button onclick="event.stopPropagation(); newSession()"
-        class="flex items-center gap-1 text-[9px] text-[#adaaaa] hover:text-primary border border-[#494847]/40 hover:border-primary/50 px-2 py-1 transition-all">
-        <span class="material-symbols-outlined text-xs">add</span>NUEVA
+      <button class="btn btn-icon btn-ghost hidden" onclick="openVisionModal()" title="Vision">
+        <span class="material-symbols-outlined" style="font-size:16px">photo_camera</span>
+      </button>
+      <button id="tweaks-btn" class="btn btn-icon btn-ghost" title="Tweaks">
+        <span class="material-symbols-outlined" style="font-size:16px">tune</span>
       </button>
     </div>
 
-    <!-- Lista de sesiones (colapsa cuando se cierra la sección) -->
-    <div id="sessions-list-wrap" class="flex-1 flex flex-col min-h-0 overflow-hidden">
-      <div id="sessions-list" class="flex-1 overflow-y-auto py-1 min-h-0">
-        <div class="px-4 py-6 text-center text-[9px] text-[#494847]">Sin conversaciones</div>
-      </div>
-    </div>
-  </div>
+    <div class="absolute left-0 right-0 bottom-0 ruler" data-coord="X·0000"></div>
+  </header>
 
-  <!-- PROYECTO ACTIVO ─────────────────────────────────────────────────── -->
-  <div id="projects-section" class="border-t border-[#a4ffb9]/10 flex-shrink-0">
-    <div class="flex items-center justify-between px-4 py-2">
-      <div class="flex items-center gap-2">
-        <span class="material-symbols-outlined text-[10px] text-[#494847]">folder_open</span>
-        <span class="text-[8px] text-[#494847] tracking-widest">PROYECTO</span>
-        <span id="active-project-badge"
-          class="hidden text-[7px] font-mono text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.5 max-w-[90px] truncate">—</span>
-      </div>
-      <div class="flex items-center gap-1.5">
-        <button onclick="deactivateAllProjects()" title="Desactivar proyecto" class="text-[7px] text-[#494847] hover:text-error transition-colors">✕</button>
-        <button onclick="toggleCreateProjectForm()" class="text-[8px] text-[#494847] hover:text-primary transition-colors">+</button>
-      </div>
-    </div>
+  <!-- ================================================================
+       SIDEBAR
+       ================================================================ -->
+  <aside id="left-sidebar" data-open="false" class="flex flex-col" style="background: var(--surface); border-right: 1px solid var(--rule);">
 
-    <!-- Lista de proyectos -->
-    <div id="projects-list" class="max-h-28 overflow-y-auto">
-      <div class="text-[9px] text-[#494847] px-3 py-1.5">Cargando...</div>
-    </div>
-
-    <!-- Form nuevo proyecto (colapsado) -->
-    <div id="create-project-form" class="hidden bg-[#0a0a0a] border-t border-[#494847]/20 p-3 space-y-1.5">
-      <input id="proj-name" type="text" placeholder="Nombre del proyecto *"
-        class="w-full bg-black border border-[#494847]/40 text-[9px] font-mono text-white px-2 py-1.5 focus:border-primary/60 focus:outline-none placeholder-[#494847]"/>
-      <div class="flex gap-1">
-        <input id="proj-mcu" type="text" placeholder="MCU (ej: ESP32)"
-          class="flex-1 bg-black border border-[#494847]/40 text-[9px] font-mono text-white px-2 py-1 focus:border-primary/60 focus:outline-none placeholder-[#494847]"/>
-        <input id="proj-comps" type="text" placeholder="Componentes"
-          class="flex-1 bg-black border border-[#494847]/40 text-[9px] font-mono text-white px-2 py-1 focus:border-primary/60 focus:outline-none placeholder-[#494847]"/>
-      </div>
-      <input id="proj-desc" type="text" placeholder="Descripción"
-        class="w-full bg-black border border-[#494847]/40 text-[9px] font-mono text-white px-2 py-1 focus:border-primary/60 focus:outline-none placeholder-[#494847]"/>
-      <div class="flex gap-1 pt-0.5">
-        <button onclick="toggleCreateProjectForm()" class="flex-1 py-1 border border-[#494847]/30 text-[8px] text-[#494847] hover:border-[#adaaaa]">CANCEL</button>
-        <button onclick="saveNewProject()" class="flex-1 py-1 bg-primary/10 border border-primary/40 text-[8px] text-primary hover:bg-primary/20">CREAR</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- MÓDULOS — siempre visible, compacto -->
-  <div id="modules-section" class="border-t border-[#a4ffb9]/10 flex-shrink-0">
-
-    <!-- Header colapsable de módulos -->
-    <div class="flex items-center justify-between px-4 py-2 cursor-pointer hover:bg-[#0f0f0f] transition-colors"
-         onclick="toggleModulesSection()">
-      <div class="flex items-center gap-2">
-        <span id="modules-chevron" class="material-symbols-outlined text-xs text-[#494847] transition-transform duration-200">expand_less</span>
-        <span class="text-[8px] text-[#494847] tracking-widest">MÓDULOS</span>
-      </div>
-    </div>
-
-    <nav id="modules-nav" class="pb-1">
-      <button onclick="switchView('devices')"  id="nav-devices"  class="nav-item flex items-center gap-3 py-1.5 pl-4 w-full text-left text-[#adaaaa] hover:bg-[#131313] hover:text-[#00cbfe] transition-all text-[10px]">
-        <span class="material-symbols-outlined text-sm">router</span> DEVICES
+    <!-- mobile header bar -->
+    <div class="md:hidden flex items-center justify-between px-3" style="height:44px; border-bottom:1px solid var(--rule)">
+      <span class="label">NAVEGACIÓN</span>
+      <button id="sidebar-close" onclick="closeMobileSidebar()" class="btn btn-icon btn-ghost" aria-label="close">
+        <span class="material-symbols-outlined" style="font-size:16px">close</span>
       </button>
-      <button onclick="switchView('intel')"    id="nav-intel"    class="nav-item flex items-center gap-3 py-1.5 pl-4 w-full text-left text-[#adaaaa] hover:bg-[#131313] hover:text-[#00cbfe] transition-all text-[10px]">
-        <span class="material-symbols-outlined text-sm">psychology</span> INTEL
-      </button>
-      <button onclick="switchView('calc')"     id="nav-calc"     class="nav-item flex items-center gap-3 py-1.5 pl-4 w-full text-left text-[#adaaaa] hover:bg-[#131313] hover:text-[#00cbfe] transition-all text-[10px]">
-        <span class="material-symbols-outlined text-sm">calculate</span> CALC
-      </button>
-      <button onclick="switchView('metrics')"  id="nav-metrics"  class="nav-item flex items-center gap-3 py-1.5 pl-4 w-full text-left text-[#adaaaa] hover:bg-[#131313] hover:text-[#00cbfe] transition-all text-[10px]">
-        <span class="material-symbols-outlined text-sm">bar_chart</span> METRICS
-      </button>
-      <button onclick="switchView('kb')"        id="nav-kb"        class="nav-item flex items-center gap-3 py-1.5 pl-4 w-full text-left text-[#adaaaa] hover:bg-[#131313] hover:text-[#00cbfe] transition-all text-[10px]">
-        <span class="material-symbols-outlined text-sm">library_books</span> KB
-      </button>
-      <button onclick="switchView('system')"   id="nav-system"   class="nav-item flex items-center gap-3 py-1.5 pl-4 w-full text-left text-[#adaaaa] hover:bg-[#131313] hover:text-[#00cbfe] transition-all text-[10px]">
-        <span class="material-symbols-outlined text-sm">settings</span> SYSTEM
-      </button>
-    </nav>
-  </div>
-
-  <!-- Sidebar footer: service status + bridge -->
-  <div class="border-t border-[#a4ffb9]/10 px-4 py-2 flex-shrink-0 space-y-1">
-    <div class="flex flex-wrap gap-x-3 gap-y-0.5 text-[8px] text-[#494847]">
-      <span id="svc-sqlite">SQLite —</span>
-      <span id="svc-qdrant">Qdrant —</span>
-      <span id="svc-ollama">LLM —</span>
     </div>
-    <div class="flex items-center justify-between text-[8px]">
-      <div class="flex items-center gap-1.5">
-        <span id="bridge-dot-web" class="w-1.5 h-1.5 bg-[#494847] rounded-full inline-block"></span>
-        <span id="bridge-status-web" class="text-[#494847]">BRIDGE —</span>
-      </div>
-      <div class="flex items-center gap-1.5">
-        <span id="status-dot" class="w-1.5 h-1.5 bg-[#494847]"></span>
-        <span id="status-text" class="tracking-widest">OFFLINE</span>
-      </div>
-    </div>
-  </div>
 
-  <!-- Hidden legacy containers kept so JS doesn't break -->
-  <div class="hidden">
-    <div id="panel-telemetry">
-
-    <!-- TELEMETRY PANEL -->
-    <div id="panel-telemetry" class="tab-content active space-y-4">
-      <div>
-        <div class="text-[8px] opacity-50 mb-2">MEMORY_STATISTICS</div>
-        <div class="bg-surface-container-low p-3 space-y-1.5 border-l border-primary/20">
-          <div class="flex justify-between"><span>FACTS</span><span id="s-facts" class="text-primary">0</span></div>
-          <div class="flex justify-between"><span>MESSAGES</span><span id="s-msgs" class="text-primary">0</span></div>
-          <div class="flex justify-between"><span>NODES</span><span id="s-nodes" class="text-secondary">0</span></div>
-          <div class="flex justify-between"><span>EDGES</span><span id="s-edges" class="text-secondary">0</span></div>
-          <div class="flex justify-between"><span>DEVICES</span><span id="s-devices" class="text-[#8eff71]">0</span></div>
-          <div class="flex justify-between"><span>FLASHES</span><span id="s-flashes" class="text-[#8eff71]">0</span></div>
+    <!-- active project -->
+    <div class="px-3 py-3 border-b" style="border-color: var(--rule)">
+      <div class="flex items-center justify-between mb-2">
+        <span class="label">PROYECTO ACTIVO</span>
+        <div class="flex items-center gap-1">
+          <button onclick="deactivateAllProjects()" title="Desactivar" class="label label-dim hover:text-error" style="font-size:10px; background:none; border:none; cursor:pointer">✕</button>
+          <button onclick="toggleCreateProjectForm()" class="label label-dim" style="font-size:11px; background:none; border:none; cursor:pointer">+</button>
         </div>
       </div>
-      <div>
-        <div class="text-[8px] opacity-50 mb-2">KNOWN_FACTS</div>
-        <div id="facts-list" class="space-y-1">
-          <p class="text-[10px] text-[#adaaaa]">Sin hechos</p>
-        </div>
+      <div class="panel panel-cnr" style="padding: 10px 12px">
+        <span id="active-project-badge" class="mono" style="font-size:12px; color: var(--fg-2); letter-spacing:0.06em">Sin proyecto</span>
+        <div id="projects-list" class="mt-1"></div>
       </div>
-      <div>
-        <div class="text-[8px] opacity-50 mb-2">KNOWLEDGE_GRAPH</div>
-        <div id="graph-list" class="space-y-1">
-          <p class="text-[10px] text-[#adaaaa]">Sin relaciones</p>
+      <!-- new project form (hidden) -->
+      <div id="create-project-form" class="hidden mt-2 space-y-1.5" style="border-top:1px dashed var(--rule); padding-top:8px">
+        <input id="proj-name" type="text" placeholder="Nombre del proyecto *"
+          class="w-full bg-transparent border-b py-1 text-xs font-mono outline-none placeholder-[color:var(--fg-4)]" style="border-color:var(--rule-strong); color:var(--fg); font-size:11px"/>
+        <div class="flex gap-1">
+          <input id="proj-mcu" type="text" placeholder="MCU"
+            class="flex-1 bg-transparent border-b py-1 text-xs font-mono outline-none placeholder-[color:var(--fg-4)]" style="border-color:var(--rule); color:var(--fg); font-size:11px"/>
+          <input id="proj-comps" type="text" placeholder="Componentes"
+            class="flex-1 bg-transparent border-b py-1 text-xs font-mono outline-none placeholder-[color:var(--fg-4)]" style="border-color:var(--rule); color:var(--fg); font-size:11px"/>
+        </div>
+        <input id="proj-desc" type="text" placeholder="Descripción"
+          class="w-full bg-transparent border-b py-1 text-xs font-mono outline-none placeholder-[color:var(--fg-4)]" style="border-color:var(--rule); color:var(--fg); font-size:11px"/>
+        <div class="flex gap-1 pt-1">
+          <button onclick="toggleCreateProjectForm()" class="flex-1 btn btn-ghost" style="height:26px; font-size:10px">CANCEL</button>
+          <button onclick="saveNewProject()" class="flex-1 btn btn-primary" style="height:26px; font-size:10px">CREAR</button>
         </div>
       </div>
     </div>
 
-    <!-- SEARCH PANEL -->
-    <div id="panel-search" class="tab-content space-y-3">
-      <div class="text-[8px] opacity-50">SEMANTIC_SEARCH</div>
-      <div class="relative">
-        <input id="search-input" type="text" placeholder="Query memory..."
-          class="w-full bg-black border-b border-[#494847] py-2 px-3 focus:outline-none focus:border-secondary text-xs text-white placeholder-[#494847]"/>
-        <button onclick="doSearch()" class="absolute right-2 top-2 text-[#adaaaa] hover:text-primary">
-          <span class="material-symbols-outlined text-sm">search</span>
+    <!-- modules nav -->
+    <div class="pt-2">
+      <div class="px-3 pb-2 flex items-center justify-between">
+        <span class="label">MÓDULOS</span>
+        <span class="label label-dim">7</span>
+      </div>
+      <nav class="flex flex-col">
+        <div class="nav-item" data-nav="chat" data-active="true" onclick="switchView('chat')">
+          <span class="material-symbols-outlined" style="font-size:16px">forum</span>
+          <span>CHAT</span><span class="ml-auto num">01</span>
+        </div>
+        <div class="nav-item" data-nav="kb" onclick="switchView('kb')">
+          <span class="material-symbols-outlined" style="font-size:16px">database</span>
+          <span>KB</span><span class="ml-auto num">02</span>
+        </div>
+        <div class="nav-item" data-nav="calc" onclick="switchView('calc')">
+          <span class="material-symbols-outlined" style="font-size:16px">function</span>
+          <span>CALC</span><span class="ml-auto num">03</span>
+        </div>
+        <div class="nav-item" data-nav="devices" onclick="switchView('devices')">
+          <span class="material-symbols-outlined" style="font-size:16px">memory</span>
+          <span>DEVICES</span><span class="ml-auto num">04</span>
+        </div>
+        <div class="nav-item" data-nav="intel" onclick="switchView('intel')">
+          <span class="material-symbols-outlined" style="font-size:16px">hub</span>
+          <span>INTEL</span><span class="ml-auto num">05</span>
+        </div>
+        <div class="nav-item" data-nav="metrics" onclick="switchView('metrics')">
+          <span class="material-symbols-outlined" style="font-size:16px">monitoring</span>
+          <span>METRICS</span><span class="ml-auto num">06</span>
+        </div>
+        <div class="nav-item" data-nav="system" onclick="switchView('system')">
+          <span class="material-symbols-outlined" style="font-size:16px">settings</span>
+          <span>SYSTEM</span><span class="ml-auto num">07</span>
+        </div>
+      </nav>
+    </div>
+
+    <!-- conversations -->
+    <div class="mt-2 border-t flex-1 flex flex-col min-h-0" style="border-color: var(--rule)">
+      <div class="px-3 py-2 flex items-center justify-between flex-shrink-0">
+        <span class="label">CONVERSACIONES</span>
+        <button onclick="newSession()" class="btn btn-icon btn-ghost" style="height:22px; width:22px" title="Nueva">
+          <span class="material-symbols-outlined" style="font-size:14px">add</span>
         </button>
       </div>
-      <div id="search-results" class="space-y-2"></div>
-    </div>
-
-    <!-- INTEL PANEL -->
-    <div id="panel-intel" class="tab-content space-y-4">
-      <!-- Perfiles -->
-      <div>
-        <div class="flex justify-between items-center mb-2">
-          <div class="text-[8px] opacity-50">AI_PROFILES</div>
-          <button onclick="showCreateProfile()" class="text-[8px] text-secondary hover:text-primary">+ NEW</button>
-        </div>
-        <div id="intel-profiles" class="space-y-2">
-          <p class="text-[10px] text-[#adaaaa]">Cargando...</p>
-        </div>
-      </div>
-
-      <!-- Form crear perfil (oculto por defecto) -->
-      <div id="intel-create-profile-form" class="hidden bg-[#131313] p-3 border border-secondary/20 space-y-2">
-        <div class="text-[8px] text-secondary mb-2">NUEVO_PERFIL</div>
-        <input id="intel-pf-name" type="text" placeholder="Nombre del perfil"
-          class="w-full bg-black border-b border-[#494847] py-1.5 px-2 text-[10px] text-white placeholder-[#494847] focus:outline-none focus:border-secondary"/>
-        <textarea id="intel-pf-prompt" rows="4" placeholder="System prompt..."
-          class="w-full bg-black border border-[#494847] p-2 text-[10px] text-white placeholder-[#494847] focus:outline-none focus:border-secondary resize-none font-mono leading-relaxed"></textarea>
-        <input id="intel-pf-desc" type="text" placeholder="Descripción (opcional)"
-          class="w-full bg-black border-b border-[#494847] py-1.5 px-2 text-[10px] text-white placeholder-[#494847] focus:outline-none focus:border-secondary"/>
-        <div class="flex gap-2 pt-1">
-          <button onclick="hideCreateProfile()" class="flex-1 py-1.5 border border-[#494847]/30 text-[9px] text-[#adaaaa] hover:border-[#adaaaa]">CANCEL</button>
-          <button onclick="saveNewProfile()" class="flex-1 py-1.5 bg-secondary/10 border border-secondary/40 text-[9px] text-secondary hover:bg-secondary/20">SAVE</button>
-        </div>
-      </div>
-
-      <!-- Fuentes de conocimiento -->
-      <div>
-        <div class="flex justify-between items-center mb-2">
-          <div class="text-[8px] opacity-50">KNOWLEDGE_SOURCES</div>
-          <button onclick="showCreateSource()" class="text-[8px] text-secondary hover:text-primary">+ ADD</button>
-        </div>
-        <div id="intel-sources" class="space-y-2">
-          <p class="text-[10px] text-[#adaaaa]">Sin fuentes</p>
-        </div>
-      </div>
-
-      <!-- Decisiones de diseño -->
-      <div>
-        <div class="flex justify-between items-center mb-2">
-          <div class="text-[8px] opacity-50">DESIGN_DECISIONS</div>
-          <div class="flex gap-2">
-            <input id="web-decisions-search" type="text" placeholder="Buscar..."
-              class="bg-black border border-[#494847]/50 text-[9px] text-white font-mono px-2 py-0.5 w-24 focus:border-secondary/60 outline-none"
-              oninput="webSearchDecisions(this.value)"/>
-            <button onclick="webToggleDecisionForm()" class="text-[8px] text-secondary hover:text-primary">+ ADD</button>
-            <button onclick="webLoadDecisions()" class="text-[8px] text-[#494847] hover:text-primary">↻</button>
-          </div>
-        </div>
-
-        <!-- Formulario inline para agregar decisión -->
-        <div id="web-decision-form" class="hidden mb-3 bg-[#131313] border border-secondary/30 p-3 space-y-2">
-          <div class="flex gap-2">
-            <input id="wdf-project"   type="text" placeholder="Proyecto"   class="flex-1 bg-black border border-[#494847]/50 text-[9px] text-white font-mono px-2 py-1.5 outline-none focus:border-secondary/60"/>
-            <input id="wdf-component" type="text" placeholder="Componente" class="flex-1 bg-black border border-[#494847]/50 text-[9px] text-white font-mono px-2 py-1.5 outline-none focus:border-secondary/60"/>
-          </div>
-          <input id="wdf-decision"  type="text" placeholder="Decisión (qué elegiste) *"    class="w-full bg-black border border-[#494847]/50 text-[9px] text-white font-mono px-2 py-1.5 outline-none focus:border-secondary/60"/>
-          <textarea id="wdf-reasoning" rows="2" placeholder="Razonamiento (por qué) *"     class="w-full bg-black border border-[#494847]/50 text-[9px] text-white font-mono px-2 py-1.5 outline-none focus:border-secondary/60 resize-none"></textarea>
-          <div class="flex gap-2">
-            <button onclick="webSaveDecision()" class="flex-1 bg-secondary/10 border border-secondary/40 text-secondary text-[9px] py-1.5 hover:bg-secondary/20">GUARDAR</button>
-            <button onclick="webToggleDecisionForm()" class="px-3 border border-[#494847]/40 text-[#adaaaa] text-[9px] py-1.5">✕</button>
-          </div>
-        </div>
-
-        <div id="web-intel-decisions" class="space-y-2">
-          <p class="text-[10px] text-[#adaaaa]">Sin decisiones guardadas</p>
-        </div>
-      </div>
-
-      <!-- Form crear fuente (oculto por defecto) -->
-      <div id="intel-create-source-form" class="hidden bg-[#131313] p-3 border border-[#8eff71]/20 space-y-2">
-        <div class="text-[8px] text-[#8eff71] mb-2">NUEVA_FUENTE</div>
-        <input id="intel-src-name" type="text" placeholder="Nombre (ej: Datasheet ESP32)"
-          class="w-full bg-black border-b border-[#494847] py-1.5 px-2 text-[10px] text-white placeholder-[#494847] focus:outline-none focus:border-[#8eff71]"/>
-        <textarea id="intel-src-content" rows="5" placeholder="Pegá el contenido (texto, datasheet, documentación)..."
-          class="w-full bg-black border border-[#494847] p-2 text-[10px] text-white placeholder-[#494847] focus:outline-none focus:border-[#8eff71] resize-none font-mono leading-relaxed"></textarea>
-        <input id="intel-src-desc" type="text" placeholder="Descripción (opcional)"
-          class="w-full bg-black border-b border-[#494847] py-1.5 px-2 text-[10px] text-white placeholder-[#494847] focus:outline-none focus:border-[#8eff71]"/>
-        <div class="flex gap-2 pt-1">
-          <button onclick="hideCreateSource()" class="flex-1 py-1.5 border border-[#494847]/30 text-[9px] text-[#adaaaa] hover:border-[#adaaaa]">CANCEL</button>
-          <button onclick="saveNewSource()" class="flex-1 py-1.5 bg-[#8eff71]/10 border border-[#8eff71]/40 text-[9px] text-[#8eff71] hover:bg-[#8eff71]/20">SAVE + INDEX</button>
-        </div>
+      <div id="sessions-list" class="px-1 pb-2 overflow-auto flex-1 min-h-0">
+        <div class="px-3 py-4 text-center label label-dim" style="font-size:10px">Sin conversaciones</div>
       </div>
     </div>
 
-    <!-- METRICS PANEL -->
-    <div id="panel-metrics" class="tab-content space-y-4">
-      <div class="text-[8px] opacity-50 mb-1">PROJECT_METRICS</div>
-
-      <!-- KPIs row -->
-      <div class="grid grid-cols-2 gap-2">
-        <div class="bg-surface-container-low p-3 border-l border-primary/20 text-center">
-          <div class="text-[18px] text-primary font-mono" id="kpi-firmware">0</div>
-          <div class="text-[8px] opacity-50 mt-0.5">FIRMWARE_FLASHES</div>
+    <!-- footer -->
+    <div class="px-3 py-2 border-t flex-shrink-0" style="border-color: var(--rule)">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span id="status-dot" class="dot" style="color: var(--fg-4)"></span>
+          <span id="status-text" class="label label-dim" style="font-size:9.5px">OFFLINE</span>
         </div>
-        <div class="bg-surface-container-low p-3 border-l border-secondary/20 text-center">
-          <div class="text-[18px] text-secondary font-mono" id="kpi-devices">0</div>
-          <div class="text-[8px] opacity-50 mt-0.5">DEVICES_REGISTERED</div>
-        </div>
-        <div class="bg-surface-container-low p-3 border-l border-[#8eff71]/20 text-center">
-          <div class="text-[18px] text-[#8eff71] font-mono" id="kpi-stock">0</div>
-          <div class="text-[8px] opacity-50 mt-0.5">COMPONENTS_IN_STOCK</div>
-        </div>
-        <div class="bg-surface-container-low p-3 border-l border-primary/20 text-center">
-          <div class="text-[18px] text-primary font-mono" id="kpi-decisions">0</div>
-          <div class="text-[8px] opacity-50 mt-0.5">DESIGN_DECISIONS</div>
-        </div>
+        <span id="engine-status" class="label label-dim" style="font-size:9px">STRATUM·v4</span>
       </div>
+      <div id="session-time" class="label label-dim mt-1" style="font-size:9px; letter-spacing:0.06em"></div>
+    </div>
+  </aside>
+  <div id="sidebar-scrim" onclick="closeMobileSidebar()"></div>
 
-      <!-- Firmware por dispositivo (bar) -->
-      <div>
-        <div class="text-[8px] opacity-50 mb-2">FIRMWARE_HISTORY_BY_DEVICE</div>
-        <div class="bg-surface-container-low p-3 border-l border-primary/20" style="height:160px">
-          <canvas id="chart-firmware"></canvas>
-        </div>
-      </div>
+  <!-- ================================================================
+       MAIN
+       ================================================================ -->
+  <main class="view-scroll" style="background: var(--bg)">
 
-      <!-- Stock por categoría (doughnut) -->
-      <div>
-        <div class="text-[8px] opacity-50 mb-2">STOCK_BY_CATEGORY</div>
-        <div class="bg-surface-container-low p-3 border-l border-[#8eff71]/20 flex gap-4" style="height:160px">
-          <canvas id="chart-stock" style="max-width:140px"></canvas>
-          <div id="chart-stock-legend" class="text-[8px] space-y-1 overflow-y-auto flex-1 self-center"></div>
-        </div>
-      </div>
-
-      <!-- Decisiones recientes -->
-      <div>
-        <div class="text-[8px] opacity-50 mb-2">RECENT_DESIGN_DECISIONS</div>
-        <div id="metrics-decisions-list" class="space-y-1.5 max-h-48 overflow-y-auto"></div>
-      </div>
-
-      <!-- Timeline actividad reciente -->
-      <div>
-        <div class="text-[8px] opacity-50 mb-2">ACTIVIDAD_RECIENTE</div>
-        <div id="metrics-activity" class="space-y-1 max-h-56 overflow-y-auto"></div>
-      </div>
-
-      <!-- Refresh -->
-      <button onclick="loadMetricsPanel()" class="w-full py-1.5 text-[8px] border border-[#494847]/40 text-[#adaaaa] hover:border-primary/40 hover:text-primary tracking-widest">
-        ↻ REFRESH METRICS
-      </button>
+    <!-- mobile sub-header -->
+    <div class="md:hidden sticky top-0 z-20 flex items-center px-3 gap-2 border-b" style="background: var(--overlay); backdrop-filter: blur(10px); border-color: var(--rule); height: 40px">
+      <span class="label label-accent">[</span>
+      <span id="view-title" class="label label-accent">CHAT</span>
+      <span class="label label-accent">]</span>
     </div>
 
-    <!-- CALC PANEL -->
-    <div id="panel-calc" class="tab-content space-y-4">
-      <div class="text-[8px] opacity-50 mb-1">ENGINEERING_CALCULATOR</div>
+    <!-- ===================== CHAT ===================== -->
+    <section data-view="chat">
+      <div class="max-w-5xl mx-auto px-3 md:px-5 pt-3 pb-48 md:pb-40">
+        <!-- view header (desktop) -->
+        <div class="hidden md:flex items-center justify-between mb-3">
+          <div class="flex items-center gap-3">
+            <span class="label label-accent">[ CHAT / CONVERSACIÓN ]</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="btn btn-ghost" onclick="exportChat()">
+              <span class="material-symbols-outlined" style="font-size:14px">download</span> EXPORT .MD
+            </button>
+            <button class="btn btn-ghost" onclick="toggleSearchModal()">
+              <span class="material-symbols-outlined" style="font-size:14px">search</span> Ctrl+K
+            </button>
+          </div>
+        </div>
 
-      <!-- Selector de calculadora -->
-      <div>
-        <select id="calc-selector" onchange="calcSwitchForm(this.value)"
-          class="w-full bg-[#131313] border border-[#494847]/40 text-[9px] text-[#adaaaa] p-2 font-mono tracking-widest">
-          <option value="resistor_for_led">RESISTOR PARA LED</option>
-          <option value="resistor_voltage_divider">DIVISOR DE TENSIÓN</option>
-          <option value="buck_converter">BUCK CONVERTER</option>
-          <option value="boost_converter">BOOST CONVERTER</option>
-          <option value="battery_autonomy">AUTONOMÍA BATERÍA</option>
-          <option value="fuse_rating">FUSIBLE</option>
-          <option value="heat_sink_required">DISIPADOR TÉRMICO</option>
-          <option value="transformer_turns_ratio">TRANSFORMADOR</option>
-          <option value="low_pass_rc">FILTRO PASO BAJO RC</option>
-          <option value="high_pass_rc">FILTRO PASO ALTO RC</option>
-          <option value="inverting_amp">AMP INVERSOR</option>
-          <option value="non_inverting_amp">AMP NO INVERSOR</option>
-          <option value="motor_power">POTENCIA MOTOR</option>
-          <option value="vfd_frequency_for_rpm">FRECUENCIA VFD</option>
-          <option value="ohms_law">LEY DE OHM</option>
-          <option value="resistor_power">POTENCIA EN RESISTENCIA</option>
-          <option value="capacitor_filter">CAPACITOR FILTRO RC</option>
-          <option value="rc_time_constant">CONSTANTE RC</option>
-          <option value="capacitor_energy">ENERGÍA EN CAPACITOR</option>
-          <option value="power_dissipation">POTENCIA DISIPADA P=VI</option>
-          <option value="efficiency">EFICIENCIA ENERGÉTICA</option>
-          <option value="lc_filter">FILTRO LC 2do ORDEN</option>
-          <option value="voltage_follower">BUFFER / SEGUIDOR</option>
-          <option value="charge_time">TIEMPO DE CARGA BATERÍA</option>
-          <option value="motor_torque">TORQUE DE MOTOR</option>
-        </select>
+        <div id="messages" class="flex flex-col gap-4"></div>
       </div>
 
-      <!-- Formularios por calculadora -->
-      <div id="calc-forms">
-
-        <div id="calcf-resistor_for_led" class="calc-form space-y-2">
-          <div class="text-[8px] opacity-50">R = (Vcc − Vled) / Iled</div>
-          <div class="grid grid-cols-3 gap-1">
-            <div><div class="text-[7px] opacity-50 mb-0.5">Vcc (V)</div><input id="cf-vcc" type="number" value="5" step="0.1" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">Vled (V)</div><input id="cf-vled" type="number" value="2.0" step="0.1" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">Iled (mA)</div><input id="cf-iled" type="number" value="20" step="1" class="calc-input w-full"></div>
-          </div>
-        </div>
-
-        <div id="calcf-resistor_voltage_divider" class="calc-form space-y-2 hidden">
-          <div class="text-[8px] opacity-50">R2 = R1 × Vout / (Vin − Vout)</div>
-          <div class="grid grid-cols-3 gap-1">
-            <div><div class="text-[7px] opacity-50 mb-0.5">Vin (V)</div><input id="cf-vin" type="number" value="12" step="0.1" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">Vout (V)</div><input id="cf-vout" type="number" value="3.3" step="0.1" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">R1 (Ω)</div><input id="cf-r1" type="number" value="10000" step="100" class="calc-input w-full"></div>
-          </div>
-        </div>
-
-        <div id="calcf-buck_converter" class="calc-form space-y-2 hidden">
-          <div class="text-[8px] opacity-50">BUCK: L y C de salida</div>
-          <div class="grid grid-cols-2 gap-1">
-            <div><div class="text-[7px] opacity-50 mb-0.5">Vin (V)</div><input id="cf-bvin" type="number" value="12" step="0.1" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">Vout (V)</div><input id="cf-bvout" type="number" value="5" step="0.1" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">Iout (A)</div><input id="cf-biout" type="number" value="1" step="0.1" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">Frec (kHz)</div><input id="cf-bfreq" type="number" value="100" step="10" class="calc-input w-full"></div>
-          </div>
-        </div>
-
-        <div id="calcf-boost_converter" class="calc-form space-y-2 hidden">
-          <div class="text-[8px] opacity-50">BOOST: L y C de salida</div>
-          <div class="grid grid-cols-2 gap-1">
-            <div><div class="text-[7px] opacity-50 mb-0.5">Vin (V)</div><input id="cf-bovin" type="number" value="5" step="0.1" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">Vout (V)</div><input id="cf-bovout" type="number" value="12" step="0.1" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">Iout (A)</div><input id="cf-boiout" type="number" value="0.5" step="0.1" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">Frec (kHz)</div><input id="cf-bofreq" type="number" value="100" step="10" class="calc-input w-full"></div>
-          </div>
-        </div>
-
-        <div id="calcf-battery_autonomy" class="calc-form space-y-2 hidden">
-          <div class="text-[8px] opacity-50">t = (C × η) / I</div>
-          <div class="grid grid-cols-3 gap-1">
-            <div><div class="text-[7px] opacity-50 mb-0.5">Cap (mAh)</div><input id="cf-cap" type="number" value="2000" step="100" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">I (mA)</div><input id="cf-ima" type="number" value="100" step="10" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">η (0-1)</div><input id="cf-eta" type="number" value="0.85" step="0.05" min="0" max="1" class="calc-input w-full"></div>
-          </div>
-        </div>
-
-        <div id="calcf-fuse_rating" class="calc-form space-y-2 hidden">
-          <div class="text-[8px] opacity-50">Ifuse = Imax × factor seguridad</div>
-          <div class="grid grid-cols-2 gap-1">
-            <div><div class="text-[7px] opacity-50 mb-0.5">Imax (A)</div><input id="cf-imax" type="number" value="2" step="0.1" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">Factor seg.</div><input id="cf-fsaf" type="number" value="1.25" step="0.05" class="calc-input w-full"></div>
-          </div>
-        </div>
-
-        <div id="calcf-heat_sink_required" class="calc-form space-y-2 hidden">
-          <div class="text-[8px] opacity-50">θsa = (Tjmax − Ta) / P − θjc</div>
-          <div class="grid grid-cols-2 gap-1">
-            <div><div class="text-[7px] opacity-50 mb-0.5">P (W)</div><input id="cf-pw" type="number" value="5" step="0.5" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">Ta (°C)</div><input id="cf-tamb" type="number" value="25" step="5" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">θjc (°C/W)</div><input id="cf-tjc" type="number" value="5" step="0.5" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">Tjmax (°C)</div><input id="cf-tjmax" type="number" value="125" step="5" class="calc-input w-full"></div>
-          </div>
-        </div>
-
-        <div id="calcf-transformer_turns_ratio" class="calc-form space-y-2 hidden">
-          <div class="text-[8px] opacity-50">n = Vp / Vs</div>
-          <div class="grid grid-cols-2 gap-1">
-            <div><div class="text-[7px] opacity-50 mb-0.5">Vp (V)</div><input id="cf-vp" type="number" value="220" step="1" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">Vs (V)</div><input id="cf-vs" type="number" value="12" step="1" class="calc-input w-full"></div>
-          </div>
-        </div>
-
-        <div id="calcf-low_pass_rc" class="calc-form space-y-2 hidden">
-          <div class="text-[8px] opacity-50">C = 1/(2π·f·R)</div>
-          <div class="grid grid-cols-2 gap-1">
-            <div><div class="text-[7px] opacity-50 mb-0.5">fc (Hz)</div><input id="cf-fcl" type="number" value="1000" step="100" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">R (Ω)</div><input id="cf-rl" type="number" value="10000" step="100" class="calc-input w-full"></div>
-          </div>
-        </div>
-
-        <div id="calcf-high_pass_rc" class="calc-form space-y-2 hidden">
-          <div class="text-[8px] opacity-50">R = 1/(2π·f·C)</div>
-          <div class="grid grid-cols-2 gap-1">
-            <div><div class="text-[7px] opacity-50 mb-0.5">fc (Hz)</div><input id="cf-fch" type="number" value="1000" step="100" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">C (µF)</div><input id="cf-ch" type="number" value="0.1" step="0.01" class="calc-input w-full"></div>
-          </div>
-        </div>
-
-        <div id="calcf-inverting_amp" class="calc-form space-y-2 hidden">
-          <div class="text-[8px] opacity-50">G = −Rf / Rin</div>
-          <div class="grid grid-cols-2 gap-1">
-            <div><div class="text-[7px] opacity-50 mb-0.5">Rin (Ω)</div><input id="cf-rin" type="number" value="1000" step="100" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">Rf (Ω)</div><input id="cf-rf" type="number" value="10000" step="100" class="calc-input w-full"></div>
-          </div>
-        </div>
-
-        <div id="calcf-non_inverting_amp" class="calc-form space-y-2 hidden">
-          <div class="text-[8px] opacity-50">G = 1 + R2/R1</div>
-          <div class="grid grid-cols-2 gap-1">
-            <div><div class="text-[7px] opacity-50 mb-0.5">R1 (Ω)</div><input id="cf-nir1" type="number" value="1000" step="100" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">R2 (Ω)</div><input id="cf-nir2" type="number" value="9000" step="100" class="calc-input w-full"></div>
-          </div>
-        </div>
-
-        <div id="calcf-motor_power" class="calc-form space-y-2 hidden">
-          <div class="text-[8px] opacity-50">P_mec = V × I × η</div>
-          <div class="grid grid-cols-3 gap-1">
-            <div><div class="text-[7px] opacity-50 mb-0.5">V (V)</div><input id="cf-mv" type="number" value="220" step="1" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">I (A)</div><input id="cf-mi" type="number" value="5" step="0.5" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">η (0-1)</div><input id="cf-meta" type="number" value="0.85" step="0.05" class="calc-input w-full"></div>
-          </div>
-        </div>
-
-        <div id="calcf-vfd_frequency_for_rpm" class="calc-form space-y-2 hidden">
-          <div class="text-[8px] opacity-50">f = RPM × P / 120</div>
-          <div class="grid grid-cols-2 gap-1">
-            <div><div class="text-[7px] opacity-50 mb-0.5">RPM</div><input id="cf-rpm" type="number" value="1450" step="50" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">Polos</div><input id="cf-poles" type="number" value="4" step="2" class="calc-input w-full"></div>
-          </div>
-        </div>
-
-        <div id="calcf-ohms_law" class="calc-form space-y-2 hidden">
-          <div class="text-[8px] opacity-50">V = I × R — dejá vacío el que querés calcular</div>
-          <div class="grid grid-cols-3 gap-1">
-            <div><div class="text-[7px] opacity-50 mb-0.5">V (V)</div><input id="cf-ohv" type="number" placeholder="?" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">I (mA)</div><input id="cf-ohi" type="number" placeholder="?" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">R (Ω)</div><input id="cf-ohr" type="number" placeholder="?" class="calc-input w-full"></div>
-          </div>
-        <div id="calcf-resistor_power" class="calc-form space-y-2 hidden">
-          <div class="text-[8px] opacity-50">P = I²×R ó P = V²/R</div>
-          <div class="grid grid-cols-3 gap-1">
-            <div><div class="text-[7px] opacity-50 mb-0.5">R (Ω)</div><input id="cf-rpr" type="number" value="470" step="1" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">I (mA) ó vacío</div><input id="cf-rpima" type="number" placeholder="?" step="1" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">V (V) ó vacío</div><input id="cf-rpv" type="number" placeholder="?" step="0.1" class="calc-input w-full"></div>
-          </div>
-        </div>
-
-        <div id="calcf-capacitor_filter" class="calc-form space-y-2 hidden">
-          <div class="text-[8px] opacity-50">C = 1 / (2π·f·R)</div>
-          <div class="grid grid-cols-2 gap-1">
-            <div><div class="text-[7px] opacity-50 mb-0.5">fc (Hz)</div><input id="cf-cff" type="number" value="1000" step="100" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">R (Ω)</div><input id="cf-cfr" type="number" value="10000" step="100" class="calc-input w-full"></div>
-          </div>
-        </div>
-
-        <div id="calcf-rc_time_constant" class="calc-form space-y-2 hidden">
-          <div class="text-[8px] opacity-50">τ = R × C</div>
-          <div class="grid grid-cols-2 gap-1">
-            <div><div class="text-[7px] opacity-50 mb-0.5">R (Ω)</div><input id="cf-rcr" type="number" value="10000" step="100" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">C (µF)</div><input id="cf-rcc" type="number" value="10" step="1" class="calc-input w-full"></div>
-          </div>
-        </div>
-
-        <div id="calcf-capacitor_energy" class="calc-form space-y-2 hidden">
-          <div class="text-[8px] opacity-50">E = ½ × C × V²</div>
-          <div class="grid grid-cols-2 gap-1">
-            <div><div class="text-[7px] opacity-50 mb-0.5">C (µF)</div><input id="cf-cec" type="number" value="100" step="10" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">V (V)</div><input id="cf-cev" type="number" value="12" step="1" class="calc-input w-full"></div>
-          </div>
-        </div>
-
-        <div id="calcf-power_dissipation" class="calc-form space-y-2 hidden">
-          <div class="text-[8px] opacity-50">P = V × I</div>
-          <div class="grid grid-cols-2 gap-1">
-            <div><div class="text-[7px] opacity-50 mb-0.5">V (V)</div><input id="cf-pdv" type="number" value="5" step="0.1" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">I (mA)</div><input id="cf-pdi" type="number" value="200" step="10" class="calc-input w-full"></div>
-          </div>
-        </div>
-
-        <div id="calcf-efficiency" class="calc-form space-y-2 hidden">
-          <div class="text-[8px] opacity-50">η = Pout / Pin × 100%</div>
-          <div class="grid grid-cols-2 gap-1">
-            <div><div class="text-[7px] opacity-50 mb-0.5">Pout (W)</div><input id="cf-effout" type="number" value="10" step="0.5" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">Pin (W)</div><input id="cf-effin" type="number" value="12" step="0.5" class="calc-input w-full"></div>
-          </div>
-        </div>
-
-        <div id="calcf-lc_filter" class="calc-form space-y-2 hidden">
-          <div class="text-[8px] opacity-50">L y C para filtro LC 2do orden</div>
-          <div class="grid grid-cols-2 gap-1">
-            <div><div class="text-[7px] opacity-50 mb-0.5">fc (Hz)</div><input id="cf-lcf" type="number" value="1000" step="100" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">Z (Ω)</div><input id="cf-lcz" type="number" value="50" step="1" class="calc-input w-full"></div>
-          </div>
-        </div>
-
-        <div id="calcf-voltage_follower" class="calc-form space-y-2 hidden">
-          <div class="text-[8px] opacity-50">Buffer unity gain — G = 1, Zin alta, Zout baja</div>
-          <div class="text-[8px] text-[#a4ffb9] py-2">Sin parámetros. El seguidor de tensión tiene ganancia unitaria.</div>
-        </div>
-
-        <div id="calcf-charge_time" class="calc-form space-y-2 hidden">
-          <div class="text-[8px] opacity-50">t = C / (Ic × η)</div>
-          <div class="grid grid-cols-3 gap-1">
-            <div><div class="text-[7px] opacity-50 mb-0.5">Cap (mAh)</div><input id="cf-ctcap" type="number" value="2000" step="100" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">Ic (mA)</div><input id="cf-ctic" type="number" value="500" step="50" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">η (0-1)</div><input id="cf-cteta" type="number" value="0.9" step="0.05" min="0" max="1" class="calc-input w-full"></div>
-          </div>
-        </div>
-
-        <div id="calcf-motor_torque" class="calc-form space-y-2 hidden">
-          <div class="text-[8px] opacity-50">T = P × 9549 / RPM</div>
-          <div class="grid grid-cols-2 gap-1">
-            <div><div class="text-[7px] opacity-50 mb-0.5">P (W)</div><input id="cf-mtpw" type="number" value="750" step="50" class="calc-input w-full"></div>
-            <div><div class="text-[7px] opacity-50 mb-0.5">RPM</div><input id="cf-mtrpm" type="number" value="1450" step="50" class="calc-input w-full"></div>
-          </div>
-        </div>
-
-      </div><!-- /calc-forms -->
-
-      <!-- Botón calcular -->
-      <button onclick="calcCompute()" class="w-full py-2 text-[9px] border border-primary/40 text-primary hover:bg-primary/10 tracking-widest font-mono">
-        ⚡ CALCULAR
-      </button>
-
-      <!-- Resultado -->
-      <div id="calc-result" class="hidden">
-        <div class="text-[8px] opacity-50 mb-1">RESULTADO</div>
-        <div id="calc-result-body" class="bg-[#0a1a0a] border-l-2 border-primary p-3 text-[9px] font-mono space-y-1"></div>
-      </div>
-
-    </div>
-    <!-- /CALC PANEL -->
-
-    <!-- SYSTEM PANEL -->
-    <div id="panel-system" class="tab-content space-y-4">
-
-      <!-- Importar esquemático -->
-      <div>
-        <div class="text-[8px] opacity-50 mb-2">IMPORT_SCHEMATIC</div>
-        <div class="bg-[#131313] p-3 border border-[#494847]/30 space-y-2">
-          <div class="text-[9px] text-[#adaaaa]">KiCad (.kicad_sch) · LTspice (.asc) · Eagle (.sch)</div>
-          <input type="file" id="web-schematic-file" accept=".kicad_sch,.asc,.sch" class="hidden" onchange="webImportSchematic(this)"/>
-          <button onclick="document.getElementById('web-schematic-file').click()"
-            class="w-full py-2 bg-secondary/10 border border-secondary/40 text-[9px] text-secondary hover:bg-secondary/20 flex items-center justify-center gap-2">
-            <span class="material-symbols-outlined text-sm">upload_file</span> SELECCIONAR ARCHIVO
-          </button>
-          <div id="web-schematic-status" class="text-[9px] hidden"></div>
-        </div>
-      </div>
-
-      <!-- PLC / Lógica Ladder -->
-      <div>
-        <div class="text-[8px] opacity-50 mb-2">PLC_LADDER</div>
-        <div class="bg-[#131313] p-3 border border-[#494847]/30 space-y-2">
-          <input id="web-plc-name" type="text" placeholder="Nombre del programa"
-            class="w-full bg-black border border-[#494847]/50 text-[9px] text-white font-mono px-2 py-1.5 focus:border-secondary/60 outline-none"/>
-          <textarea id="web-plc-input" rows="4" placeholder="Si el sensor S1 está activo Y B2 presionado, activar M1 con TON 5s"
-            class="w-full bg-black border border-[#494847]/50 text-[9px] text-white font-mono px-2 py-1.5 focus:border-primary/60 outline-none resize-none"></textarea>
-          <button onclick="webParsePLC()"
-            class="w-full py-1.5 bg-secondary/10 border border-secondary/40 text-[9px] text-secondary hover:bg-secondary/20">PARSEAR + GUARDAR</button>
-          <pre id="web-plc-result" class="hidden text-[9px] font-mono text-[#adaaaa] max-h-40 overflow-y-auto whitespace-pre-wrap"></pre>
-        </div>
-      </div>
-
-      <!-- Component Stock -->
-      <div>
-        <div class="flex justify-between items-center mb-2">
-          <div class="text-[8px] opacity-50">COMPONENT_STOCK</div>
-          <button onclick="webToggleStockForm()" class="text-[8px] text-secondary hover:text-primary">+ ADD</button>
-        </div>
-
-        <!-- Formulario inline -->
-        <div id="web-stock-form" class="hidden mb-3 bg-[#131313] border border-secondary/30 p-3 space-y-2">
-          <input id="wsf-name"     type="text"   placeholder="Nombre *"                    class="w-full bg-black border border-[#494847]/50 text-[9px] text-white font-mono px-2 py-1.5 outline-none focus:border-secondary/60"/>
-          <div class="flex gap-2">
-            <input id="wsf-value"  type="text"   placeholder="Valor (10k, 100nF, 5V 1A)"  class="flex-1 bg-black border border-[#494847]/50 text-[9px] text-white font-mono px-2 py-1.5 outline-none focus:border-secondary/60"/>
-            <input id="wsf-qty"    type="number" placeholder="Cant." value="1"             class="w-16 bg-black border border-[#494847]/50 text-[9px] text-white font-mono px-2 py-1.5 outline-none focus:border-secondary/60"/>
-          </div>
-          <input id="wsf-category" type="text"   placeholder="Categoría (Resistencias, Capacitores...)" class="w-full bg-black border border-[#494847]/50 text-[9px] text-white font-mono px-2 py-1.5 outline-none focus:border-secondary/60"/>
-          <input id="wsf-supplier" type="text"   placeholder="Proveedor (LCSC, Mouser, RS...)"         class="w-full bg-black border border-[#494847]/50 text-[9px] text-white font-mono px-2 py-1.5 outline-none focus:border-secondary/60"/>
-          <div class="flex gap-2">
-            <button onclick="webSaveComponent()" class="flex-1 bg-secondary/10 border border-secondary/40 text-secondary text-[9px] py-1.5 hover:bg-secondary/20">GUARDAR</button>
-            <button onclick="webToggleStockForm()" class="px-3 border border-[#494847]/40 text-[#adaaaa] text-[9px] py-1.5 hover:border-primary/40">✕</button>
-          </div>
-        </div>
-
-        <div id="web-stock-summary" class="bg-[#131313] p-3 border border-[#494847]/30 text-[9px] space-y-1 mb-2">
-          <div class="flex justify-between"><span class="text-[#adaaaa]">TOTAL</span><span id="web-stock-total" class="text-primary">0</span></div>
-          <div class="flex justify-between"><span class="text-[#adaaaa]">EN STOCK</span><span id="web-stock-in" class="text-secondary">0</span></div>
-          <div class="flex justify-between"><span class="text-[#adaaaa]">CATEGORÍAS</span><span id="web-stock-cats" class="text-[#adaaaa]">0</span></div>
-        </div>
-        <input type="text" placeholder="Buscar componente..." id="web-stock-search"
-          class="w-full bg-black border border-[#494847]/50 text-[9px] text-white font-mono px-2 py-1.5 focus:border-secondary/60 outline-none mb-2"
-          oninput="webSearchStock(this.value)"/>
-        <div id="web-stock-list" class="space-y-1 max-h-48 overflow-y-auto"></div>
-      </div>
-
-      <div>
-        <div class="flex justify-between items-center mb-2">
-          <div class="text-[8px] opacity-50">PLUGINS</div>
-          <button onclick="loadMetrics()" class="text-[8px] text-secondary">↻</button>
-        </div>
-        <div id="metrics-plugins" class="space-y-1">
-          <p class="text-[10px] text-[#adaaaa]">Sin plugins</p>
-        </div>
-      </div>
-      <div>
-        <div class="text-[8px] opacity-50 mb-2">USER_PROFILE</div>
-        <div id="metrics-profile" class="space-y-1">
-          <p class="text-[10px] text-[#adaaaa]">Cargando...</p>
-        </div>
-      </div>
-      <div>
-        <div class="text-[8px] opacity-50 mb-2">PROACTIVE_ENGINE</div>
-        <div id="metrics-proactive" class="bg-surface-container-low p-2 border-l border-primary/20">
-          <p class="text-[10px] text-[#adaaaa]">Cargando...</p>
-        </div>
-      </div>
-      <!-- Wokwi CLI Status -->
-      <div>
-        <div class="text-[8px] opacity-50 mb-2">WOKWI_CLI</div>
-        <div id="wokwi-status-card" class="bg-[#131313] p-3 border border-[#494847]/30 space-y-2 text-[9px] font-mono text-[#adaaaa]">
-          <div class="text-[#494847]">Cargando...</div>
-        </div>
-      </div>
-
-      <!-- Hardware Bridge -->
-      <div>
-        <div class="flex justify-between items-center mb-2">
-          <div class="text-[8px] opacity-50">HARDWARE_BRIDGE</div>
-          <button onclick="bridgeTest()" class="text-[8px] text-secondary hover:text-primary">TEST DETECT</button>
-        </div>
-        <div id="bridge-test-result" class="bg-[#131313] p-3 border border-[#494847]/30 space-y-1 text-[9px] font-mono text-[#adaaaa]">
-          <div class="text-[#494847]">Usá "TEST DETECT" para enviar un job al bridge client.</div>
-          <div class="text-[#494847] mt-1">Para conectar el bridge: <span class="text-[#adaaaa]">python run.py bridge --url http://localhost:8000</span></div>
-        </div>
-      </div>
-
-      <div>
-        <div class="text-[8px] opacity-50 mb-2">SYSTEM_LOGS</div>
-        <div id="logs-list" class="space-y-0.5 font-mono text-[9px] max-h-64 overflow-y-auto"></div>
-      </div>
-    </div>
-
-    </div><!-- end hidden legacy panels -->
-  </div>
-</aside>
-
-<!-- ── MAIN CONTENT ─────────────────────────────────────────────────────── -->
-<main class="ml-72 pt-14 h-screen flex relative z-10 overflow-hidden">
-
-<!-- ═══ VIEW: CHAT ════════════════════════════════════════════════════════ -->
-<div id="view-chat" class="flex flex-col flex-1 h-full overflow-hidden">
-
-  <!-- Chat messages -->
-  <div id="messages" class="flex-1 overflow-y-auto p-6 space-y-6 scroll-smooth">
-    <!-- Session init -->
-    <div class="flex items-center gap-4 text-[#494847] text-[9px] uppercase tracking-widest">
-      <div class="h-[1px] flex-1 bg-[#494847]/30"></div>
-      <span id="session-time">SESSION_INIT</span>
-      <div class="h-[1px] flex-1 bg-[#494847]/30"></div>
-    </div>
-    <!-- Welcome -->
-    <div class="flex flex-col items-start">
-      <div class="bg-[#131313] border-l-2 border-primary p-4 max-w-2xl">
-        <div class="text-[9px] mb-2 opacity-50 text-primary">STRATUM_ENGINE // SYSTEM</div>
-        <p class="text-sm font-mono tracking-tight">Engineering Memory Engine online. Microcontroladores, circuitos de potencia, PLCs, sensores, automatización.</p>
-      </div>
-    </div>
-  </div>
-
-  <!-- Input area -->
-  <div class="bg-[#0e0e0e] px-6 pt-4 pb-3 border-t border-[#a4ffb9]/10">
-
-    <!-- Snippet menu (floats above input) -->
-    <div id="snippet-menu" class="hidden mb-2 bg-[#0a0a0a] border border-[#494847]/40 max-h-48 overflow-y-auto"></div>
-
-    <div class="flex gap-4 border-b border-secondary/30 focus-within:border-secondary transition-colors pb-2 items-end">
-      <span class="text-secondary font-mono text-sm mb-1">&gt;</span>
-      <textarea id="prompt" rows="1"
-        class="bg-transparent border-none focus:ring-0 w-full font-mono text-sm placeholder:opacity-30 placeholder:text-[#adaaaa] focus:outline-none resize-none overflow-y-auto leading-relaxed"
-        style="max-height:220px; min-height:1.5rem;"
-        placeholder="CONSULTA DE INGENIERÍA — / para snippets, Ctrl+K para buscar..."></textarea>
-      <div class="flex items-center gap-3 mb-1 flex-shrink-0">
-        <!-- File upload -->
-        <input type="file" id="file-upload-input" class="hidden"
-          accept=".txt,.ino,.h,.cpp,.c,.py,.md,.json,.yaml,.yml,image/*"/>
-        <button onclick="triggerFileUpload()" class="text-[#adaaaa] hover:text-primary transition-colors" title="Adjuntar archivo (.ino, .txt, imagen...)">
-          <span class="material-symbols-outlined text-sm">attach_file</span>
-        </button>
-        <button id="voice-btn" onclick="toggleVoice()" class="text-[#adaaaa] hover:text-primary transition-colors" title="Dictado por voz">
-          <span class="material-symbols-outlined text-sm">mic</span>
-        </button>
-        <button id="vision-btn" onclick="openVisionModal()" class="text-[#adaaaa] hover:text-secondary transition-colors" title="Analizar circuito">
-          <span class="material-symbols-outlined text-sm">photo_camera</span>
-        </button>
-        <button id="send-btn" onclick="sendMessage()" class="text-secondary hover:text-primary transition-colors">
-          <span class="material-symbols-outlined">send</span>
-        </button>
-      </div>
-    </div>
-    <div class="flex items-center mt-1">
-      <span class="text-[8px] text-[#494847]">Enter · Shift+Enter · Esc · <kbd class="border border-[#494847]/40 px-1 text-[7px]">Ctrl+K</kbd> buscar · <kbd class="border border-[#494847]/40 px-1 text-[7px]">/</kbd> snippets</span>
-      <span id="prompt-counter" class="ml-auto text-[8px] font-mono text-[#494847]"></span>
-    </div>
-    <div class="flex gap-4 mt-2 items-center">
-      <span id="agents-label" class="text-[8px] text-[#adaaaa] tracking-widest hidden"></span>
-      <button onclick="exportChat()" title="DEV — exportar chat como JSON" class="ml-auto text-[8px] font-mono text-[#f59e0b] border border-[#f59e0b]/40 hover:border-[#f59e0b] hover:bg-[#f59e0b]/10 px-2 py-0.5 transition-colors flex items-center gap-1">
-        <span class="material-symbols-outlined" style="font-size:10px">download</span>[DEV] EXPORT
-      </button>
-    </div>
-  </div>
-
-  <!-- Collapsible circuit viewer -->
-  <div class="relative z-20">
-    <input class="hidden peer" id="viewer-toggle" type="checkbox"/>
-    <label class="flex justify-between items-center px-4 py-1 bg-[#1a1919] border-t border-[#a4ffb9]/20 cursor-pointer text-[10px] font-mono hover:bg-[#201f1f]" for="viewer-toggle">
-      <div class="flex items-center gap-2 text-[#adaaaa]">
-        <span class="material-symbols-outlined text-sm">schema</span>
-        CIRCUIT_VIEWER
-      </div>
-      <span class="material-symbols-outlined text-sm text-[#adaaaa] transition-transform peer-checked:rotate-180">expand_less</span>
-    </label>
-    <div class="h-0 overflow-hidden transition-all duration-300 bg-[#0a0a0a] peer-checked:h-auto border-t border-[#a4ffb9]/20 p-3 space-y-3">
-      <!-- Circuit ID input + viewer link -->
-      <div class="flex items-center gap-2">
-        <input id="circuit-id-input" type="number" min="1" placeholder="Circuit ID"
-               class="flex-1 bg-[#131313] border border-[#494847]/50 text-[10px] font-mono text-[#adaaaa] px-2 py-1 focus:outline-none focus:border-primary/50"/>
-        <a href="/api/circuits/viewer" target="_blank"
-           class="text-[9px] font-mono text-[#adaaaa] hover:text-primary flex items-center gap-1 transition-colors border border-[#494847]/50 px-2 py-1">
-          <span class="material-symbols-outlined text-xs">open_in_new</span>VIEWER
-        </a>
-      </div>
-      <!-- Action buttons -->
-      <div class="flex gap-2">
-        <button onclick="runCircuitDRC()" class="flex-1 text-[9px] font-mono bg-[#131313] border border-[#494847]/50 text-[#adaaaa] hover:border-[#ff6b6b]/60 hover:text-[#ff6b6b] px-2 py-1 transition-colors flex items-center justify-center gap-1">
-          <span class="material-symbols-outlined text-xs">rule</span>DRC
-        </button>
-        <button onclick="runCircuitBOM()" class="flex-1 text-[9px] font-mono bg-[#131313] border border-[#494847]/50 text-[#adaaaa] hover:border-[#00cbfe]/60 hover:text-[#00cbfe] px-2 py-1 transition-colors flex items-center justify-center gap-1">
-          <span class="material-symbols-outlined text-xs">receipt_long</span>BOM
-        </button>
-        <button onclick="downloadCircuitBOMcsv()" class="flex-1 text-[9px] font-mono bg-[#131313] border border-[#494847]/50 text-[#adaaaa] hover:border-[#a4ffb9]/60 hover:text-primary px-2 py-1 transition-colors flex items-center justify-center gap-1">
-          <span class="material-symbols-outlined text-xs">download</span>CSV
-        </button>
-        <button onclick="simulateCircuitWokwi()" class="flex-1 text-[9px] font-mono bg-[#131313] border border-[#494847]/50 text-[#adaaaa] hover:border-[#a855f7]/60 hover:text-[#a855f7] px-2 py-1 transition-colors flex items-center justify-center gap-1">
-          <span class="material-symbols-outlined text-xs">memory</span>Wokwi
-        </button>
-      </div>
-      <!-- Results panel -->
-      <div id="circuit-result-panel" class="hidden text-[9px] font-mono bg-[#131313] border border-[#494847]/30 p-2 max-h-48 overflow-y-auto space-y-1"></div>
-    </div>
-  </div>
-</div><!-- end view-chat -->
-
-<!-- ═══ VIEW: DEVICES ═════════════════════════════════════════════════════ -->
-<div id="view-devices" class="hidden flex-col flex-1 h-full overflow-hidden">
-  <div class="flex items-center justify-between px-8 py-4 border-b border-[#a4ffb9]/10 flex-shrink-0">
-    <div class="flex items-center gap-3">
-      <span class="material-symbols-outlined text-secondary">router</span>
-      <span class="font-mono text-[11px] tracking-widest text-[#adaaaa]">DEVICES</span>
-    </div>
-    <button onclick="switchView('chat')" class="text-[9px] font-mono text-[#494847] hover:text-primary flex items-center gap-1">
-      <span class="material-symbols-outlined text-xs">arrow_back</span>VOLVER AL CHAT
-    </button>
-  </div>
-  <div class="flex-1 overflow-y-auto p-8">
-    <div id="panel-devices" class="max-w-3xl space-y-6">
-      <div class="flex justify-between items-center">
-        <div class="text-[8px] text-[#494847] tracking-widest">CONNECTED_DEVICES</div>
-        <button onclick="loadHardware()" class="text-[8px] text-secondary hover:text-primary">↻ SCAN</button>
-      </div>
-      <div id="devices-list" class="space-y-2"><p class="text-[10px] text-[#adaaaa]">Escaneando...</p></div>
-      <div class="grid grid-cols-2 gap-4">
-        <div>
-          <div class="text-[8px] text-[#494847] tracking-widest mb-2">HW_STATS</div>
-          <div class="bg-[#131313] p-3 space-y-1.5 border-l border-secondary/20">
-            <div class="flex justify-between font-mono text-[10px]"><span class="text-[#adaaaa]">REGISTERED</span><span id="hw-devices" class="text-secondary">0</span></div>
-            <div class="flex justify-between font-mono text-[10px]"><span class="text-[#adaaaa]">TOTAL FLASHES</span><span id="hw-flashes" class="text-secondary">0</span></div>
-            <div class="flex justify-between font-mono text-[10px]"><span class="text-[#adaaaa]">SUCCESSFUL</span><span id="hw-success" class="text-primary">0</span></div>
-            <div class="flex justify-between font-mono text-[10px]"><span class="text-[#adaaaa]">FAILED</span><span id="hw-failed" class="text-error">0</span></div>
-          </div>
-        </div>
-        <div>
-          <div class="text-[8px] text-[#494847] tracking-widest mb-2">ACTIVE_JOBS</div>
-          <div class="bg-[#131313] p-3 border-l border-secondary/20">
-            <div class="flex justify-between font-mono text-[10px] mb-2"><span class="text-[#adaaaa]">JOBS</span><span id="jobs-count" class="text-secondary">0</span></div>
-            <div id="jobs-list" class="space-y-2 max-h-32 overflow-y-auto">
-              <div class="text-[9px] text-[#494847] opacity-40">NO_ACTIVE_JOBS</div>
+      <!-- COMPOSER -->
+      <div class="fixed left-0 right-0 md:left-[288px] z-30 px-3 md:px-5 pb-3 pt-2"
+           style="background: linear-gradient(to top, var(--bg) 70%, transparent); bottom: 60px; bottom: calc(60px + env(safe-area-inset-bottom, 0px))">
+        <!-- snippet menu -->
+        <div id="snippet-menu" class="hidden snippet-menu max-w-5xl mx-auto" style="margin-bottom: -1px;"></div>
+        <div class="max-w-5xl mx-auto">
+          <div class="composer panel-cnr">
+            <div class="flex items-center gap-2 px-3 pt-2">
+              <span class="label label-accent">USER</span>
+              <span class="label label-dim">›</span>
+              <span class="label label-dim" style="font-size:9.5px" id="h-active-profile-bar">CTX · STRATUM</span>
+              <span class="ml-auto mono" style="font-size:10px; color: var(--fg-3)">
+                <span id="prompt-counter">0000</span> / 8192
+              </span>
+            </div>
+            <textarea id="prompt" placeholder="Preguntá sobre circuitos, código o cálculos… (Shift+Enter nueva línea)"></textarea>
+            <div class="composer-bar">
+              <div class="flex items-center gap-1">
+                <button class="btn btn-ghost" onclick="triggerFileUpload()" style="height:26px; padding:0 8px; font-size:10px">
+                  <span class="material-symbols-outlined" style="font-size:14px">attach_file</span> ADJUNTAR
+                </button>
+                <button id="voice-btn" class="btn btn-ghost" onclick="toggleVoice()" style="height:26px; padding:0 8px; font-size:10px">
+                  <span class="material-symbols-outlined" style="font-size:14px">mic</span> VOICE
+                </button>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="label label-dim hidden sm:inline" style="font-size:9.5px">⏎ ENVIAR · Shift+⏎ nueva línea</span>
+                <button id="send-btn" class="btn btn-primary" onclick="sendMessage()">
+                  <span class="material-symbols-outlined" style="font-size:14px">send</span> ENVIAR
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
-      <div id="vision-results-panel" class="hidden">
-        <div class="flex justify-between items-center mb-2">
-          <div class="text-[8px] text-[#494847] tracking-widest">LAST_CIRCUIT_ANALYSIS</div>
-          <button onclick="openVisionModal()" class="text-[8px] text-secondary">+ NEW</button>
+
+      <!-- hidden file upload -->
+      <input id="file-upload-input" type="file" accept=".txt,.md,.pdf,.json,.c,.cpp,.h,.py,.js,.ts" style="display:none"/>
+    </section>
+
+    <!-- ===================== KB ===================== -->
+    <section data-view="kb" style="display:none">
+      <div class="max-w-6xl mx-auto px-3 md:px-5 pt-3 pb-24">
+        <div class="flex items-center justify-between mb-3">
+          <span class="label label-accent">[ KB / KNOWLEDGE BASE ]</span>
+          <div class="flex items-center gap-2">
+            <button id="kb-import-feed-btn" class="btn btn-ghost" onclick="kbImportFeed()" style="font-size:11px">
+              <span class="material-symbols-outlined" style="font-size:14px">cloud_sync</span> IMPORT knowledge_feed
+            </button>
+            <button class="btn btn-ghost" onclick="kbReindex()" style="font-size:11px">
+              <span class="material-symbols-outlined" style="font-size:14px">refresh</span> RE-INDEX
+            </button>
+            <label class="btn btn-primary" style="cursor:pointer; font-size:11px">
+              <span class="material-symbols-outlined" style="font-size:14px">upload</span> SUBIR
+              <input type="file" accept=".txt,.md,.pdf,.json" style="display:none" onchange="kbUploadFile(this)"/>
+            </label>
+          </div>
         </div>
-        <div id="vision-results-content" class="space-y-1"></div>
-      </div>
-    </div>
-  </div>
-</div>
 
-<!-- ═══ VIEW: INTEL ═══════════════════════════════════════════════════════ -->
-<div id="view-intel" class="hidden flex-col flex-1 h-full overflow-hidden">
-  <div class="flex items-center justify-between px-8 py-4 border-b border-[#a4ffb9]/10 flex-shrink-0">
-    <div class="flex items-center gap-3">
-      <span class="material-symbols-outlined text-secondary">psychology</span>
-      <span class="font-mono text-[11px] tracking-widest text-[#adaaaa]">INTEL</span>
-    </div>
-    <button onclick="switchView('chat')" class="text-[9px] font-mono text-[#494847] hover:text-primary flex items-center gap-1">
-      <span class="material-symbols-outlined text-xs">arrow_back</span>VOLVER AL CHAT
-    </button>
-  </div>
-  <div class="flex-1 overflow-y-auto p-8">
-    <div class="view-panel-slot max-w-4xl space-y-6" data-panel="intel"></div>
-  </div>
-</div>
+        <!-- status bar -->
+        <div id="kb-upload-status" class="hidden panel panel-cnr px-4 py-2 mb-3 label" style="font-size:11px; color: var(--accent)"></div>
 
-<!-- ═══ VIEW: CALC ════════════════════════════════════════════════════════ -->
-<div id="view-calc" class="hidden flex-col flex-1 h-full overflow-hidden">
-  <div class="flex items-center justify-between px-8 py-4 border-b border-[#a4ffb9]/10 flex-shrink-0">
-    <div class="flex items-center gap-3">
-      <span class="material-symbols-outlined text-secondary">calculate</span>
-      <span class="font-mono text-[11px] tracking-widest text-[#adaaaa]">ENGINEERING CALCULATOR</span>
-    </div>
-    <button onclick="switchView('chat')" class="text-[9px] font-mono text-[#494847] hover:text-primary flex items-center gap-1">
-      <span class="material-symbols-outlined text-xs">arrow_back</span>VOLVER AL CHAT
-    </button>
-  </div>
-  <div class="flex-1 overflow-y-auto p-8">
-    <div class="view-panel-slot max-w-2xl space-y-4" data-panel="calc"></div>
-  </div>
-</div>
-
-<!-- ═══ VIEW: METRICS ═════════════════════════════════════════════════════ -->
-<div id="view-metrics" class="hidden flex-col flex-1 h-full overflow-hidden">
-  <div class="flex items-center justify-between px-8 py-4 border-b border-[#a4ffb9]/10 flex-shrink-0">
-    <div class="flex items-center gap-3">
-      <span class="material-symbols-outlined text-secondary">bar_chart</span>
-      <span class="font-mono text-[11px] tracking-widest text-[#adaaaa]">METRICS</span>
-    </div>
-    <button onclick="switchView('chat')" class="text-[9px] font-mono text-[#494847] hover:text-primary flex items-center gap-1">
-      <span class="material-symbols-outlined text-xs">arrow_back</span>VOLVER AL CHAT
-    </button>
-  </div>
-  <div class="flex-1 overflow-y-auto p-8">
-    <div class="view-panel-slot max-w-4xl space-y-6" data-panel="metrics"></div>
-  </div>
-</div>
-
-<!-- ═══ VIEW: SYSTEM ══════════════════════════════════════════════════════ -->
-<div id="view-system" class="hidden flex-col flex-1 h-full overflow-hidden">
-  <div class="flex items-center justify-between px-8 py-4 border-b border-[#a4ffb9]/10 flex-shrink-0">
-    <div class="flex items-center gap-3">
-      <span class="material-symbols-outlined text-secondary">settings</span>
-      <span class="font-mono text-[11px] tracking-widest text-[#adaaaa]">SYSTEM</span>
-    </div>
-    <button onclick="switchView('chat')" class="text-[9px] font-mono text-[#494847] hover:text-primary flex items-center gap-1">
-      <span class="material-symbols-outlined text-xs">arrow_back</span>VOLVER AL CHAT
-    </button>
-  </div>
-  <div class="flex-1 overflow-y-auto p-8">
-    <div class="view-panel-slot max-w-5xl space-y-6" data-panel="system"></div>
-  </div>
-</div>
-
-<!-- ═══ VIEW: KNOWLEDGE BASE ══════════════════════════════════════════════ -->
-<div id="view-kb" class="hidden flex-col flex-1 h-full overflow-hidden">
-  <div class="flex items-center justify-between px-8 py-4 border-b border-[#a4ffb9]/10 flex-shrink-0">
-    <div class="flex items-center gap-3">
-      <span class="material-symbols-outlined text-secondary">library_books</span>
-      <span class="font-mono text-[11px] tracking-widest text-[#adaaaa]">KNOWLEDGE BASE</span>
-    </div>
-    <button onclick="switchView('chat')" class="text-[9px] font-mono text-[#494847] hover:text-primary flex items-center gap-1">
-      <span class="material-symbols-outlined text-xs">arrow_back</span>VOLVER AL CHAT
-    </button>
-  </div>
-  <div class="flex-1 overflow-y-auto p-8">
-    <div class="max-w-4xl space-y-6">
-
-      <!-- Upload + Index -->
-      <div class="border border-[#494847]/30 p-4 space-y-3">
-        <div class="text-[9px] font-mono text-[#494847] tracking-widest">SUBIR DOCUMENTO</div>
-        <div class="flex gap-2">
-          <input type="file" id="kb-file-input" accept=".txt,.md,.pdf,.py,.c,.cpp,.h,.json" class="hidden" onchange="kbUploadFile(this)"/>
-          <button onclick="document.getElementById('kb-file-input').click()"
-                  class="text-[9px] font-mono bg-[#131313] border border-[#494847]/50 text-[#adaaaa] hover:border-primary/60 hover:text-primary px-3 py-1.5 transition-colors flex items-center gap-1">
-            <span class="material-symbols-outlined text-xs">upload_file</span>Seleccionar archivo
-          </button>
-          <button onclick="kbReindex()"
-                  class="text-[9px] font-mono bg-[#131313] border border-[#494847]/50 text-[#adaaaa] hover:border-secondary/60 hover:text-secondary px-3 py-1.5 transition-colors flex items-center gap-1">
-            <span class="material-symbols-outlined text-xs">sync</span>Re-indexar todo
-          </button>
-          <button id="kb-import-feed-btn" onclick="kbImportFeed()"
-                  class="text-[9px] font-mono bg-[#131313] border border-[#a4ffb9]/30 text-[#a4ffb9] hover:border-primary/60 hover:bg-primary/10 px-3 py-1.5 transition-colors flex items-center gap-1">
-            <span class="material-symbols-outlined text-xs">folder_open</span>Importar knowledge_feed
-          </button>
+        <!-- search + stats -->
+        <div class="grid grid-cols-12 gap-3 mb-3">
+          <div class="col-span-12 md:col-span-8 panel panel-cnr">
+            <div class="ruler" data-coord="KB·SEARCH"></div>
+            <div class="p-3">
+              <div class="field">
+                <span class="material-symbols-outlined">search</span>
+                <input id="kb-search-input" placeholder="Buscar semánticamente…" onkeydown="if(event.key==='Enter') kbSearch()"/>
+                <button class="chip" onclick="kbSearch()">BUSCAR</button>
+              </div>
+              <div id="kb-search-results" class="mt-2 space-y-1"></div>
+            </div>
+          </div>
+          <div class="col-span-6 md:col-span-2 panel panel-cnr p-3">
+            <div class="label label-dim">EMBEDDINGS</div>
+            <div class="num mt-1" style="font-size:16px; color: var(--accent)">bge-m3</div>
+            <div class="label label-dim mt-1" style="font-size:9px">1024-dim</div>
+          </div>
+          <div class="col-span-6 md:col-span-2 panel panel-cnr p-3">
+            <div class="label label-dim">INDEXADO</div>
+            <div class="num mt-1" style="font-size:22px; color: var(--accent)">—</div>
+            <div class="label label-dim mt-1" style="font-size:9px">docs activos</div>
+          </div>
         </div>
-        <div id="kb-upload-status" class="text-[9px] font-mono text-[#adaaaa] hidden"></div>
-      </div>
 
-      <!-- Search -->
-      <div class="border border-[#494847]/30 p-4 space-y-3">
-        <div class="text-[9px] font-mono text-[#494847] tracking-widest">BÚSQUEDA SEMÁNTICA</div>
-        <div class="flex gap-2">
-          <input id="kb-search-input" type="text" placeholder="buscar en knowledge base..."
-                 class="flex-1 bg-[#0a0a0a] border border-[#494847]/50 text-[10px] font-mono text-[#adaaaa] px-3 py-1.5 focus:outline-none focus:border-primary/50 placeholder-[#494847]"
-                 onkeydown="if(event.key==='Enter') kbSearch()"/>
-          <button onclick="kbSearch()"
-                  class="text-[9px] font-mono bg-[#131313] border border-[#494847]/50 text-[#adaaaa] hover:border-primary/60 hover:text-primary px-3 py-1.5 transition-colors flex items-center gap-1">
-            <span class="material-symbols-outlined text-xs">search</span>Buscar
-          </button>
+        <!-- doc list -->
+        <div class="panel panel-cnr">
+          <div class="ruler" data-coord="KB·INDEX"></div>
+          <div class="panel-head">
+            <span class="panel-title">DOCUMENTOS INDEXADOS</span>
+          </div>
+          <div id="kb-doc-list" class="px-4 py-3 space-y-1 label label-dim" style="font-size:10px">
+            Cargando…
+          </div>
         </div>
-        <div id="kb-search-results" class="space-y-2"></div>
       </div>
+    </section>
 
-      <!-- Document list -->
-      <div class="border border-[#494847]/30 p-4 space-y-3">
-        <div class="flex items-center justify-between">
-          <div class="text-[9px] font-mono text-[#494847] tracking-widest">DOCUMENTOS INDEXADOS</div>
-          <button onclick="kbLoadDocuments()"
-                  class="text-[8px] font-mono text-[#494847] hover:text-primary flex items-center gap-1">
-            <span class="material-symbols-outlined text-xs">refresh</span>
+    <!-- ===================== CALC ===================== -->
+    <section data-view="calc" style="display:none">
+      <div class="max-w-6xl mx-auto px-3 md:px-5 pt-3 pb-24">
+        <div class="flex items-center justify-between mb-3">
+          <span class="label label-accent">[ CALC / FÓRMULAS DIRECTAS ]</span>
+          <span class="label label-dim">sin chat · input → output</span>
+        </div>
+
+        <div class="grid grid-cols-12 gap-3">
+          <!-- inputs -->
+          <section class="col-span-12 md:col-span-5 panel panel-cnr">
+            <div class="ruler" data-coord="IN"></div>
+            <div class="panel-head"><span class="panel-title">PARÁMETROS · RC 1ST ORDER</span></div>
+            <div class="p-4 flex flex-col gap-3">
+              <label class="block">
+                <div class="label mb-1">R · RESISTENCIA [Ω]</div>
+                <div class="field">
+                  <span class="material-symbols-outlined">tune</span>
+                  <input id="calc-R" type="number" step="100" value="10000"/>
+                  <span class="chip">Ω</span>
+                </div>
+              </label>
+              <label class="block">
+                <div class="label mb-1">C · CAPACITANCIA [F]</div>
+                <div class="field">
+                  <span class="material-symbols-outlined">tune</span>
+                  <input id="calc-C" type="number" step="1e-9" value="1e-7"/>
+                  <span class="chip">F</span>
+                </div>
+                <div class="label label-dim mt-1" style="font-size:9.5px">ej. 100e-9 = 100 nF</div>
+              </label>
+              <div class="dash-divider my-1"></div>
+              <div class="label label-dim" style="font-size:9.5px; line-height:1.6">
+                Ecuación: fc = 1 / (2π·R·C)
+              </div>
+            </div>
+          </section>
+          <!-- outputs -->
+          <section class="col-span-12 md:col-span-7 panel panel-cnr">
+            <div class="ruler" data-coord="OUT"></div>
+            <div class="panel-head"><span class="panel-title">RESULTADOS</span></div>
+            <div id="calc-out" class="calc-params" style="border-top:0"></div>
+          </section>
+        </div>
+
+        <!-- also expose the calc agent via chat hint -->
+        <div class="mt-4 panel panel-cnr px-4 py-3 label label-dim" style="font-size:10.5px; line-height:1.8">
+          › Para cálculos avanzados (divisor, buck, boost, LED, OhmLaw…) usá el CHAT con <span style="color:var(--accent)">/calc</span> o pedíselo directamente al agente.
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== DEVICES ===================== -->
+    <section data-view="devices" style="display:none">
+      <div class="max-w-6xl mx-auto px-3 md:px-5 pt-3 pb-24">
+        <div class="flex items-center justify-between mb-3">
+          <span class="label label-accent">[ DEVICES / HARDWARE DETECTADO ]</span>
+          <button class="btn btn-ghost" onclick="loadHardware()">
+            <span class="material-symbols-outlined" style="font-size:14px">refresh</span> RESCAN
           </button>
         </div>
-        <div id="kb-doc-list" class="space-y-1 text-[9px] font-mono text-[#adaaaa]">
-          <div class="text-[#494847]">Cargando...</div>
+        <div id="devices-list" class="grid grid-cols-12 gap-3">
+          <div class="col-span-12 panel panel-cnr px-4 py-8 text-center label label-dim">
+            Cargando dispositivos…
+          </div>
+        </div>
+        <!-- legacy containers for other hardware module IDs -->
+        <div class="hidden">
+          <div id="hw-detected"></div>
+          <div id="wokwi-status"></div>
+          <input id="wokwi-url" type="text"/>
+          <div id="wokwi-diff-area"></div>
+          <select id="firmware-selector"></select>
+          <div id="firmware-history"></div>
+          <div id="bridge-dot-web"></div>
+          <span id="bridge-status-web"></span>
+          <div id="svc-sqlite"></div>
+          <div id="svc-qdrant"></div>
+          <div id="svc-ollama"></div>
         </div>
       </div>
+    </section>
 
-    </div>
-  </div>
+    <!-- ===================== INTEL ===================== -->
+    <section data-view="intel" style="display:none">
+      <div class="max-w-6xl mx-auto px-3 md:px-5 pt-3 pb-24">
+        <div class="flex items-center justify-between mb-3">
+          <span class="label label-accent">[ INTEL / INTELIGENCIA DEL SISTEMA ]</span>
+        </div>
+        <div class="grid grid-cols-12 gap-3">
+          <!-- facts -->
+          <div class="col-span-12 md:col-span-8 panel panel-cnr">
+            <div class="ruler" data-coord="FACTS"></div>
+            <div class="panel-head">
+              <span class="panel-title">HECHOS CONOCIDOS</span>
+            </div>
+            <div id="facts-list" class="p-4 space-y-1 label label-dim" style="font-size:10.5px">
+              Cargando…
+            </div>
+          </div>
+          <!-- profile -->
+          <div class="col-span-12 md:col-span-4 panel panel-cnr">
+            <div class="ruler" data-coord="PROFILE"></div>
+            <div class="panel-head"><span class="panel-title">PERFIL IA</span></div>
+            <div id="intel-profiles" class="p-4 label label-dim" style="font-size:10.5px">Cargando…</div>
+          </div>
+          <!-- design decisions -->
+          <div class="col-span-12 panel panel-cnr">
+            <div class="ruler" data-coord="DECISIONS"></div>
+            <div class="panel-head">
+              <span class="panel-title">DECISIONES DE DISEÑO</span>
+              <div class="ml-auto flex items-center gap-2">
+                <input id="web-decisions-search" type="text" placeholder="Buscar…"
+                  class="field" style="height:26px; font-size:10px; width:160px"
+                  oninput="webSearchDecisions(this.value)"/>
+                <button onclick="webToggleDecisionForm()" class="btn btn-ghost" style="height:26px; font-size:10px">+ ADD</button>
+                <button onclick="webLoadDecisions()" class="btn btn-icon btn-ghost" style="height:26px; width:26px">
+                  <span class="material-symbols-outlined" style="font-size:13px">refresh</span>
+                </button>
+              </div>
+            </div>
+            <!-- decision form -->
+            <div id="web-decision-form" class="hidden p-4 space-y-2 border-b" style="border-color:var(--rule)">
+              <div class="flex gap-2">
+                <input id="wdf-project"   type="text" placeholder="Proyecto" class="field flex-1" style="height:28px; font-size:11px"/>
+                <input id="wdf-component" type="text" placeholder="Componente" class="field flex-1" style="height:28px; font-size:11px"/>
+              </div>
+              <input id="wdf-decision" type="text" placeholder="Decisión (qué elegiste) *" class="field w-full" style="height:28px; font-size:11px"/>
+              <textarea id="wdf-reasoning" rows="2" placeholder="Razonamiento (por qué) *"
+                class="w-full bg-transparent border p-2 font-mono outline-none resize-none" style="border-color:var(--rule-strong); color:var(--fg); font-size:11px"></textarea>
+              <div class="flex gap-2">
+                <button onclick="webSaveDecision()" class="btn btn-primary" style="height:28px; font-size:10px">GUARDAR</button>
+                <button onclick="webToggleDecisionForm()" class="btn btn-ghost" style="height:28px; font-size:10px">✕</button>
+              </div>
+            </div>
+            <div id="web-intel-decisions" class="p-4 space-y-2 label label-dim" style="font-size:10.5px">
+              Sin decisiones guardadas
+            </div>
+          </div>
+
+          <!-- intel sources (hidden, for JS compat) -->
+          <div class="col-span-12 panel panel-cnr">
+            <div class="panel-head">
+              <span class="panel-title">FUENTES</span>
+              <button onclick="showCreateSource()" class="btn btn-ghost ml-auto" style="height:26px; font-size:10px">+ ADD</button>
+            </div>
+            <div id="intel-sources" class="p-4 label label-dim" style="font-size:10.5px">Sin fuentes</div>
+            <div id="intel-create-source-form" class="hidden p-4 space-y-2 border-t" style="border-color:var(--rule)">
+              <input id="intel-src-name" type="text" placeholder="Nombre" class="field w-full" style="height:28px; font-size:11px"/>
+              <textarea id="intel-src-content" rows="5" placeholder="Pegá el contenido…"
+                class="w-full bg-transparent border p-2 font-mono outline-none resize-none" style="border-color:var(--rule-strong); color:var(--fg); font-size:11px"></textarea>
+              <input id="intel-src-desc" type="text" placeholder="Descripción" class="field w-full" style="height:28px; font-size:11px"/>
+              <div class="flex gap-2">
+                <button onclick="saveNewSource()" class="btn btn-primary" style="height:28px; font-size:10px">SAVE + INDEX</button>
+                <button onclick="hideCreateSource()" class="btn btn-ghost" style="height:28px; font-size:10px">CANCEL</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI profiles form -->
+          <div class="col-span-12 hidden">
+            <div id="intel-create-profile-form" class="hidden">
+              <input id="intel-pf-name" type="text"/>
+              <textarea id="intel-pf-prompt"></textarea>
+              <input id="intel-pf-desc" type="text"/>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== METRICS ===================== -->
+    <section data-view="metrics" style="display:none">
+      <div class="max-w-6xl mx-auto px-3 md:px-5 pt-3 pb-24">
+        <div class="flex items-center justify-between mb-3">
+          <span class="label label-accent">[ METRICS / TELEMETRÍA ]</span>
+        </div>
+        <div class="grid grid-cols-12 gap-3">
+          <div class="col-span-6 md:col-span-3 panel panel-cnr p-3">
+            <div class="label label-dim">FACTS</div>
+            <div id="s-facts" class="num" style="font-size:24px; color: var(--accent)">0</div>
+          </div>
+          <div class="col-span-6 md:col-span-3 panel panel-cnr p-3">
+            <div class="label label-dim">MESSAGES</div>
+            <div id="s-msgs" class="num" style="font-size:24px">0</div>
+          </div>
+          <div class="col-span-6 md:col-span-3 panel panel-cnr p-3">
+            <div class="label label-dim">NODES</div>
+            <div id="s-nodes" class="num" style="font-size:24px; color: var(--accent)">0</div>
+          </div>
+          <div class="col-span-6 md:col-span-3 panel panel-cnr p-3">
+            <div class="label label-dim">DEVICES</div>
+            <div id="s-devices" class="num" style="font-size:24px">0</div>
+          </div>
+          <!-- KPIs for metrics module -->
+          <div class="col-span-6 md:col-span-3 panel panel-cnr p-3">
+            <div class="label label-dim">FW FLASHES</div>
+            <div id="kpi-firmware" class="num" style="font-size:22px; color: var(--accent)">0</div>
+          </div>
+          <div class="col-span-6 md:col-span-3 panel panel-cnr p-3">
+            <div class="label label-dim">STOCK ITEMS</div>
+            <div id="kpi-stock" class="num" style="font-size:22px; color: var(--accent)">0</div>
+          </div>
+          <div class="col-span-6 md:col-span-3 panel panel-cnr p-3">
+            <div class="label label-dim">DECISIONS</div>
+            <div id="kpi-decisions" class="num" style="font-size:22px">0</div>
+          </div>
+          <div class="col-span-6 md:col-span-3 panel panel-cnr p-3">
+            <div class="label label-dim">DEVICES REG</div>
+            <div id="kpi-devices" class="num" style="font-size:22px">0</div>
+          </div>
+          <!-- charts -->
+          <div class="col-span-12 md:col-span-6 panel panel-cnr">
+            <div class="panel-head"><span class="panel-title">FW HISTORY</span></div>
+            <div class="p-4" style="height:200px"><canvas id="chart-firmware"></canvas></div>
+          </div>
+          <div class="col-span-12 md:col-span-6 panel panel-cnr">
+            <div class="panel-head"><span class="panel-title">STOCK BY CATEGORY</span></div>
+            <div class="p-4 flex gap-4" style="height:200px">
+              <canvas id="chart-stock" style="max-width:140px"></canvas>
+              <div id="chart-stock-legend" class="flex-1 self-center space-y-1 label label-dim" style="font-size:9px"></div>
+            </div>
+          </div>
+          <!-- edges + flashes hidden compat -->
+          <div class="hidden">
+            <span id="s-edges">0</span>
+            <span id="s-flashes">0</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== SYSTEM ===================== -->
+    <section data-view="system" style="display:none">
+      <div class="max-w-4xl mx-auto px-3 md:px-5 pt-3 pb-24">
+        <div class="flex items-center justify-between mb-3">
+          <span class="label label-accent">[ SYSTEM / CONFIGURACIÓN ]</span>
+        </div>
+
+        <!-- services status -->
+        <div class="panel panel-cnr mb-3">
+          <div class="ruler" data-coord="SERVICES"></div>
+          <div class="panel-head"><span class="panel-title">ESTADO DE SERVICIOS</span></div>
+          <div id="services-status" class="grid grid-cols-1">
+            <div class="flex items-center px-4 py-2 border-b" style="border-color: var(--rule)">
+              <span class="mono" style="color: var(--fg-3); width:32px; font-size:11px">01</span>
+              <span style="font-size:13px">llm-gateway</span>
+              <span class="ml-auto chip chip-ok"><span class="dot"></span>LOADING</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- llm model config -->
+        <div class="panel panel-cnr mb-3">
+          <div class="ruler" data-coord="LLM"></div>
+          <div class="panel-head"><span class="panel-title">MODELO LLM</span></div>
+          <div class="p-4 grid grid-cols-12 gap-3">
+            <label class="col-span-12 md:col-span-6">
+              <div class="label mb-1">PROVIDER</div>
+              <div class="field"><select><option>anthropic</option><option>openai</option></select></div>
+            </label>
+            <label class="col-span-12 md:col-span-6">
+              <div class="label mb-1">MODEL</div>
+              <div class="field"><select><option>claude-sonnet-4-6</option><option>claude-haiku-4-5</option><option>gpt-4o</option></select></div>
+            </label>
+          </div>
+        </div>
+
+        <!-- auth status -->
+        <div class="panel panel-cnr mb-3">
+          <div class="ruler" data-coord="AUTH"></div>
+          <div class="panel-head"><span class="panel-title">AUTENTICACIÓN</span></div>
+          <div id="auth-status" class="p-4 label label-dim" style="font-size:10.5px">Verificando…</div>
+        </div>
+
+        <!-- stock module -->
+        <div class="panel panel-cnr mb-3">
+          <div class="ruler" data-coord="STOCK"></div>
+          <div class="panel-head">
+            <span class="panel-title">COMPONENTES EN STOCK</span>
+            <button onclick="webLoadStockSummary()" class="btn btn-icon btn-ghost ml-auto" style="height:26px; width:26px">
+              <span class="material-symbols-outlined" style="font-size:13px">refresh</span>
+            </button>
+          </div>
+          <div id="stock-summary" class="p-4 label label-dim" style="font-size:10.5px">Cargando…</div>
+          <div class="hidden">
+            <div id="stock-list"></div>
+            <input id="stock-search-input" type="text"/>
+            <div id="stock-search-results"></div>
+          </div>
+        </div>
+
+        <!-- graph list (hidden, for intel module) -->
+        <div class="hidden">
+          <div id="graph-list"></div>
+          <div id="panel-search"></div>
+          <input id="search-input" type="text" placeholder="Query memory..."/>
+          <div id="search-results"></div>
+          <div id="panel-telemetry"></div>
+          <div id="panel-metrics"></div>
+          <div id="panel-intel"></div>
+          <div id="panel-kb"></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
 </div>
 
-<!-- Hidden legacy IDs kept for JS compatibility -->
-<div class="hidden">
-  <span id="bridge-since-web"></span>
-  <span id="bridge-icon-web"></span>
-  <span id="bridge-card-web"></span>
-  <span id="auth-panel"></span>
-  <span id="auth-label"></span>
-  <span id="osc-chart"></span>
-  <span id="osc-volt"></span>
-  <span id="osc-a0"></span>
-  <span id="osc-label"></span>
-  <span id="osc-hex"></span>
-  <span id="osc-status-dot"></span>
-</div>
+<!-- ================================================================
+     BOTTOM NAV (mobile)
+     ================================================================ -->
+<nav class="bn">
+  <button class="bn-item" data-nav="chat" data-active="true" onclick="switchView('chat')">
+    <span class="material-symbols-outlined">forum</span><span>CHAT</span>
+  </button>
+  <button class="bn-item" data-nav="kb" onclick="switchView('kb')">
+    <span class="material-symbols-outlined">database</span><span>KB</span>
+  </button>
+  <button class="bn-item" data-nav="calc" onclick="switchView('calc')">
+    <span class="material-symbols-outlined">function</span><span>CALC</span>
+  </button>
+  <button class="bn-item" data-nav="devices" onclick="switchView('devices')">
+    <span class="material-symbols-outlined">memory</span><span>DEVICES</span>
+  </button>
+  <button id="overflow-btn" class="bn-item" onclick="toggleOverflowSheet()">
+    <span class="material-symbols-outlined">more_horiz</span><span>MÁS</span>
+  </button>
+</nav>
 
-<!-- ── LOGIN MODAL ─────────────────────────────────────────────────────────── -->
-<div id="login-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-  <div class="bg-[#1a1918] border border-[#494847]/50 p-8 w-full max-w-sm space-y-5 font-mono">
-    <div class="text-primary text-xs tracking-widest uppercase">Stratum — Iniciar Sesión</div>
-    <div id="login-error" class="hidden text-error text-[10px]"></div>
-    <div class="space-y-3">
-      <input id="login-user" type="text" placeholder="Usuario"
-             class="w-full bg-[#111] border border-[#494847]/50 text-[#adaaaa] text-xs px-3 py-2 outline-none focus:border-primary"
-             autocomplete="username" />
-      <input id="login-pass" type="password" placeholder="Contraseña"
-             class="w-full bg-[#111] border border-[#494847]/50 text-[#adaaaa] text-xs px-3 py-2 outline-none focus:border-primary"
-             autocomplete="current-password" />
-    </div>
-    <button onclick="doLogin()"
-            class="w-full bg-primary/10 hover:bg-primary/20 border border-primary/50 text-primary text-xs py-2 tracking-widest uppercase">
-      Ingresar
+<!-- overflow sheet -->
+<div id="overflow-sheet" class="sheet" data-open="false">
+  <div class="ruler" data-coord="MÁS"></div>
+  <div class="p-3 grid grid-cols-3 gap-2">
+    <button class="btn btn-ghost" style="height:72px; flex-direction:column; display:flex; align-items:center; gap:6px" onclick="switchView('intel')">
+      <span class="material-symbols-outlined" style="font-size:20px">hub</span>INTEL
+    </button>
+    <button class="btn btn-ghost" style="height:72px; flex-direction:column; display:flex; align-items:center; gap:6px" onclick="switchView('metrics')">
+      <span class="material-symbols-outlined" style="font-size:20px">monitoring</span>METRICS
+    </button>
+    <button class="btn btn-ghost" style="height:72px; flex-direction:column; display:flex; align-items:center; gap:6px" onclick="switchView('system')">
+      <span class="material-symbols-outlined" style="font-size:20px">settings</span>SYSTEM
     </button>
   </div>
 </div>
 
-<!-- Jobs floating badge (visible when jobs > 0) -->
-<div id="jobs-badge" class="hidden fixed bottom-6 right-6 z-50 bg-[#131313] border border-secondary/40 font-mono text-[9px] text-secondary px-3 py-2 cursor-pointer shadow-lg" onclick="switchView('devices')">
-  <span class="material-symbols-outlined text-xs align-middle mr-1">work</span>
-  <span id="jobs-badge-count">0</span> JOBS ACTIVOS
-</div>
-
-</main>
-
-<!-- Corner accents -->
-<div class="fixed top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-primary z-[200]"></div>
-<div class="fixed top-0 right-0 w-2 h-2 border-t-2 border-r-2 border-primary z-[200]"></div>
-<div class="fixed bottom-0 left-0 w-2 h-2 border-b-2 border-l-2 border-primary z-[200]"></div>
-<div class="fixed bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-primary z-[200]"></div>
-
-<!-- ── VISION MODAL ───────────────────────────────────────────────────────── -->
-<div id="vision-modal" class="fixed inset-0 z-[150] hidden items-center justify-center bg-black/80">
-  <div class="bg-[#0e0e0e] border border-[#494847]/30 w-full max-w-lg mx-4 flex flex-col font-mono">
-    <div class="flex justify-between items-center px-6 py-4 border-b border-[#494847]/20">
-      <div class="flex items-center gap-3">
-        <span class="material-symbols-outlined text-secondary">photo_camera</span>
-        <span class="text-[10px] font-bold tracking-widest text-[#adaaaa]">CIRCUIT_VISION_ANALYZER</span>
-      </div>
-      <button onclick="closeVisionModal()" class="text-[#adaaaa] hover:text-error transition-colors">
-        <span class="material-symbols-outlined text-sm">close</span>
-      </button>
-    </div>
-    <div class="p-6 space-y-4">
-      <div id="vision-dropzone"
-        class="border-2 border-dashed border-[#494847]/40 hover:border-secondary/60 transition-colors flex flex-col items-center justify-center p-8 cursor-pointer"
-        onclick="document.getElementById('vision-file-input').click()"
-        ondragover="event.preventDefault()"
-        ondrop="handleVisionDrop(event)">
-        <input id="vision-file-input" type="file" accept="image/*" class="hidden" onchange="handleVisionFile(event)"/>
-        <img id="vision-preview" class="hidden max-h-48 object-contain mb-3"/>
-        <div id="vision-placeholder" class="flex flex-col items-center gap-2 text-[#494847]">
-          <span class="material-symbols-outlined text-4xl">image</span>
-          <span class="text-[10px] uppercase tracking-widest">Arrastrá o hacé click</span>
-          <span class="text-[9px]">JPG, PNG, WEBP</span>
-        </div>
-      </div>
-      <div>
-        <label class="text-[9px] text-[#adaaaa] uppercase tracking-widest block mb-1">Dispositivo (opcional)</label>
-        <div class="flex gap-2">
-          <input id="vision-device" type="text" placeholder="ej: Arduino Uno"
-            class="flex-1 bg-black border-b border-[#494847] py-2 px-3 text-xs text-white placeholder-[#494847] focus:outline-none focus:border-secondary"/>
-          <button onclick="loadDevicesForVision()" class="text-[8px] text-secondary hover:text-primary font-bold uppercase px-2">SCAN</button>
-        </div>
-        <div id="vision-devices-list" class="mt-2 space-y-1"></div>
-      </div>
-      <div id="vision-status" class="hidden text-[10px] text-[#adaaaa] space-y-1">
-        <div class="flex items-center gap-2">
-          <span id="vision-status-dot" class="w-2 h-2 bg-[#494847] animate-pulse"></span>
-          <span id="vision-status-text">Analizando...</span>
-        </div>
-        <div class="w-full bg-[#262626] h-0.5">
-          <div id="vision-progress" class="h-0.5 bg-secondary transition-all duration-300" style="width:0%"></div>
-        </div>
+<!-- ================================================================
+     TWEAKS PANEL
+     ================================================================ -->
+<aside id="tweaks-panel" class="tweaks" data-open="false">
+  <div class="ruler" data-coord="TWEAKS"></div>
+  <div class="panel-head">
+    <span class="panel-title">TWEAKS</span>
+    <button id="tweaks-close" class="btn btn-icon btn-ghost ml-auto" style="height:24px; width:24px">
+      <span class="material-symbols-outlined" style="font-size:14px">close</span>
+    </button>
+  </div>
+  <div class="p-3 flex flex-col gap-3">
+    <div>
+      <div class="label mb-2">ACCENT</div>
+      <div class="grid grid-cols-4 gap-1">
+        <div class="swatch" data-swatch="green"   style="background: #4ade80"></div>
+        <div class="swatch" data-swatch="cyan"    style="background: #22d3ee"></div>
+        <div class="swatch" data-swatch="amber"   style="background: #fbbf24"></div>
+        <div class="swatch" data-swatch="magenta" style="background: #e879f9"></div>
       </div>
     </div>
-    <div class="px-6 pb-6 flex gap-3">
-      <button onclick="closeVisionModal()"
-        class="flex-1 border border-[#494847]/30 py-3 text-[10px] font-bold tracking-widest uppercase text-[#adaaaa] hover:border-[#adaaaa] transition-colors">
-        CANCEL
-      </button>
-      <button id="vision-analyze-btn" onclick="analyzeCircuit()" disabled
-        class="flex-1 bg-secondary/10 border border-secondary/40 text-secondary py-3 text-[10px] font-bold tracking-widest uppercase hover:bg-secondary/20 transition-all disabled:opacity-40 disabled:pointer-events-none">
-        ANALYZE_CIRCUIT
-      </button>
+    <div>
+      <div class="label mb-2">DENSIDAD</div>
+      <div class="grid grid-cols-3 gap-1">
+        <button class="btn btn-ghost" data-density-opt="compact" style="height:28px; font-size:10px">COMPACT</button>
+        <button class="btn btn-ghost" data-density-opt="normal"  style="height:28px; font-size:10px">NORMAL</button>
+        <button class="btn btn-ghost" data-density-opt="roomy"   style="height:28px; font-size:10px">ROOMY</button>
+      </div>
     </div>
+    <div class="dash-divider"></div>
+    <div class="mono" style="font-size:10px; color: var(--fg-3); letter-spacing:0.08em; line-height:1.6">
+      Ajustes persistentes (localStorage).
+    </div>
+  </div>
+</aside>
+
+<!-- ================================================================
+     SEARCH MODAL (Ctrl+K)
+     ================================================================ -->
+<div id="search-modal" class="hidden fixed inset-0 z-[100]" style="background:rgba(0,0,0,0.75)" onclick="closeSearchModal()">
+  <div class="max-w-xl mx-auto mt-24 panel panel-cnr" onclick="event.stopPropagation()">
+    <div class="ruler" data-coord="SEARCH"></div>
+    <div class="field" style="height:44px; border:0; border-bottom:1px solid var(--rule-strong)">
+      <span class="material-symbols-outlined" style="font-size:18px; color:var(--fg-3)">search</span>
+      <input id="search-modal-input" placeholder="Buscar en la KB…" style="font-size:14px"/>
+    </div>
+    <div id="search-modal-results" class="max-h-80 overflow-auto"></div>
   </div>
 </div>
 
-<!-- ── SCRIPTS ───────────────────────────────────────────────────────────── -->
-<script src="/static/modules/utils.js"></script>
-<script src="/static/modules/auth.js"></script>
-<script src="/static/modules/sessions.js"></script>
-<script src="/static/modules/chat.js"></script>
-<script src="/static/modules/health.js"></script>
-<script src="/static/modules/hardware.js"></script>
-<script src="/static/modules/intelligence.js"></script>
-<script src="/static/modules/calc.js"></script>
-<script src="/static/modules/circuits.js"></script>
-<script src="/static/modules/kb.js"></script>
-<script src="/static/modules/stock.js"></script>
-<script src="/static/modules/metrics.js"></script>
-<script src="/static/modules/decisions.js"></script>
-<script src="/static/modules/proactive.js"></script>
-<script src="/static/modules/projects.js"></script>
-<script src="/static/app.js"></script>
+<!-- ================================================================
+     LOGS (hidden — for addLog() )
+     ================================================================ -->
+<div class="hidden"><div id="logs-list"></div></div>
 
-<!-- ── CTRL+K SEARCH MODAL ───────────────────────────────────────────────── -->
-<div id="search-modal" class="hidden fixed inset-0 z-[200] flex items-start justify-center pt-24 bg-black/70 backdrop-blur-sm">
-  <div class="w-full max-w-xl bg-[#0a0a0a] border border-[#494847]/60 shadow-2xl font-mono">
-    <!-- Header -->
-    <div class="flex items-center gap-3 px-4 py-3 border-b border-[#494847]/30">
-      <span class="material-symbols-outlined text-sm text-[#494847]">search</span>
-      <input id="search-modal-input" type="text" placeholder="Buscar en memoria, KB, conversaciones..."
-        class="flex-1 bg-transparent text-sm text-white placeholder-[#494847] focus:outline-none"/>
-      <kbd class="text-[8px] border border-[#494847]/40 px-1.5 py-0.5 text-[#494847] cursor-pointer" onclick="closeSearchModal()">ESC</kbd>
-    </div>
-    <!-- Results -->
-    <div id="search-modal-results" class="max-h-80 overflow-y-auto"></div>
-    <!-- Footer hint -->
-    <div class="px-4 py-2 border-t border-[#494847]/20 flex gap-4 text-[7px] text-[#494847]">
-      <span>↑↓ navegar</span><span>Enter usar resultado</span><span>Esc cerrar</span>
-    </div>
-  </div>
-</div>
+<!-- ================================================================
+     JS MODULES
+     ================================================================ -->
+<script src="/static/modules/utils.js?v=5"></script>
+<script src="/static/modules/auth.js?v=5"></script>
+<script src="/static/modules/sessions.js?v=5"></script>
+<script src="/static/modules/projects.js?v=5"></script>
+<script src="/static/modules/kb.js?v=5"></script>
+<script src="/static/modules/calc.js?v=5"></script>
+<script src="/static/modules/hardware.js?v=5"></script>
+<script src="/static/modules/intelligence.js?v=5"></script>
+<script src="/static/modules/decisions.js?v=5"></script>
+<script src="/static/modules/stock.js?v=5"></script>
+<script src="/static/modules/metrics.js?v=5"></script>
+<script src="/static/modules/proactive.js?v=5"></script>
+<script src="/static/modules/circuits.js?v=5"></script>
+<script src="/static/modules/health.js?v=5"></script>
+<script src="/static/modules/chat.js?v=5"></script>
+<script src="/static/app.js?v=5"></script>
+
+<!-- calc auto-update on input -->
+<script>
+(function() {
+  function renderCalc() {
+    const R = parseFloat(document.getElementById('calc-R')?.value || '10000');
+    const C = parseFloat(document.getElementById('calc-C')?.value || '100e-9');
+    if (!R || !C) return;
+    const fc = 1/(2*Math.PI*R*C);
+    const tau = R*C;
+    const out = document.getElementById('calc-out');
+    if (!out) return;
+    out.innerHTML = `
+      <div class="calc-param"><div class="k">fc</div><div class="v num">${fc.toFixed(2)}<span class="u">Hz</span></div></div>
+      <div class="calc-param"><div class="k">τ (tau)</div><div class="v num">${(tau*1000).toFixed(3)}<span class="u">ms</span></div></div>
+      <div class="calc-param"><div class="k">ω</div><div class="v num">${(2*Math.PI*fc).toFixed(1)}<span class="u">rad/s</span></div></div>
+      <div class="calc-param"><div class="k">R·C</div><div class="v num">${tau.toExponential(3)}<span class="u">s</span></div></div>
+    `;
+  }
+  document.addEventListener('input', (e) => {
+    if (e.target && (e.target.id === 'calc-R' || e.target.id === 'calc-C')) renderCalc();
+  });
+  document.addEventListener('DOMContentLoaded', renderCalc);
+})();
+
+// tweaks panel toggle
+document.addEventListener('click', (e) => {
+  if (e.target.closest('#tweaks-btn')) {
+    const p = document.getElementById('tweaks-panel');
+    const open = p.getAttribute('data-open') === 'true';
+    p.setAttribute('data-open', String(!open));
+    return;
+  }
+  if (e.target.closest('#tweaks-close')) {
+    document.getElementById('tweaks-panel').setAttribute('data-open','false');
+    return;
+  }
+  const sw = e.target.closest('.swatch');
+  if (sw) {
+    const accent = sw.dataset.swatch;
+    document.documentElement.setAttribute('data-accent', accent);
+    localStorage.setItem('stratum.accent', accent);
+    document.querySelectorAll('.swatch').forEach(el =>
+      el.setAttribute('data-active', String(el.dataset.swatch === accent)));
+    return;
+  }
+  const d = e.target.closest('[data-density-opt]');
+  if (d) {
+    const density = d.dataset.densityOpt;
+    document.documentElement.setAttribute('data-density', density);
+    localStorage.setItem('stratum.density', density);
+    document.querySelectorAll('[data-density-opt]').forEach(el =>
+      el.setAttribute('data-active', String(el.dataset.densityOpt === density)));
+    return;
+  }
+});
+
+// restore tweaks from localStorage
+(function() {
+  const accent = localStorage.getItem('stratum.accent');
+  const density = localStorage.getItem('stratum.density');
+  if (accent) document.documentElement.setAttribute('data-accent', accent);
+  if (density) document.documentElement.setAttribute('data-density', density);
+})();
+
+function toggleOverflowSheet() {
+  const s = document.getElementById('overflow-sheet');
+  const open = s.getAttribute('data-open') === 'true';
+  s.setAttribute('data-open', String(!open));
+}
+</script>
+
 </body>
 </html>
