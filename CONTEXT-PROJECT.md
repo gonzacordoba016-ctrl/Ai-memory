@@ -1,6 +1,6 @@
 # STRATUM — Contexto del Proyecto
-> Última actualización: 2026-04-17
-> Versión actual: **v3.8.0**
+> Última actualización: 2026-04-20
+> Versión actual: **v3.9.0**
 > Tagline: _"Tu memoria técnica siempre disponible"_
 > Estado: **Production-ready** (local + Railway)
 
@@ -449,20 +449,68 @@ Archivos en `agent_files/knowledge/` — indexados automáticamente al startup v
 
 ---
 
-## 10. PENDIENTE / PRÓXIMOS PASOS
+## 10. MEJORAS PROPUESTAS — DIFERENCIADORES CLAVE
 
-Sin tareas pendientes confirmadas al 2026-04-17. El proyecto está en estado production-ready y corriendo en Railway.
+Las siguientes mejoras están ordenadas por impacto percibido vs herramientas existentes (ChatGPT, Copilot, Claude). El criterio: ¿puede hacerlo otra herramienta sin configuración especial? Si no → diferenciador real.
 
-Posibles mejoras futuras:
-- Parser KiCad v5: usar coordenadas de pines reales desde el `.lib` si está disponible (actualmente usa `P X Y` del componente como fallback)
-- Test e2e offline (mockear el servidor en pytest)
-- Wokwi simulator: integración más profunda para simulación interactiva
-- App mobile: publicar en Play Store / App Store (requiere `google-services.json` FCM)
-- Upload de archivos con procesamiento backend (imágenes → VisionAgent, PDFs → KB indexer)
+### 10.1 Datasheet auto-fetch + indexado ⭐⭐⭐⭐⭐
+**Impacto:** El mayor diferenciador técnico posible.
+- El usuario escribe el nombre de un CI (ESP32, LM317, IRF520, etc.) → el sistema busca el datasheet en Alldatasheet/Mouser → lo parsea y lo indexa automáticamente en la KB
+- Cuando luego pregunta "¿cuánta corriente puede dar el LM317?" → la respuesta viene del datasheet real, no de la memoria del LLM
+- Ninguna otra herramienta hace esto automáticamente. ChatGPT inventa valores. Stratum los verifica.
+- **Implementación:** `tools/datasheet_fetcher.py` + endpoint `POST /api/kb/fetch-datasheet?ic=LM317` + trigger en HardwareAgent cuando detecta nombre de CI
+
+### 10.2 Firmware iterativo con diff ⭐⭐⭐⭐⭐
+**Impacto:** Cambia completamente el flujo de trabajo de programación.
+- Actualmente: cada mensaje regenera el firmware desde cero
+- Mejora: el sistema mantiene el "firmware activo" en la sesión → cuando el usuario dice "hacelo más rápido" o "agregá el sensor de humedad", hace un PATCH del código y muestra un diff coloreado
+- El ingeniero ve exactamente qué cambió, no tiene que releer todo
+- **Implementación:** `agent_state.py` guarda `current_firmware_draft`, `HardwareAgent` detecta intent `"modify"` → aplica cambio incremental + genera diff con `difflib`
+
+### 10.3 Wokwi auto-simulate ⭐⭐⭐⭐
+**Impacto:** Probar código sin tener el hardware físico.
+- Al generar firmware, botón "SIMULAR" → abre Wokwi con el ESP32/Arduino y el código ya cargado, en un iframe o nueva tab
+- El sistema construye el JSON de Wokwi con los componentes correctos (LED en pin X, sensor en pin Y) basado en el circuito guardado en memoria
+- Ninguna herramienta de chat hace esto end-to-end automáticamente
+- **Implementación:** `tools/wokwi_simulator.py` ya existe — extender para generar el JSON de diagrama desde `hardware_circuits.py`
+
+### 10.4 Sesión compartida / export de proyecto ⭐⭐⭐⭐
+**Impacto:** El ingeniero puede documentar y compartir trabajo completo.
+- Export de sesión completa como PDF técnico: código, cálculos, esquemas, decisiones de diseño, todo formateado profesionalmente
+- O como ZIP: firmware `.cpp`, schematic `.svg`, BOM `.csv`, decisiones `.md`
+- Útil para entregas a clientes, documentación interna, portfolio
+- **Implementación:** `tools/pdf_exporter.py` ya existe — integrar con endpoint `GET /api/sessions/{id}/export?format=pdf|zip`
+
+### 10.5 Memoria de errores + patrones ⭐⭐⭐⭐
+**Impacto:** El asistente se vuelve más útil cuanto más se usa — diferenciador directo vs herramientas sin memoria.
+- El sistema detecta cuándo el mismo error aparece múltiples veces en la historia → proactivamente sugiere una solución raíz
+- Ejemplo: "Esta es la 3ra vez que tu ESP32 se desconecta del WiFi. En las sesiones anteriores coincidió con uso de ADC2 — ese pin no funciona con WiFi activo. Cambié los pines a ADC1."
+- **Implementación:** `proactive_scheduler.py` agrega un loop que analiza errores recurrentes en `graph_memory` + `vector_memory`
+
+### 10.6 Voice-to-firmware pipeline completo ⭐⭐⭐
+**Impacto:** El ingeniero habla, el sistema genera código y wiring.
+- La voz ya existe (Web Speech API) pero solo inserta texto en el prompt
+- Mejora: modo "voice firmware" → el usuario describe en voz lo que quiere → el sistema genera firmware + esquema de conexiones + BOM en un solo paso
+- **Implementación:** Detectar frases clave en el transcript de voz → disparar pipeline directo a `HardwareAgent._design_consult` + `CircuitAgent`
+
+### 10.7 Context de plataforma persistente en sesión ⭐⭐⭐
+**Impacto:** Elimina la inconsistencia actual (MicroPython vs C++ en la misma sesión).
+- Cuando el usuario menciona "Arduino IDE", "C++", "MicroPython", o una plataforma específica, el sistema lo guarda como contexto de sesión
+- Todos los mensajes siguientes usan esa plataforma por defecto sin necesidad de repetirla
+- **Implementación:** `agent_state.py` agrega `session_platform: str` → `agent_controller.py` lo inyecta en el system prompt → `hardware_agent.py` lo usa en `_design_consult`
 
 ---
 
-## 11. HISTORIAL DE VERSIONES
+## 11. PENDIENTE TÉCNICO
+
+- HardwareAgent: por defecto genera MicroPython en vez de C++/Arduino — system prompt de `_design_consult` debe preferir C++/Arduino salvo que el usuario pida explícitamente MicroPython
+- Parser KiCad v5: usar coordenadas de pines reales del `.lib` si está disponible (actualmente usa `P X Y` del componente como fallback)
+- Test e2e offline (mockear el servidor en pytest)
+- App mobile: publicar en Play Store / App Store (requiere `google-services.json` FCM)
+
+---
+
+## 12. HISTORIAL DE VERSIONES
 
 | Versión | Fecha       | Cambios principales |
 |---------|-------------|---------------------|
@@ -481,3 +529,4 @@ Posibles mejoras futuras:
 | v3.6.0  | 2026-04-17  | Eliminar Aethermind; URLs rotas JS (decisions/stock/schematics); polling consolidado (30s/60s); healthcheck /api/health; load_dotenv override=True; Railway deploy funcional con volumen /data |
 | v3.7.0  | 2026-04-17  | Fix wss/https en producción; fix health dots (LLM+Qdrant); fix historial orden doble-reverse; textarea auto-expandible; markdown streaming progresivo; botón COPY en código; scroll inteligente; rate limit countdown; contador chars; Esc limpia input; título sesión por IA; Qdrant Cloud configurado; 7 archivos KB técnica indexados |
 | v3.8.0  | 2026-04-17  | TTS en mensajes; Export MD; snippets `/` (15 plantillas ingeniería); Ctrl+K búsqueda semántica modal; Proyecto Activo sidebar (CRUD + activar + inyección en contexto LLM); adjuntar archivos en chat (.ino/.txt/.cpp/imagen); firmware diff coloreado en hardware view; push notifications en eventos proactivos |
+| v3.9.0  | 2026-04-20  | Nuevo diseño UI CAD-instrument (design system completo); bottom nav eliminado → hamburger mobile; composer simplificado; empty state chat mobile; agent routing fix (escribí/código → design, no query); Ctrl+K unificado memoria+KB con {text,score}; 15 mensajes de sesión larga testeados; KB indexada con 10 documentos |
