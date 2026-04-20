@@ -77,7 +77,9 @@ async function kbReindex() {
   try {
     const r = await authFetch('/api/knowledge/index?force=true', { method: 'POST' });
     const data = await r.json();
-    status.textContent = `✅ Indexación completa: ${JSON.stringify(data.indexed)}`;
+    const idx = data.indexed || {};
+    const msg = idx.files > 0 ? `${idx.files} archivos nuevos, ${idx.chunks} chunks` : 'Todo ya estaba indexado';
+    status.textContent = `✅ Re-indexación completa: ${msg}`;
     kbLoadDocuments();
   } catch(e) {
     status.textContent = `❌ ${String(e)}`;
