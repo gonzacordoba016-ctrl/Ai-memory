@@ -57,6 +57,11 @@
   }
   .view-scroll { overflow: auto; height: 100%; }
   .hljs { background: transparent !important; padding: 0 !important; }
+  /* Composer: desktop = pegado al fondo, mobile = sobre bottom nav */
+  .composer-fixed { bottom: 0; }
+  @media (max-width: 900px) {
+    .composer-fixed { bottom: calc(60px + env(safe-area-inset-bottom, 0px)); }
+  }
 </style>
 </head>
 <body class="bg-field">
@@ -249,7 +254,7 @@
 
     <!-- ===================== CHAT ===================== -->
     <section data-view="chat">
-      <div class="max-w-5xl mx-auto px-3 md:px-5 pt-3 pb-48 md:pb-40">
+      <div class="max-w-5xl mx-auto px-3 md:px-5 pt-3 pb-52 md:pb-44">
         <!-- view header (desktop) -->
         <div class="hidden md:flex items-center justify-between mb-3">
           <div class="flex items-center gap-3">
@@ -269,8 +274,8 @@
       </div>
 
       <!-- COMPOSER -->
-      <div class="fixed left-0 right-0 md:left-[288px] z-30 px-3 md:px-5 pb-3 pt-2"
-           style="background: linear-gradient(to top, var(--bg) 70%, transparent); bottom: 60px; bottom: calc(60px + env(safe-area-inset-bottom, 0px))">
+      <div class="fixed left-0 right-0 md:left-[288px] z-30 px-3 md:px-5 pb-3 pt-2 composer-fixed"
+           style="background: linear-gradient(to top, var(--bg) 75%, transparent)">
         <!-- snippet menu -->
         <div id="snippet-menu" class="hidden snippet-menu max-w-5xl mx-auto" style="margin-bottom: -1px;"></div>
         <div class="max-w-5xl mx-auto">

@@ -203,16 +203,23 @@ function addMessage(role, content, agents = [], streaming = false) {
   const wasAtBottom = _isNearBottom(msgs);
 
   if (role === 'user') {
+    const wrap = document.createElement('div');
+    wrap.className = 'msg-user-wrap';
     const div = document.createElement('div');
     div.className = 'msg-user';
     const lines = content.split('\n');
     if (lines.length > 4) {
-      div.innerHTML = '> ' + escHtml(lines.slice(0, 4).join('\n')) +
+      div.innerHTML = escHtml(lines.slice(0, 4).join('\n')) +
         `<span style="color:var(--fg-4)"> … +${lines.length - 4} líneas</span>`;
     } else {
-      div.textContent = '> ' + content;
+      div.textContent = content;
     }
-    msgs.appendChild(div);
+    const tsEl = document.createElement('div');
+    tsEl.className = 'msg-user-ts';
+    tsEl.textContent = ts;
+    wrap.appendChild(div);
+    wrap.appendChild(tsEl);
+    msgs.appendChild(wrap);
     if (wasAtBottom) msgs.scrollTop = msgs.scrollHeight;
     return null;
   } else {

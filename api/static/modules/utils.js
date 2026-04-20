@@ -5,13 +5,32 @@ function escHtml(str) {
 const esc = escHtml;
 
 // Render markdown seguro para mensajes del agente.
-// marked.js convierte markdown → HTML; escHtml se usa solo para contenido de usuario.
+// Protege los bloques LaTeX antes de que marked.js los consuma.
 function renderMarkdown(text) {
   try {
     if (typeof marked === 'undefined') return escHtml(text);
-    // Configurar marked: sin sanitize (deprecated), mode gfm
     marked.setOptions({ gfm: true, breaks: true });
-    return marked.parse(String(text));
+
+    // Extraer bloques de math antes de pasar a marked para que no los rompa
+    const mathStore = [];
+    const placeholder = (i) => `\x02MATH${i}\x03`;
+    let t = String(text);
+
+    // display math: $$...$$ y \[...\]
+    t = t.replace(/\$\$([\s\S]+?)\$\$/g, (_, m) => { mathStore.push(`$$${m}$$`); return placeholder(mathStore.length - 1); });
+    t = t.replace(/\\\[([\s\S]+?)\\\]/g, (_, m) => { mathStore.push(`\\[${m}\\]`); return placeholder(mathStore.length - 1); });
+    // inline math: \(...\) y $...$  (no multiline)
+    t = t.replace(/\\\((.+?)\\\)/g, (_, m) => { mathStore.push(`\\(${m}\\)`); return placeholder(mathStore.length - 1); });
+    t = t.replace(/\$([^\n$]+?)\$/g, (_, m) => { mathStore.push(`$${m}$`); return placeholder(mathStore.length - 1); });
+
+    let html = marked.parse(t);
+
+    // Restaurar los bloques de math
+    mathStore.forEach((math, i) => {
+      html = html.replace(placeholder(i), math);
+    });
+
+    return html;
   } catch(e) {
     return escHtml(text);
   }
