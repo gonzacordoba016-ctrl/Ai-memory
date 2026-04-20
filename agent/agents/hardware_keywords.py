@@ -25,7 +25,7 @@ INTENT_PROMPT = """Clasificá esta consulta de hardware en UNA sola palabra:
 
 - save_decision: guardar una decisión de diseño, razonamiento técnico, por qué elegí un componente
 - save_circuit:  guardar, asociar o registrar un circuito/foto para un dispositivo
-- query:         consultar historial de dispositivos YA REGISTRADOS, qué firmware tiene cargado, cuántas veces se flasheó
+- query:         consultar historial de dispositivos YA REGISTRADOS en la base de datos, qué firmware tiene cargado actualmente, cuántas veces se flasheó
 - program:       flashear, subir o cargar código a un dispositivo físico YA CONECTADO por USB (blink, servo, sensor, WiFi, MQTT)
 - signal:        leer señal analógica, voltaje, osciloscopio, monitorear pin
 - debug:         corregir error, algo no funciona, falla, arreglar, diagnosticar
@@ -39,6 +39,11 @@ Ejemplos:
 - "calculá la resistencia" → design
 - "hacelo más rápido" → modify
 - "agregá wifi al código anterior" → modify
+- "qué es el ESP32" → design
+- "cuál es la diferencia entre ESP32 y ESP8266" → design
+- "qué es el protocolo MQTT" → design
+- "qué es un LM317" → design
+- "cómo funciona un optoacoplador" → design
 
 Consulta: "{task}"
 
@@ -143,6 +148,12 @@ PROGRAM_KEYWORDS = [
 ]
 
 DESIGN_KEYWORDS = [
+    # Preguntas conceptuales / comparativas
+    "qué es", "que es", "qué son", "que son",
+    "cuál es la diferencia", "cual es la diferencia", "diferencia entre",
+    "cómo funciona", "como funciona", "cuándo usar", "cuando usar",
+    "para qué sirve", "para que sirve", "ventajas de", "desventajas de",
+    "comparar", "comparación entre", "vs ", " vs ",
     # Escritura de código/ejemplos para microcontroladores
     "escribí", "escribi", "escribime", "generá", "genera", "generame",
     "dame un ejemplo", "dame código", "dame codigo", "dame el código",

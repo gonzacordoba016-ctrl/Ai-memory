@@ -13,16 +13,12 @@ class _DiffMixin:
     def _modify_firmware(self, task: str, context: str = "") -> str:
         """Modifica el firmware actual de la sesión según el pedido del usuario y muestra un diff."""
 
-        # Obtener el draft actual — viene inyectado en context por agent_controller
+        # Obtener el draft del singleton agent (AgentController)
         current_code = None
-        if context and "FIRMWARE ACTUAL EN SESIÓN" in context:
-            # Extraer el código del contexto de sesión via state (referencia al controller)
-            pass
-
-        # Fallback: buscar en context directo
         try:
-            from api.app_state import agent_controller
-            current_code = agent_controller.state.get_firmware_draft()
+            import api.app_state as _state
+            if _state.agent and hasattr(_state.agent, 'state'):
+                current_code = _state.agent.state.get_firmware_draft()
         except Exception:
             pass
 
@@ -84,8 +80,9 @@ class _DiffMixin:
 
         # Guardar nuevo draft
         try:
-            from api.app_state import agent_controller
-            agent_controller.state.set_firmware_draft(new_code)
+            import api.app_state as _state
+            if _state.agent and hasattr(_state.agent, 'state'):
+                _state.agent.state.set_firmware_draft(new_code)
         except Exception:
             pass
 
