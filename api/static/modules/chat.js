@@ -84,6 +84,7 @@ async function loadSessionHistory(sid) {
     // Limpiar DOM antes de cargar para evitar duplicados
     const area = document.getElementById('messages');
     if (area) area.innerHTML = '';
+    document.getElementById('chat-empty')?.remove();
     msgs.forEach(m => {
       if (m.role !== 'user' && m.role !== 'assistant') return;
       addMessage(m.role === 'user' ? 'user' : 'agent', m.content, m.agents_used || []);
@@ -201,6 +202,9 @@ function addMessage(role, content, agents = [], streaming = false) {
   if (!msgs) return null;
   const ts = new Date().toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
   const wasAtBottom = _isNearBottom(msgs);
+
+  // Eliminar empty state al primer mensaje
+  document.getElementById('chat-empty')?.remove();
 
   if (role === 'user') {
     const wrap = document.createElement('div');

@@ -53,7 +53,8 @@
     .app > aside#left-sidebar[data-open="true"] { transform: translateX(0); }
     #sidebar-scrim { display: none; }
     aside#left-sidebar[data-open="true"] ~ #sidebar-scrim { display: block; }
-    main { padding-bottom: 64px; }
+    /* main no necesita padding-bottom — composer y bottom nav son fixed */
+    main { padding-bottom: 0; }
   }
   .view-scroll { overflow: auto; height: 100%; }
   .hljs { background: transparent !important; padding: 0 !important; }
@@ -61,6 +62,23 @@
   .composer-fixed { bottom: 0; }
   @media (max-width: 900px) {
     .composer-fixed { bottom: calc(60px + env(safe-area-inset-bottom, 0px)); }
+  }
+  /* Chat section llena toda la altura disponible */
+  .chat-section {
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  .chat-section > div { flex: 1; }
+  /* Empty state centrado verticalmente */
+  .chat-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 80px 24px;
+    min-height: 50vh;
   }
 </style>
 </head>
@@ -253,13 +271,11 @@
     </div>
 
     <!-- ===================== CHAT ===================== -->
-    <section data-view="chat">
-      <div class="max-w-5xl mx-auto px-3 md:px-5 pt-3 pb-52 md:pb-44">
+    <section data-view="chat" class="chat-section">
+      <div class="max-w-5xl mx-auto px-3 md:px-5 pt-3 pb-52 md:pb-44 w-full">
         <!-- view header (desktop) -->
-        <div class="hidden md:flex items-center justify-between mb-3">
-          <div class="flex items-center gap-3">
-            <span class="label label-accent">[ CHAT / CONVERSACIÓN ]</span>
-          </div>
+        <div class="hidden md:flex items-center justify-between mb-4">
+          <span class="label label-accent">[ CHAT / CONVERSACIÓN ]</span>
           <div class="flex items-center gap-2">
             <button class="btn btn-ghost" onclick="exportChat()">
               <span class="material-symbols-outlined" style="font-size:14px">download</span> EXPORT .MD
@@ -270,7 +286,21 @@
           </div>
         </div>
 
-        <div id="messages" class="flex flex-col gap-4"></div>
+        <div id="messages" class="flex flex-col gap-4">
+          <!-- empty state — se elimina con el primer mensaje -->
+          <div id="chat-empty" class="chat-empty-state">
+            <span class="material-symbols-outlined" style="font-size:44px; color:var(--accent); opacity:0.25; display:block; margin-bottom:12px">forum</span>
+            <div class="label" style="font-size:12px; letter-spacing:0.14em; opacity:0.35">STRATUM · LISTO</div>
+            <div class="mono mt-2" style="font-size:11px; color:var(--fg-3); line-height:1.7; max-width:240px">
+              Preguntá sobre circuitos,<br>código, cálculos o componentes.
+            </div>
+            <div class="mt-4 flex flex-wrap gap-2 justify-center">
+              <span class="tag" style="cursor:pointer; opacity:0.5" onclick="document.getElementById('prompt').value='explicame la ley de Ohm'; document.getElementById('prompt').focus()">ley de Ohm</span>
+              <span class="tag" style="cursor:pointer; opacity:0.5" onclick="document.getElementById('prompt').value='calculá fc para R=10k C=100nF'; document.getElementById('prompt').focus()">/calc RC</span>
+              <span class="tag" style="cursor:pointer; opacity:0.5" onclick="document.getElementById('prompt').value='escribí firmware para ESP32 que parpadee un LED'; document.getElementById('prompt').focus()">/fw ESP32</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- COMPOSER -->
