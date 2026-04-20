@@ -12,11 +12,17 @@ INTENT_PROMPT = """Clasificá esta consulta de hardware en UNA sola palabra:
 
 - save_decision: guardar una decisión de diseño, razonamiento técnico, por qué elegí un componente
 - save_circuit:  guardar, asociar o registrar un circuito/foto para un dispositivo
-- query:         consultar información sobre dispositivos registrados, firmware actual, historial de flashes, qué tiene programado
-- program:       programar, flashear, cargar código a un dispositivo YA CONECTADO (blink, servo, sensor, WiFi, MQTT)
+- query:         consultar historial de dispositivos YA REGISTRADOS, qué firmware tiene cargado, cuántas veces se flasheó
+- program:       flashear, subir o cargar código a un dispositivo físico YA CONECTADO por USB (blink, servo, sensor, WiFi, MQTT)
 - signal:        leer señal analógica, voltaje, osciloscopio, monitorear pin
 - debug:         corregir error, algo no funciona, falla, arreglar, diagnosticar
-- design:        diseñar circuito, asesoramiento técnico, dimensionar componentes, potencia, motor, PLC, regulador, fuente, esquema, cálculos eléctricos, elección de componentes
+- design:        ESCRIBIR código/ejemplo/función/firmware para un microcontrolador (aunque no esté conectado), diseñar circuito, asesoramiento técnico, dimensionar componentes, potencia, motor, PLC, regulador, fuente, esquema, cálculos eléctricos
+
+Ejemplos:
+- "escribí un ejemplo en C para ESP32" → design
+- "qué tiene programado el arduino" → query
+- "flasheá el firmware" → program
+- "calculá la resistencia" → design
 
 Consulta: "{task}"
 
@@ -121,6 +127,13 @@ PROGRAM_KEYWORDS = [
 ]
 
 DESIGN_KEYWORDS = [
+    # Escritura de código/ejemplos para microcontroladores
+    "escribí", "escribi", "escribime", "generá", "genera", "generame",
+    "dame un ejemplo", "dame código", "dame codigo", "dame el código",
+    "creá un ejemplo", "crea un ejemplo", "mostrá", "mostra",
+    "hacé un programa", "hace un programa", "necesito un código",
+    "código para", "codigo para", "ejemplo en c", "ejemplo de codigo",
+    "función para", "funcion para", "rutina para",
     # Diseño y asesoramiento técnico
     "quiero programar mi circuito", "diseñar", "dimensionar", "calcular",
     "qué componente", "que componente", "qué usar", "que usar",
