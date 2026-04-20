@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from api.auth import get_current_user
 from database.sql_memory import _default as sql_db
-from memory.vector_memory import search_memory
+from memory.vector_memory import search_memory, search_memory_with_scores
 from memory.graph_memory import graph_memory
 from database.hardware_memory import hardware_memory
 
@@ -55,8 +55,26 @@ async def get_history(limit: int = 50, session_id: str = None):
 
 @router.get("/api/search")
 async def memory_search(q: str, top_k: int = 5):
-    results = search_memory(q, top_k=top_k)
-    return {"query": q, "results": results}
+    combined: list[dict] = []
+
+    # Memoria del chat (con scores)
+    try:
+        mem = search_memory_with_scores(q, top_k=top_k)
+        combined.extend(mem)
+    except Exception:
+        pass
+
+    # Knowledge base
+    try:
+        from knowledge.knowledge_base import search_knowledge
+        kb = search_knowledge(q, top_k=top_k)
+        for text in kb:
+            combined.append({"text": text, "score": 0.75, "metadata": {"type": "knowledge"}})
+    except Exception:
+        pass
+
+    combined.sort(key=lambda x: x.get("score", 0), reverse=True)
+    return {"query": q, "results": combined[:top_k]}
 
 
 @router.get("/api/graph")
