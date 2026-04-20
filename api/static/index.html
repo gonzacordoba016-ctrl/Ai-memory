@@ -48,7 +48,10 @@
 
 <!-- ── HEADER ──────────────────────────────────────────────────────────── -->
 <header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-6 h-14 bg-black/90 border-b border-[#a4ffb9]/20 shadow-[0_0_15px_rgba(164,255,185,0.1)]">
-  <div class="flex items-center gap-6">
+  <div class="flex items-center gap-3 md:gap-6">
+    <button id="hamburger-btn" onclick="toggleMobileSidebar()" class="md:hidden p-1 text-[#adaaaa] hover:text-primary transition-colors" title="Menú">
+      <span class="material-symbols-outlined text-xl">menu</span>
+    </button>
     <span class="text-2xl font-black text-[#a4ffb9] tracking-[-0.05em] cursor-pointer" onclick="switchView('chat')">STRATUM</span>
     <div class="hidden md:flex items-center gap-1.5 font-mono text-[9px]">
       <span id="conn-dot" class="w-1.5 h-1.5 bg-gray-500 rounded-full"></span>
@@ -93,8 +96,11 @@
   </div>
 </header>
 
+<!-- Mobile sidebar backdrop -->
+<div id="sidebar-backdrop" onclick="closeMobileSidebar()" class="hidden fixed inset-0 bg-black/70 z-[39]"></div>
+
 <!-- ── LEFT SIDEBAR — sessions + module nav ─────────────────────────────── -->
-<aside class="fixed left-0 top-14 h-[calc(100vh-3.5rem)] flex flex-col z-40 bg-[#0a0a0a] w-72 border-r border-[#a4ffb9]/10 font-mono text-[0.6875rem] tracking-widest overflow-hidden">
+<aside id="left-sidebar" class="fixed left-0 top-14 h-[calc(100vh-3.5rem)] flex flex-col z-40 bg-[#0a0a0a] w-72 border-r border-[#a4ffb9]/10 font-mono text-[0.6875rem] tracking-widest overflow-hidden">
   <!-- CONVERSACIONES — sección colapsable, ocupa el espacio mayor -->
   <div id="chats-section" class="flex flex-col flex-1 min-h-0 transition-all duration-200">
 
@@ -1027,6 +1033,10 @@
           <button onclick="kbReindex()"
                   class="text-[9px] font-mono bg-[#131313] border border-[#494847]/50 text-[#adaaaa] hover:border-secondary/60 hover:text-secondary px-3 py-1.5 transition-colors flex items-center gap-1">
             <span class="material-symbols-outlined text-xs">sync</span>Re-indexar todo
+          </button>
+          <button id="kb-import-feed-btn" onclick="kbImportFeed()"
+                  class="text-[9px] font-mono bg-[#131313] border border-[#a4ffb9]/30 text-[#a4ffb9] hover:border-primary/60 hover:bg-primary/10 px-3 py-1.5 transition-colors flex items-center gap-1">
+            <span class="material-symbols-outlined text-xs">folder_open</span>Importar knowledge_feed
           </button>
         </div>
         <div id="kb-upload-status" class="text-[9px] font-mono text-[#adaaaa] hidden"></div>

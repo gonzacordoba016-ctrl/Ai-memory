@@ -1,0 +1,89 @@
+CONOCIMIENTO TÉCNICO: MICROCONTROLADORES
+Indexá todo esto como referencia técnica permanente.
+
+=== ARDUINO UNO (ATmega328P) ===
+Clock: 16MHz | Flash: 32KB | SRAM: 2KB | EEPROM: 1KB
+Pines digitales: 14 (D0-D13) | PWM: D3,D5,D6,D9,D10,D11
+Analógicos: A0-A5 (10-bit ADC, 0-5V) | Corriente por pin: 40mA max
+I2C: A4(SDA), A5(SCL) | SPI: D10(SS),D11(MOSI),D12(MISO),D13(SCK)
+UART: D0(RX), D1(TX) — no usar si usás Serial monitor
+PWM frecuencia: D5,D6=980Hz | D3,D9,D10,D11=490Hz
+analogWrite: 0-255 → duty 0-100%
+analogRead: 0-1023 → 0-5V (resolución ~4.9mV)
+EEPROM.write(addr,val) / EEPROM.read(addr) — 100K ciclos escritura
+
+=== ARDUINO MEGA (ATmega2560) ===
+Flash: 256KB | SRAM: 8KB | EEPROM: 4KB
+Digitales: 54 | PWM: 15 pines | Analógicos: 16
+UART: Serial(0/1), Serial1(19/18), Serial2(17/16), Serial3(15/14)
+Ideal para proyectos grandes con muchos sensores/actuadores
+
+=== ESP32 (Espressif) ===
+Clock: 240MHz dual-core | Flash: 4MB típico | SRAM: 520KB
+WiFi 802.11 b/g/n 2.4GHz | Bluetooth 4.2 + BLE
+GPIO: 34 pines (algunos solo input) | ADC: 12-bit, 0-3.3V
+ADC1: GPIO32-39 (funciona con WiFi) | ADC2: GPIO0,2,4,12-15,25-27 (NO usar con WiFi)
+DAC: GPIO25, GPIO26 (8-bit, 0-3.3V)
+PWM: cualquier pin, hasta 16 canales, frecuencia configurable
+I2C: cualquier pin (Wire.begin(SDA,SCL))
+SPI: VSPI=GPIO23(MOSI),19(MISO),18(SCK),5(SS) | HSPI=GPIO13,12,14,15
+UART0: GPIO1(TX),3(RX) | UART1: GPIO10,9 | UART2: GPIO17,16
+Touch: GPIO4,0,2,15,13,12,14,27,33,32
+Hall sensor interno | Temperatura interna (no muy preciso)
+Deep sleep: hasta 10μA | Sleep: esp_deep_sleep_start()
+Nivel lógico 3.3V — NO conectar directamente a 5V sin divisor
+Máx corriente GPIO: 40mA | Total corriente GPIO: 1200mA
+
+=== ESP8266 (NodeMCU) ===
+Clock: 80/160MHz | Flash: 4MB | SRAM: 80KB
+WiFi 802.11 b/g/n | GPIO: 11 usables
+ADC: solo 1 pin (A0), 10-bit, 0-1V (NodeMCU tiene divisor a 3.3V)
+D0=GPIO16, D1=GPIO5(SCL), D2=GPIO4(SDA), D3=GPIO0, D4=GPIO2(LED)
+D5=GPIO14(SCK), D6=GPIO12(MISO), D7=GPIO13(MOSI), D8=GPIO15(SS)
+GPIO0,2,15 afectan modo boot — cuidado al usar
+Nivel lógico 3.3V | Corriente total: 300mA
+
+=== STM32 (Blue Pill F103C8T6) ===
+Clock: 72MHz | Flash: 64KB | SRAM: 20KB
+ADC: 12-bit | Timers: avanzados con encoder mode
+I2C, SPI, USART, CAN, USB
+Corriente por pin: 25mA | Nivel: 3.3V (pines 5V tolerant marcados FT)
+Programar con ST-Link o via USB (bootloader)
+HAL o LL drivers | CubeMX para configuración
+
+=== RASPBERRY PI PICO (RP2040) ===
+Dual ARM Cortex-M0+ 133MHz | Flash: 2MB | SRAM: 264KB
+GPIO: 26 multifunción | ADC: 3 pines + sensor temp interno (12-bit)
+PWM: 16 canales | PIO: 2 bloques (8 state machines) para protocolos custom
+I2C: 2 buses | SPI: 2 buses | UART: 2 buses
+MicroPython o C/C++ SDK | Nivel lógico 3.3V
+
+=== TIMERS Y PWM ===
+Arduino: Timer0(D5,D6,millis/delay) | Timer1(D9,D10) | Timer2(D3,D11)
+Cambiar frecuencia PWM Timer1: TCCR1B = (TCCR1B & ~7) | prescaler
+Prescalers: 1=31kHz, 8=4kHz, 64=490Hz(default), 256=122Hz, 1024=30Hz
+
+=== INTERRUPCIONES ===
+Arduino: attachInterrupt(digitalPinToInterrupt(pin), ISR, RISING/FALLING/CHANGE)
+ISR debe ser rápida, sin delay(), variables compartidas = volatile
+ESP32: igual, pero cualquier GPIO puede ser interrupción
+Prioridades ESP32: configurable 0-25, 0=más alta
+
+=== COMUNICACIÓN I2C ===
+Velocidades: 100kHz(estándar), 400kHz(fast), 1MHz(fast-plus)
+Pull-up: 4.7kΩ a VCC para 100kHz | 2.2kΩ para 400kHz
+Direcciones 7-bit: 0x00-0x7F (0x00 reservada, 0x78-0x7F reservadas)
+Scanner I2C: Wire.begin(); for(addr=1;addr<127;addr++) Wire.beginTransmission(addr); if(Wire.endTransmission()==0) → encontrado
+Dispositivos comunes: DS3231 RTC=0x68 | PCF8574=0x20-0x27 | BMP280=0x76/0x77 | SSD1306=0x3C/0x3D | ADS1115=0x48-0x4B | MPU6050=0x68/0x69 | AT24C32=0x50
+
+=== COMUNICACIÓN SPI ===
+4 cables: MOSI, MISO, SCK, CS (uno por dispositivo)
+Modos: CPOL × CPHA → Mode0(0,0), Mode1(0,1), Mode2(1,0), Mode3(1,1)
+Velocidades: hasta 10MHz típico para la mayoría de sensores
+CS activo LOW normalmente
+
+=== COMUNICACIÓN UART/SERIAL ===
+Baudrates comunes: 9600, 19200, 38400, 57600, 115200, 230400, 921600
+Formato: 8N1 (8 bits datos, sin paridad, 1 stop bit) — más común
+RS232 ±12V | RS485 diferencial (hasta 1200m, hasta 32 nodos) | TTL 3.3/5V
+MAX485: half-duplex RS485 | MAX232: TTL a RS232 | CP2102/CH340: USB-UART

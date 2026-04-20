@@ -84,6 +84,30 @@ async function kbReindex() {
   }
 }
 
+async function kbImportFeed() {
+  const status = document.getElementById('kb-upload-status');
+  const btn = document.getElementById('kb-import-feed-btn');
+  status.classList.remove('hidden');
+  status.textContent = '⏳ Importando knowledge_feed...';
+  if (btn) btn.disabled = true;
+  try {
+    const r = await authFetch('/api/knowledge/import-feed', { method: 'POST' });
+    const data = await r.json();
+    if (!r.ok) {
+      status.textContent = `❌ ${data.detail || 'Error al importar'}`;
+    } else if (data.imported && data.imported.length > 0) {
+      status.textContent = `✅ ${data.imported.length} archivos importados e indexados`;
+      kbLoadDocuments();
+    } else {
+      status.textContent = `ℹ️ ${data.message || 'Sin archivos nuevos'}`;
+    }
+  } catch(e) {
+    status.textContent = `❌ ${String(e)}`;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 async function kbSearch() {
   const q = document.getElementById('kb-search-input')?.value?.trim();
   const el = document.getElementById('kb-search-results');

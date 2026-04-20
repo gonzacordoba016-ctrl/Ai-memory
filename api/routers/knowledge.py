@@ -62,6 +62,31 @@ async def knowledge_search(q: str, top_k: int = 5):
     return {"query": q, "results": results}
 
 
+@router.post("/import-feed")
+@limiter.limit("5/minute")
+async def import_knowledge_feed(request: Request):
+    """Copia todos los archivos de knowledge_feed/ (excepto instrucciones) a agent_files/knowledge/ y los indexa."""
+    feed_dir = Path("knowledge_feed")
+    if not feed_dir.exists():
+        raise HTTPException(status_code=404, detail="Directorio knowledge_feed no encontrado")
+
+    _KB_DIR.mkdir(parents=True, exist_ok=True)
+    imported = []
+    for f in sorted(feed_dir.glob("*.txt")):
+        if f.stem.startswith("00"):
+            continue
+        dest = _KB_DIR / f.name
+        dest.write_bytes(f.read_bytes())
+        imported.append(f.name)
+        logger.info(f"[Knowledge] Feed importado: {f.name} ({f.stat().st_size} bytes)")
+
+    if not imported:
+        return {"status": "ok", "imported": [], "message": "No hay archivos nuevos en knowledge_feed"}
+
+    indexed = await asyncio.to_thread(index_knowledge_base, force=True)
+    return {"status": "ok", "imported": imported, "indexed": indexed}
+
+
 @router.delete("/delete/{filename}")
 async def delete_knowledge_document(filename: str):
     """Elimina un archivo de agent_files/knowledge/ y re-indexa."""

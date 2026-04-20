@@ -44,4 +44,11 @@
   .prose-stratum hr { border-color: #494847; margin: 0.5em 0; }
   .calc-warn { color:#ffd700; font-size:8px; margin-top:2px; }
   .calc-stock { color:#00cbfe; font-size:8px; margin-top:4px; border-top:1px solid #494847/30; padding-top:4px; }
+  /* ── Mobile responsive ── */
+  @media (max-width: 767px) {
+    #left-sidebar { transform: translateX(-100%); transition: transform 0.2s steps(4, end); }
+    #left-sidebar.mobile-open { transform: translateX(0); }
+    #sidebar-backdrop.visible { display: block !important; }
+    main { margin-left: 0 !important; }
+  }
 </style>

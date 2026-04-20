@@ -57,9 +57,25 @@ function toggleVoice() {
   _voiceOn ? _voiceRec.stop() : _voiceRec.start();
 }
 
+// ── MOBILE SIDEBAR ──────────────────────────────────────────────────────
+function toggleMobileSidebar() {
+  const sidebar = document.getElementById('left-sidebar');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  const isOpen = sidebar.classList.contains('mobile-open');
+  if (isOpen) { closeMobileSidebar(); } else {
+    sidebar.classList.add('mobile-open');
+    backdrop.classList.add('visible');
+  }
+}
+function closeMobileSidebar() {
+  document.getElementById('left-sidebar')?.classList.remove('mobile-open');
+  document.getElementById('sidebar-backdrop')?.classList.remove('visible');
+}
+
 // ── NAVIGATION ──────────────────────────────────────────────────────────
 function switchView(name) {
   _activeView = name;
+  closeMobileSidebar();
 
   // Hide all views
   document.querySelectorAll('[id^="view-"]').forEach(el => {
