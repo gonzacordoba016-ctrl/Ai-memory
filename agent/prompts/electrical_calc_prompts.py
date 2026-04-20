@@ -49,32 +49,32 @@ Consulta: "{task}"
 Respondé SOLO con JSON válido.""",
 
     "resistor_voltage_divider": """Extraé parámetros para divisor de tensión.
-JSON con claves: vin (float), vout (float), r1 (float, ohmios — si no se da usar 10000).
+JSON con claves: vin (float, null si no se menciona), vout (float, null si no se menciona), r1 (float, ohmios — 10000 si no se da).
 Consulta: "{task}"
 Respondé SOLO con JSON válido.""",
 
     "resistor_power": """Extraé parámetros para potencia en resistencia.
-JSON con claves: r (float, ohmios), y uno de: i_ma (float, corriente mA) o v (float, tensión V).
+JSON con claves: r (float, ohmios, null si no se menciona), i_ma (float, corriente mA, null si no se menciona), v (float, tensión V, null si no se menciona).
 Consulta: "{task}"
 Respondé SOLO con JSON válido.""",
 
     "capacitor_filter": """Extraé parámetros para filtro RC.
-JSON con claves: freq_hz (float, frecuencia de corte en Hz), resistance (float, ohmios).
+JSON con claves: freq_hz (float, frecuencia de corte en Hz, null si no se menciona), resistance (float, ohmios, null si no se menciona).
 Consulta: "{task}"
 Respondé SOLO con JSON válido.""",
 
     "rc_time_constant": """Extraé parámetros para constante de tiempo RC.
-JSON con claves: r (float, ohmios), c_uf (float, capacitor en µF/uF).
+JSON con claves: r (float, ohmios, null si no se menciona), c_uf (float, capacitor en µF/uF, null si no se menciona).
 Consulta: "{task}"
 Respondé SOLO con JSON válido.""",
 
     "capacitor_energy": """Extraé parámetros para energía en capacitor.
-JSON con claves: c_uf (float, µF), v (float, voltios).
+JSON con claves: c_uf (float, µF, null si no se menciona), v (float, voltios, null si no se menciona).
 Consulta: "{task}"
 Respondé SOLO con JSON válido.""",
 
     "power_dissipation": """Extraé parámetros para potencia disipada.
-JSON con claves: v (float, voltios), i_ma (float, corriente en mA).
+JSON con claves: v (float, voltios, null si no se menciona), i_ma (float, corriente en mA, null si no se menciona).
 Consulta: "{task}"
 Respondé SOLO con JSON válido.""",
 
@@ -96,20 +96,20 @@ Consulta: "{task}"
 Respondé SOLO con JSON válido.""",
 
     "buck_converter": """Extraé parámetros para convertidor BUCK.
-JSON con claves: vin (float, tensión entrada V), vout (float, tensión salida V),
-iout (float, corriente salida A), freq_khz (float, frecuencia kHz, default 100).
+JSON con claves: vin (float, tensión entrada V, null si no se menciona), vout (float, tensión salida V, null si no se menciona),
+iout (float, corriente salida A, null si no se menciona), freq_khz (float, frecuencia kHz, default 100).
 Consulta: "{task}"
 Respondé SOLO con JSON válido.""",
 
     "boost_converter": """Extraé parámetros para convertidor BOOST.
-JSON con claves: vin (float, tensión entrada V), vout (float, tensión salida V),
-iout (float, corriente salida A), freq_khz (float, frecuencia kHz, default 100).
+JSON con claves: vin (float, tensión entrada V, null si no se menciona), vout (float, tensión salida V, null si no se menciona),
+iout (float, corriente salida A, null si no se menciona), freq_khz (float, frecuencia kHz, default 100).
 Consulta: "{task}"
 Respondé SOLO con JSON válido.""",
 
     "transformer_turns_ratio": """Extraé parámetros para transformador.
-JSON con claves: vp (float, tensión primario V), vs (float, tensión secundario V),
-ip (float, corriente primario A, opcional), is_ (float, corriente secundario A, opcional).
+JSON con claves: vp (float, tensión primario V, null si no se menciona), vs (float, tensión secundario V, null si no se menciona),
+ip (float, corriente primario A, null si no se menciona), is_ (float, corriente secundario A, null si no se menciona).
 Consulta: "{task}"
 Respondé SOLO con JSON válido.""",
 
@@ -151,17 +151,17 @@ Consulta: "{task}"
 Respondé SOLO con JSON válido.""",
 
     "motor_power": """Extraé parámetros para potencia de motor.
-JSON con claves: voltage (float, V), current (float, A), efficiency (float, 0-1, default 0.85).
+JSON con claves: voltage (float, V, null si no se menciona), current (float, A, null si no se menciona), efficiency (float, 0-1, default 0.85).
 Consulta: "{task}"
 Respondé SOLO con JSON válido.""",
 
     "vfd_frequency_for_rpm": """Extraé parámetros para frecuencia VFD.
-JSON con claves: rpm (float), poles (int, número de polos del motor, default 4).
+JSON con claves: rpm (float, null si no se menciona), poles (int, número de polos del motor, default 4).
 Consulta: "{task}"
 Respondé SOLO con JSON válido.""",
 
     "motor_torque": """Extraé parámetros para torque de motor.
-JSON con claves: power_w (float, potencia W), rpm (float).
+JSON con claves: power_w (float, potencia W, null si no se menciona), rpm (float, null si no se menciona).
 Consulta: "{task}"
 Respondé SOLO con JSON válido.""",
 
@@ -170,6 +170,66 @@ JSON con claves: v (float, voltios, null si no se da), i_ma (float, mA, null si 
 r (float, ohmios, null si no se da).
 Consulta: "{task}"
 Respondé SOLO con JSON válido.""",
+}
+
+
+# ── Parámetros requeridos por tipo (null → pedir al usuario) ─────────────────
+# Claves que deben tener valor numérico para que el cálculo tenga sentido.
+# Los opcionales/defaults no van aquí.
+
+REQUIRED_PARAMS: dict[str, list[str]] = {
+    "resistor_for_led":         ["vcc"],
+    "resistor_voltage_divider": ["vin", "vout"],
+    "resistor_power":           ["r"],
+    "capacitor_filter":         ["freq_hz", "resistance"],
+    "rc_time_constant":         ["r", "c_uf"],
+    "capacitor_energy":         ["c_uf", "v"],
+    "power_dissipation":        ["v", "i_ma"],
+    "buck_converter":           ["vin", "vout", "iout"],
+    "boost_converter":          ["vin", "vout", "iout"],
+    "transformer_turns_ratio":  ["vp", "vs"],
+    "low_pass_rc":              ["cutoff_hz", "r"],
+    "high_pass_rc":             ["cutoff_hz", "c_uf"],
+    "lc_filter":                ["cutoff_hz"],
+    "inverting_amp":            ["r_in", "r_feedback"],
+    "non_inverting_amp":        ["r1", "r2"],
+    "battery_autonomy":         ["capacity_mah", "current_ma"],
+    "charge_time":              ["capacity_mah", "charge_current_ma"],
+    "motor_power":              ["voltage", "current"],
+    "vfd_frequency_for_rpm":    ["rpm"],
+    "motor_torque":             ["power_w", "rpm"],
+    "ohms_law":                 [],  # valida mínimo 2 de 3 en el agente
+    "fuse_rating":              ["i_max"],
+    "heat_sink_required":       ["p_w"],
+}
+
+PARAM_LABELS: dict[str, str] = {
+    "vin": "Vin (tensión de entrada, V)",
+    "vout": "Vout (tensión de salida deseada, V)",
+    "r1": "R1 (resistencia superior, Ω)",
+    "vcc": "Vcc (tensión de alimentación, V)",
+    "r": "R (resistencia, Ω)",
+    "c_uf": "C (capacitancia, µF)",
+    "freq_hz": "frecuencia de corte (Hz)",
+    "resistance": "R (resistencia, Ω)",
+    "v": "V (tensión, V)",
+    "i_ma": "I (corriente, mA)",
+    "iout": "Iout (corriente de salida, A)",
+    "vp": "Vp (tensión primario, V)",
+    "vs": "Vs (tensión secundario, V)",
+    "cutoff_hz": "frecuencia de corte (Hz)",
+    "r_in": "Rin (resistencia de entrada, Ω)",
+    "r_feedback": "Rf (resistencia de realimentación, Ω)",
+    "r2": "R2 (resistencia de realimentación, Ω)",
+    "capacity_mah": "capacidad de batería (mAh)",
+    "current_ma": "consumo (mA)",
+    "charge_current_ma": "corriente de carga (mA)",
+    "voltage": "V (tensión, V)",
+    "current": "I (corriente, A)",
+    "rpm": "RPM",
+    "power_w": "potencia (W)",
+    "i_max": "corriente máxima (A)",
+    "p_w": "potencia a disipar (W)",
 }
 
 

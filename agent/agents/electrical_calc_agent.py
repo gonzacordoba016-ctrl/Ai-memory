@@ -13,6 +13,8 @@ from agent.prompts.electrical_calc_prompts import (
     CLASSIFY_PROMPT,
     EXTRACT_PARAMS_PROMPTS,
     EXPLAIN_PROMPT,
+    REQUIRED_PARAMS,
+    PARAM_LABELS,
 )
 
 
@@ -39,6 +41,11 @@ class ElectricalCalcAgent:
             if params is None:
                 return None
 
+            missing = self._check_required(formula_key, params)
+            if missing:
+                labels = [PARAM_LABELS.get(p, p) for p in missing]
+                return f"Para calcular, necesito que me des: **{', '.join(labels)}**."
+
             # ── Paso 3: Calcular con fórmula Python ──────────────────────────
             formula_fn = FORMULA_REGISTRY[formula_key]
             result = formula_fn(**params)
@@ -56,6 +63,16 @@ class ElectricalCalcAgent:
         except Exception as e:
             logger.error(f"[ElectricalCalc] Error: {e}")
             return None
+
+    # ── Validación de parámetros requeridos ──────────────────────────────────
+
+    def _check_required(self, formula_key: str, params: dict) -> list[str]:
+        """Retorna lista de parámetros requeridos que faltan (son None o ausentes)."""
+        if formula_key == "ohms_law":
+            present = [k for k in ("v", "i_ma", "r") if params.get(k) is not None]
+            return [] if len(present) >= 2 else ["v (voltios)", "i_ma (corriente mA)", "r (resistencia Ω) — al menos 2 de estos 3"]
+        required = REQUIRED_PARAMS.get(formula_key, [])
+        return [p for p in required if params.get(p) is None]
 
     # ── Clasificación de intención ────────────────────────────────────────────
 
