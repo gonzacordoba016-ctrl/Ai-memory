@@ -15,9 +15,13 @@ os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 
 # Librería de componentes — cargada desde data/component_library.json
-_lib_data = _json.loads(
-    (pathlib.Path(__file__).parent.parent / "data" / "component_library.json").read_text(encoding="utf-8")
-)
+try:
+    _lib_data = _json.loads(
+        (pathlib.Path(__file__).parent.parent / "data" / "component_library.json").read_text(encoding="utf-8")
+    )
+except (FileNotFoundError, _json.JSONDecodeError) as _e:
+    logger.error(f"[CircuitDesign] component_library.json no disponible: {_e}")
+    _lib_data = {"components": {}, "aliases": {}}
 COMPONENT_LIBRARY: dict = _lib_data["components"]
 COMPONENT_ALIASES: dict = _lib_data["aliases"]
 

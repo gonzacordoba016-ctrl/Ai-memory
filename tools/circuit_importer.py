@@ -45,12 +45,16 @@ def _parse_kicad_sexp(text: str) -> List[Any]:
             return tok
 
     def parse_expr():
+        if pos[0] >= len(tokens):
+            raise ValueError(f"Fin inesperado del archivo KiCad en posición {pos[0]}")
         token = tokens[pos[0]]
         pos[0] += 1
         if token == '(':
             lst = []
-            while tokens[pos[0]] != ')':
+            while pos[0] < len(tokens) and tokens[pos[0]] != ')':
                 lst.append(parse_expr())
+            if pos[0] >= len(tokens):
+                raise ValueError("Paréntesis sin cerrar en el archivo KiCad")
             pos[0] += 1  # consume ')'
             return lst
         return parse_atom(token)

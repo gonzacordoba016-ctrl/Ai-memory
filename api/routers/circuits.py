@@ -257,7 +257,9 @@ async def update_circuit(circuit_id: int, body: dict):
     if not agent.get_circuit_by_id(circuit_id):
         raise HTTPException(status_code=404, detail="Circuito no encontrado")
 
-    agent.circuit_manager.save_version(circuit_id, reason="pre-edit auto-save")
+    ver = agent.circuit_manager.save_version(circuit_id, reason="pre-edit auto-save")
+    if ver < 0:
+        raise HTTPException(status_code=500, detail="Error guardando versión previa")
 
     ok = agent.circuit_manager.update_circuit(
         circuit_id,

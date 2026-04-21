@@ -800,6 +800,9 @@
         }
 
         // Patch renderSchematic to wire click → select
+        if (typeof renderSchematic === 'undefined') {
+            console.error('[Editor] renderSchematic no definida — el editor no funcionará');
+        }
         const _origRenderSchematic = renderSchematic;
         renderSchematic = function() {
             _origRenderSchematic();
