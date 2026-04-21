@@ -117,17 +117,42 @@ async def ws_chat(websocket: WebSocket, session: str = None, token: str = ""):
                 await websocket.send_text(json.dumps({"type": "token", "content": token}))
 
             try:
-                response = await asyncio.wait_for(
-                    agent.process_input(user_input, on_token=on_token),
-                    timeout=120.0
+                _task = asyncio.create_task(
+                    agent.process_input(user_input, on_token=on_token)
                 )
-            except asyncio.TimeoutError:
+                _elapsed = 0
+                _timeout  = 180
+                response  = None
+                while not _task.done():
+                    try:
+                        response = await asyncio.wait_for(
+                            asyncio.shield(_task), timeout=15.0
+                        )
+                        break
+                    except asyncio.TimeoutError:
+                        _elapsed += 15
+                        if _elapsed >= _timeout:
+                            _task.cancel()
+                            await websocket.send_text(json.dumps({
+                                "type":    "error",
+                                "content": "El agente tardó demasiado. Intentá de nuevo.",
+                            }))
+                            response = None
+                            break
+                        # Heartbeat — mantiene Railway nginx vivo
+                        await websocket.send_text(json.dumps({
+                            "type": "thinking", "content": "…"
+                        }))
+                if response is None and not _task.done():
+                    pass  # ya enviamos error arriba
+                elif response is None and _task.done() and not _task.cancelled():
+                    response = _task.result()
+            except Exception as _proc_err:
+                logger.exception(f"Error en process_input: {_proc_err}")
                 await websocket.send_text(json.dumps({
-                    "type":    "error",
-                    "content": "El agente tardó demasiado. Intentá de nuevo."
+                    "type": "error", "content": str(_proc_err)
                 }))
-                processing = False
-                continue
+                response = None
             finally:
                 processing = False
 

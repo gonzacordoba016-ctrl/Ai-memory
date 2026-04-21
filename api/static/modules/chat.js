@@ -21,6 +21,7 @@ function connectWS() {
   };
   ws.onclose = () => {
     setConnected(false);
+    if (isStreaming) finishStreaming(null);
     const delay = _wsRetryDelay;
     _wsRetryDelay = Math.min(_wsRetryDelay * 2, 8000); // máximo 8s, no 30s
     addLog(`WS desconectado — reintentando en ${delay/1000}s...`, 'warn');
@@ -51,6 +52,9 @@ function connectWS() {
       }
       loadSessions();
       return;
+    }
+    if (data.type === 'thinking') {
+      return; // heartbeat del servidor — ignorar silenciosamente
     }
     if (data.type === 'token') {
       appendToken(data.content);
