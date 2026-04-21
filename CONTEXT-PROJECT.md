@@ -1,6 +1,6 @@
 # STRATUM — Contexto del Proyecto
 > Última actualización: 2026-04-21
-> Versión actual: **v4.4.0**
+> Versión actual: **v4.4.1**
 > Tagline: _"Tu memoria técnica siempre disponible"_
 > Estado: **Production-ready** (local + Railway)
 
@@ -396,6 +396,31 @@ Dominios soportados:
 ✅ **Gerber RS-274X completo** (8 archivos): copper_top.gtl, copper_bottom.gbl, silkscreen_top.gto, soldermask_top.gts, soldermask_bot.gbs, drills.xln (Excellon), outline.gko, README.txt.
 ✅ README.txt en el ZIP Gerber con dimensiones del board y lista de advertencias.
 
+### 4.28 Verificación total y hardening (v4.4.1)
+Verificación exhaustiva del proyecto detectó y corrigió 5 issues:
+
+**CRÍTICO — `tools/circuit_importer.py`**
+✅ `parse_expr()` no validaba bounds antes de acceder a `tokens[pos[0]]` → `IndexError` con archivos `.kicad_sch` malformados (paréntesis sin cerrar, archivo truncado).
+Fix: validación `pos[0] >= len(tokens)` con `ValueError` descriptivo; loop `while` con guard `pos[0] < len(tokens)`.
+
+**ADVERTENCIA — `database/circuit_design.py`**
+✅ `component_library.json` se cargaba en tiempo de importación sin manejo de errores → `FileNotFoundError` o `JSONDecodeError` crasheaba todo el servidor al arrancar.
+Fix: `try/except (FileNotFoundError, JSONDecodeError)` con fallback `{"components": {}, "aliases": {}}`.
+
+**ADVERTENCIA — `api/routers/circuits.py`**
+✅ `PUT /{circuit_id}` llamaba `save_version()` sin verificar el retorno → si la DB fallaba, los cambios se aplicaban sin versión de respaldo.
+Fix: `if ver < 0: raise HTTPException(500)` antes de aplicar los cambios.
+
+**INFO — `api/static/circuit_viewer.html`**
+✅ Patch de `renderSchematic` sin guard de existencia → fallo silencioso si la función se carga en diferente orden en el futuro.
+Fix: `console.error()` explícito si `typeof renderSchematic === 'undefined'`.
+
+**INFO — `.env.example`**
+✅ `MULTI_USER` sin comentario → comportamiento no documentado para nuevos deployments.
+Fix: comentario explicando `false` (single-user, sin login) vs `true` (JWT obligatorio).
+
+**Resultado:** 56/56 tests siguen pasando tras todos los fixes. Todos los routers de `server.py` existen con atributos correctos. Sin conflictos de rutas FastAPI. Todos los JS referenciados en HTML existen.
+
 ### 4.25 Multi-usuario real (v4.4)
 ✅ `update_owner(design_id, user_id)` en `CircuitDesignManager` — asigna user_id post-parse.
 ✅ `/parse` y `/import` endpoints reciben `user_id` de JWT y llaman `update_owner()` / `save_design(user_id)`.
@@ -664,6 +689,7 @@ Las siguientes mejoras están ordenadas por impacto percibido vs herramientas ex
 | v3.9.0  | 2026-04-20  | Nuevo diseño UI CAD-instrument (design system completo); bottom nav eliminado → hamburger mobile; composer simplificado; empty state chat mobile; agent routing fix (escribí/código → design, no query); Ctrl+K unificado memoria+KB con {text,score}; 15 mensajes de sesión larga testeados; KB indexada con 10 documentos |
 | v4.0.0  | 2026-04-20  | Platform context persistente (C++ por default); firmware iterativo con diff coloreado (_DiffMixin, intent "modify"); datasheet auto-fetch + indexado KB en background; export ZIP sesión (chat.md + firmware.cpp + decisiones.md); error patterns en vector memory; Wokwi endpoint diagram.json; voice auto-send pipeline |
 | v4.1.0  | 2026-04-20  | CircuitAgent domain-aware (8 dominios, MCU auto-select, hints por dominio, flyback auto-add); SchematicRenderer refactor (14 símbolos, layout funcional, routing ortogonal, color-coding, title block); KiCad exporter nuevo (kicad_exporter.py, símbolos embebidos, net labels, power symbols, endpoint GET /schematic.kicad_sch); PCBRenderer mejorado (placement funcional, routing 2-capas, 14 footprints, Gerber RS-274X 8 archivos + README) |
+| v4.4.1  | 2026-04-21  | Verificación total: fix CRÍTICO IndexError parser S-expression (circuit_importer.py — validación bounds + paréntesis sin cerrar); fix ADVERTENCIA component_library.json sin try/except (fallback a dicts vacíos); fix ADVERTENCIA PUT /{id} no chequeaba save_version() retorno; fix INFO guard renderSchematic en viewer; fix INFO MULTI_USER documentado en .env.example. 56/56 tests siguen pasando. |
 | v4.4.0  | 2026-04-21  | Multi-usuario real (user_id wired en parse/import, GET /circuits/ por usuario, update_owner); Editor visual de circuitos (+ Agregar componente modal, ✕ Eliminar con confirmación, 💾 Guardar → PUT /circuits/{id} con auto-versión, beforeunload dirty-check); Tests pytest 56/56 (test_circuit_importer, test_versioning_sharing, test_firmware_prompts, conftest con fixtures tmp_db) |
 | v4.2.0  | 2026-04-21  | Chat→Circuit inline (orchestrator circuit_design intent + card embebida en chat con preview SVG + KiCad/BOM/Gerber/3D links); Live Hardware State visualizer (WebSocket /ws/hardware-state + serial STATE:{} + live_circuit.js overlay en SVG viewer) |
 | v4.3.0  | 2026-04-21  | Import Eagle/KiCad (POST /circuits/import, parser S-expr + Eagle XML); Versioning (save/list/restore versiones con diff); Share via link público (token URL-safe, router sin auth); Firmware production-ready (watchdog, OTA ESP32/8266, STATE serial, error handling en todos los platforms) |
