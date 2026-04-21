@@ -280,7 +280,8 @@ class CircuitAgent:
             return circuit_data
 
         except json.JSONDecodeError as e:
-            logger.error(f"[CircuitAgent] JSONDecodeError: {e} | content={content[:400]!r if 'content' in dir() else 'N/A'}")
+            _preview = repr(content[:400]) if 'content' in locals() else 'N/A'
+            logger.error(f"[CircuitAgent] JSONDecodeError: {e} | content={_preview}")
             return None
         except Exception as e:
             logger.exception(f"[CircuitAgent] Error parseando circuito: {e}")
