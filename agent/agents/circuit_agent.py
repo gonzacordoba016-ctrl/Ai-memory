@@ -137,54 +137,22 @@ def _select_mcu(description: str, domain: str, user_mcu: str) -> str:
 # MAIN PROMPT
 # ──────────────────────────────────────────────────────────────────────────────
 
-CIRCUIT_PARSE_PROMPT = """Eres un ingeniero electrónico senior especializado en diseño de circuitos embebidos.
-Tu tarea es generar una netlist JSON completa, correcta eléctricamente y lista para fabricación.
+CIRCUIT_PARSE_PROMPT = """Eres un ingeniero electrónico. Genera una netlist JSON para este circuito.
 
-Descripción del circuito: "{description}"
-Microcontrolador principal: "{mcu}"
-{domain_hint}
+Descripción: "{description}"
+MCU: "{mcu}"
 
-REGLAS OBLIGATORIAS — aplicá TODAS sin excepción:
-1. ALIMENTACIÓN: incluí VCC y GND para cada componente activo. Los pines de alimentación deben estar en los nets correctos.
-2. LEDs: SIEMPRE llevan resistencia limitadora en serie. R = (Vcc - Vled) / 20mA. Ejemplo: LED rojo con 5V → R = (5-2) / 0.02 = 150Ω → usá 150Ω o 220Ω.
-3. CAPACITORES DE DESACOPLE: 100nF cerámico entre VCC y GND cerca de cada IC. Para ESP32/módulos WiFi: agrega también 100µF electrolítico.
-4. I2C: resistencias pull-up 4.7kΩ a VCC en SDA y SCL cuando hay dispositivos I2C.
-5. ONE-WIRE (DS18B20, DHT): pull-up 10kΩ en línea de datos.
-6. RELAYS: diodo flyback 1N4007 en antiparalelo con la bobina (entre pines de la bobina).
-7. MOTORES DC/PASO A PASO: capacitor bulk 470µF + 100nF entre VCC_MOTOR y GND_MOTOR.
-8. NOMENCLATURA: U1-U99 (ICs/MCU), R1-R99 (resistencias), C1-C99 (caps), D1-D99 (LEDs/diodos), SW1+ (botones), MOD1+ (módulos), RL1+ (relays), Q1+ (transistores/MOSFET).
-9. NETS descriptivos: VCC_5V, VCC_3V3, GND, SDA, SCL, DATA_SENS, RELAY_CTRL, PWM_MOTOR, etc.
-10. PINES REALES: asigná pines concretos del MCU (ej: U1.GPIO4, U1.D13, U1.A0, U1.SDA). No uses "U1.pin1" genérico.
-11. FUENTE DE ALIMENTACIÓN: especificá "power" con voltaje real (ej: "5V USB", "12V DC adapter", "7.4V LiPo + AMS1117-5V").
-12. WARNINGS: incluí advertencias reales de riesgo (voltaje AC, alta corriente, mezcla de niveles 5V/3.3V, etc.).
+Reglas obligatorias (aplica todas):
+- LEDs: resistencia limitadora en serie (220Ω típico)
+- Relay: diodo flyback 1N4007 en bobina
+- ESP32/WiFi: cap 100µF + 100nF en VCC
+- I2C: pull-ups 4.7kΩ en SDA y SCL
+- Nomenclatura: U1-U99, R1-R99, C1-C99, D1-D99, RL1+, MOD1+
+- Pines reales del MCU (ej: U1.GPIO34, U1.GND, U1.3V3)
+- Nets descriptivos (VCC_5V, GND, RELAY_CTRL, DATA_SENS, etc.)
 
-Componentes que DEBES incluir cuando corresponde:
-- Relay → diodo flyback 1N4007 (obligatorio)
-- Motor DC → cap 470µF bulk + 4× diodo 1N5819 (puente flyback)
-- ESP32 → cap 100µF + 100nF VCC
-- Sensor I2C → pull-ups 4.7kΩ
-- Batería → fusible de protección
-
-Devuelve SOLO el JSON válido, sin texto antes ni después, sin bloques markdown:
-{{
-  "name": "nombre descriptivo del proyecto",
-  "description": "descripción en 1-2 oraciones de qué hace el circuito",
-  "components": [
-    {{"id": "U1", "name": "{mcu}", "type": "arduino_uno"}},
-    {{"id": "R1", "name": "Resistencia LED rojo 150Ω", "type": "resistor", "value": "150", "unit": "Ω"}},
-    {{"id": "D1", "name": "LED Rojo indicador", "type": "led", "color": "red"}},
-    {{"id": "C1", "name": "Cap desacople 100nF", "type": "capacitor", "value": "100n", "unit": "F"}},
-    {{"id": "SW1", "name": "Pulsador reset", "type": "button"}}
-  ],
-  "nets": [
-    {{"name": "VCC_5V",  "nodes": ["U1.5V", "R1.1", "C1.1"]}},
-    {{"name": "GND",     "nodes": ["U1.GND", "D1.K", "C1.2"]}},
-    {{"name": "LED_DRV", "nodes": ["U1.D13", "R1.2"]}},
-    {{"name": "LED_A",   "nodes": ["R1.2", "D1.A"]}}
-  ],
-  "power": "5V USB",
-  "warnings": []
-}}"""
+Responde ÚNICAMENTE con JSON válido, sin markdown:
+{{"name":"...","description":"...","components":[{{"id":"U1","name":"{mcu}","type":"esp32"}},{{"id":"RL1","name":"Relay 5V","type":"relay_module"}},{{"id":"D1","name":"Diodo flyback 1N4007","type":"diode","value":"1N4007"}}],"nets":[{{"name":"VCC_5V","nodes":["U1.VIN","RL1.VCC"]}},{{"name":"GND","nodes":["U1.GND","RL1.GND"]}}],"power":"5V USB","warnings":[]}}"""
 
 
 class CircuitAgent:
@@ -202,28 +170,26 @@ class CircuitAgent:
             prompt = CIRCUIT_PARSE_PROMPT.format(
                 description=description,
                 mcu=best_mcu,
-                domain_hint=domain_hint,
             )
 
-            logger.info(f"[CircuitAgent] parse_circuit — domain={domain} mcu={best_mcu} model={LLM_MODEL_SMART!r}")
+            logger.info(f"[CircuitAgent] parse_circuit START — domain={domain} mcu={best_mcu} model={LLM_MODEL_SMART!r} prompt_len={len(prompt)}")
 
             messages = [{"role": "user", "content": prompt}]
 
-            # Intento 1: con response_format JSON para forzar salida válida
             raw_content = None
             for attempt in range(2):
                 try:
-                    use_json_mode = attempt == 0
                     response = _call_llm(
                         messages,
                         model=LLM_MODEL_SMART,
-                        response_format={"type": "json_object"} if use_json_mode else None,
+                        response_format={"type": "json_object"} if attempt == 0 else None,
+                        timeout=45,
                     )
                     raw_content = response["choices"][0]["message"]["content"]
-                    logger.info(f"[CircuitAgent] LLM raw ({len(raw_content)} chars): {raw_content[:300]!r}")
+                    logger.info(f"[CircuitAgent] LLM OK attempt={attempt} chars={len(raw_content)} preview={raw_content[:200]!r}")
                     break
                 except Exception as llm_err:
-                    logger.error(f"[CircuitAgent] LLM call attempt {attempt+1} failed: {llm_err}")
+                    logger.error(f"[CircuitAgent] LLM attempt {attempt+1} failed: {llm_err}")
                     if attempt == 1:
                         raise
 

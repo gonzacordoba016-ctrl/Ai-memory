@@ -12,7 +12,7 @@ from tools.tool_registry import TOOL_DEFINITIONS
 
 
 def _call_llm(messages: list, tools: list = [], model: str = None,
-              response_format: dict = None) -> dict:
+              response_format: dict = None, timeout: int = 120) -> dict:
     """Llamada estándar síncrona al LLM. Usada internamente como fallback."""
     payload = {
         "model":       model or _get_llm_model(),
@@ -29,7 +29,7 @@ def _call_llm(messages: list, tools: list = [], model: str = None,
         _get_llm_api(),
         headers=get_llm_headers(agent_id="memory-agent", agent_name="AIMemoryEngine"),
         json=payload,
-        timeout=120
+        timeout=timeout
     )
     response.raise_for_status()
     return response.json()
