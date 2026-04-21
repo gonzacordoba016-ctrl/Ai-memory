@@ -11,7 +11,8 @@ from agent.agent_runner import run_agent_loop
 from tools.tool_registry import TOOL_DEFINITIONS
 
 
-def _call_llm(messages: list, tools: list = [], model: str = None) -> dict:
+def _call_llm(messages: list, tools: list = [], model: str = None,
+              response_format: dict = None) -> dict:
     """Llamada estándar síncrona al LLM. Usada internamente como fallback."""
     payload = {
         "model":       model or _get_llm_model(),
@@ -21,6 +22,8 @@ def _call_llm(messages: list, tools: list = [], model: str = None) -> dict:
     if tools:
         payload["tools"]       = tools
         payload["tool_choice"] = "auto"
+    if response_format:
+        payload["response_format"] = response_format
 
     response = requests.post(
         _get_llm_api(),

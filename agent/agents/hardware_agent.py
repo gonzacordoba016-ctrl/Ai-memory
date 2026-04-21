@@ -55,7 +55,7 @@ class HardwareAgent(_FirmwareMixin, _MemoryOpsMixin, _DesignMixin, _DiffMixin):
             )
             response.raise_for_status()
             intent = response.json()["choices"][0]["message"]["content"].strip().lower()
-            for valid in ("save_decision", "save_circuit", "query", "program", "signal", "debug", "design"):
+            for valid in ("save_decision", "save_circuit", "query", "program", "signal", "debug", "modify", "design"):
                 if valid in intent:
                     return valid
         except Exception as e:
@@ -78,10 +78,10 @@ class HardwareAgent(_FirmwareMixin, _MemoryOpsMixin, _DesignMixin, _DiffMixin):
             return "query"
         if any(_normalize(kw) in t for kw in SIGNAL_KEYWORDS):
             return "signal"
-        if any(_normalize(kw) in t for kw in DESIGN_KEYWORDS):
-            return "design"
         if any(_normalize(kw) in t for kw in MODIFY_KEYWORDS):
             return "modify"
+        if any(_normalize(kw) in t for kw in DESIGN_KEYWORDS):
+            return "design"
         if any(_normalize(kw) in t for kw in PROGRAM_KEYWORDS):
             return "program"
         # Default: si mencionan hardware sin contexto claro, consulta de diseño

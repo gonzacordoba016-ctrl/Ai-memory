@@ -205,11 +205,33 @@ class CircuitAgent:
                 domain_hint=domain_hint,
             )
 
-            messages = [{"role": "user", "content": prompt}]
-            response = _call_llm(messages, model=LLM_MODEL_SMART)
-            content = response["choices"][0]["message"]["content"]
-            content = self._clean_json_content(content)
+            logger.info(f"[CircuitAgent] parse_circuit — domain={domain} mcu={best_mcu} model={LLM_MODEL_SMART!r}")
 
+            messages = [{"role": "user", "content": prompt}]
+
+            # Intento 1: con response_format JSON para forzar salida válida
+            raw_content = None
+            for attempt in range(2):
+                try:
+                    use_json_mode = attempt == 0
+                    response = _call_llm(
+                        messages,
+                        model=LLM_MODEL_SMART,
+                        response_format={"type": "json_object"} if use_json_mode else None,
+                    )
+                    raw_content = response["choices"][0]["message"]["content"]
+                    logger.info(f"[CircuitAgent] LLM raw ({len(raw_content)} chars): {raw_content[:300]!r}")
+                    break
+                except Exception as llm_err:
+                    logger.error(f"[CircuitAgent] LLM call attempt {attempt+1} failed: {llm_err}")
+                    if attempt == 1:
+                        raise
+
+            if not raw_content:
+                logger.error("[CircuitAgent] LLM devolvió contenido vacío")
+                return None
+
+            content = self._clean_json_content(raw_content)
             circuit_data = json.loads(content)
 
             # Validate required keys
@@ -258,10 +280,10 @@ class CircuitAgent:
             return circuit_data
 
         except json.JSONDecodeError as e:
-            logger.error(f"Error parseando JSON del LLM: {e}")
+            logger.error(f"[CircuitAgent] JSONDecodeError: {e} | content={content[:400]!r if 'content' in dir() else 'N/A'}")
             return None
         except Exception as e:
-            logger.exception(f"Error parseando circuito: {e}")
+            logger.exception(f"[CircuitAgent] Error parseando circuito: {e}")
             return None
 
     # ──────────────────────────────────────────────────────────────────────────
