@@ -378,6 +378,26 @@ async def get_circuit_bom(circuit_id: int):
     return JSONResponse(content=bom)
 
 
+@router.get("/{circuit_id}/schematic.kicad_sch")
+async def get_kicad_schematic(circuit_id: int):
+    """Exporta el circuito como esquemático KiCad v6 (.kicad_sch) — abre directo en KiCad."""
+    from tools.kicad_exporter import export_kicad_schematic
+
+    agent        = _get_circuit_agent()
+    circuit_data = agent.get_circuit_by_id(circuit_id)
+    if not circuit_data:
+        raise HTTPException(status_code=404, detail="Circuito no encontrado")
+
+    kicad_str = export_kicad_schematic(circuit_data)
+    cname     = (circuit_data.get("name") or "circuit").replace(" ", "_")[:40]
+    filename  = f"stratum_{cname}_{circuit_id}.kicad_sch"
+    return Response(
+        content=kicad_str.encode("utf-8"),
+        media_type="text/plain",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
 @router.get("/{circuit_id}/bom.csv")
 async def get_circuit_bom_csv(circuit_id: int):
     """Descarga el BOM como CSV."""

@@ -1,6 +1,6 @@
 # STRATUM — Contexto del Proyecto
 > Última actualización: 2026-04-20
-> Versión actual: **v4.0.0**
+> Versión actual: **v4.1.0**
 > Tagline: _"Tu memoria técnica siempre disponible"_
 > Estado: **Production-ready** (local + Railway)
 
@@ -334,11 +334,12 @@ Cambiar perfil → tono y contexto cambian en el siguiente mensaje sin reiniciar
 ✅ `HardwareAgent._design_consult()` — usa C++/Arduino como default, respeta la plataforma detectada.
 ✅ Firmware draft en sesión: `AgentState.current_firmware_draft` guarda el último código generado.
 
-### 4.14 Firmware Iterativo con Diff (v4.0)
+### 4.14 Firmware Iterativo con Diff (v4.0 / fix v4.0.1)
 ✅ Intent `modify` en `HardwareAgent` — detectado por LLM y keywords ("hacelo más rápido", "agregá wifi", etc.).
 ✅ `_DiffMixin._modify_firmware()` — toma el draft actual, aplica el cambio incremental via LLM, genera diff `unified`.
 ✅ Respuesta incluye bloque `diff` coloreado (verde/rojo) + código completo actualizado.
 ✅ El nuevo código se persiste en `AgentState` para futuras modificaciones encadenadas.
+⚠️ Fix v4.0.1: `"modify"` estaba ausente de la tupla de intents válidos en `_classify_intent()` — el LLM lo clasificaba bien pero el resultado era descartado. Además MODIFY_KEYWORDS se evaluaba después de DESIGN_KEYWORDS. Ambos bugs corregidos en `hardware_agent.py`.
 
 ### 4.15 Datasheet Auto-Fetch (v4.0)
 ✅ `tools/datasheet_fetcher.py` — detecta nombres de CIs en texto via regex (`lm\d+`, `ne\d+`, `irf\d+`, etc.).
@@ -347,6 +348,53 @@ Cambiar perfil → tono y contexto cambian en el siguiente mensaje sin reiniciar
 ✅ Fallback final: resumen LLM si no encuentra el PDF.
 ✅ Todo se cachea en `agent_files/datasheets/` e indexa en KB automáticamente en background.
 ✅ Hook en `AgentController._auto_fetch_datasheets()` — se dispara como `asyncio.create_task` por cada mensaje.
+
+### 4.17 Generación de Circuitos con Dominio Detectado (v4.1)
+✅ `CircuitAgent` detecta automáticamente el dominio del proyecto (irrigación, domótica, motor, IoT, display, audio, etc.) con `_detect_domain()`.
+✅ Selección automática del MCU óptimo por dominio (ESP32 para IoT/riego/domótica, Arduino para control simple).
+✅ Hints de dominio inyectados en el prompt: componentes recomendados, reglas de protección (flyback para relays, caps bulk para motores, pull-ups I2C), advertencias de seguridad.
+✅ Post-validación por dominio: riego sin relay → warning, motor sin driver → warning, IoT sin WiFi → warning.
+✅ Auto-agrega diodo flyback 1N4007 cuando detecta relay sin diodo de protección.
+✅ Cleanup JSON mejorado: extrae el JSON aunque el LLM incluya texto extra antes/después.
+✅ Respuesta incluye `detected_domain` y `selected_mcu` para trazabilidad.
+
+Dominios soportados:
+- `irrigation` → ESP32, sensor humedad suelo, sensor nivel agua, relay bomba, RTC DS3231
+- `domotics` → ESP32, relay, DHT22, PIR, LED estado
+- `motor` → Arduino, L298N/DRV8825, caps bulk 470µF, diodos flyback
+- `power_supply` → regulador, fuse, caps
+- `display` → ESP32, OLED/LCD I2C, NeoPixel
+- `sensor_hub` → ESP32, múltiples sensores I2C
+- `iot` → ESP32, cap bulk WiFi, LED heartbeat
+- `audio` → ESP32, amplificador I2S, buzzer
+
+### 4.18 SchematicRenderer Mejorado (v4.1)
+✅ **Layout funcional**: MCU al centro, entradas a la izquierda, salidas a la derecha, power en franja superior, comunicaciones arriba-derecha.
+✅ **14 símbolos electrónicos precisos**: resistor (IEC rectangle), LED (triángulo con barra cátodo y flechas de luz), capacitor (placas paralelas con polarity), button (SPST con actuador), MCU (box con header cyan), relay (bobina + contacto), MOSFET-N (símbolo estándar con G/D/S), transistor NPN, diodo, motor (M en círculo), buzzer (con ondas sonoras), sensor genérico, display OLED/LCD, IC genérico.
+✅ **Color-coding de nets**: VCC/power=rojo, GND=gris, I2C=verde, SPI=magenta, UART=naranja, PWM=naranja oscuro, datos=azul.
+✅ **Routing ortogonal**: cables L-shaped (horizontal primero, luego vertical) con junction dots.
+✅ **Title block**: nombre, descripción, MCU, power, dominio detectado, badges DRC y warnings.
+✅ **Leyenda de nets** en esquina superior derecha con colores.
+✅ **Grid de fondo** (dots 20px) como papel de esquemático.
+✅ **Anotaciones DRC** inline (primeros 3 errores).
+
+### 4.19 KiCad Export — .kicad_sch (v4.1)
+✅ `tools/kicad_exporter.py` — genera archivos `.kicad_sch` válidos para KiCad 6/7/8.
+✅ **Símbolos embebidos** (lib_symbols): Device:R, Device:C, Device:LED, Device:D, Device:SW_Push, Device:IC_Generic, power:VCC, power:GND.
+✅ **Instancias de componentes** con Reference y Value correctos, UUIDs únicos.
+✅ **Net labels** colocados en las posiciones de pin exactas (offsets definidos por símbolo). Conectividad eléctrica correcta sin necesidad de dibujar wires manuales.
+✅ **Símbolos de power** (power:VCC, power:GND) auto-generados para nets de alimentación.
+✅ **Title block** con nombre, fecha, descripción y fuente de alimentación.
+✅ Placement en grid de 2.54mm (100mil). MCU centrado, pasivos en grilla adyacente.
+✅ Endpoint: `GET /api/circuits/{id}/schematic.kicad_sch` — descarga directa.
+
+### 4.20 PCBRenderer Mejorado (v4.1)
+✅ **Placement funcional**: MCU en centro, pasivos pequeños en cluster adyacente, módulos grandes en columna izquierda, varios en fila inferior.
+✅ **Routing Manhattan 2-capas**: trazas de poder (1.2mm, bottom copper dorado) y señales (0.5mm, top copper amarillo).
+✅ **14 footprints dimensionados**: resistor 6.5×2.5mm, capacitor 3×3mm, ESP32 18×25.4mm, Arduino Uno 68.6×53.4mm, relay 19×15.5mm, etc.
+✅ **SVG mejorado**: fondo PCB verde oscuro #1a4a1a, trazas cobre coloreadas por capa, pads dorados con drill holes, courtyard amarillo, silkscreen con ref ID, info de fabricación al pie.
+✅ **Gerber RS-274X completo** (8 archivos): copper_top.gtl, copper_bottom.gbl, silkscreen_top.gto, soldermask_top.gts, soldermask_bot.gbs, drills.xln (Excellon), outline.gko, README.txt.
+✅ README.txt en el ZIP Gerber con dimensiones del board y lista de advertencias.
 
 ### 4.16 Wokwi Simulate (v4.0)
 ✅ `GET /api/hardware/wokwi/{device_name}` — genera `diagram.json` del circuito guardado para el dispositivo.
@@ -557,3 +605,5 @@ Las siguientes mejoras están ordenadas por impacto percibido vs herramientas ex
 | v3.8.0  | 2026-04-17  | TTS en mensajes; Export MD; snippets `/` (15 plantillas ingeniería); Ctrl+K búsqueda semántica modal; Proyecto Activo sidebar (CRUD + activar + inyección en contexto LLM); adjuntar archivos en chat (.ino/.txt/.cpp/imagen); firmware diff coloreado en hardware view; push notifications en eventos proactivos |
 | v3.9.0  | 2026-04-20  | Nuevo diseño UI CAD-instrument (design system completo); bottom nav eliminado → hamburger mobile; composer simplificado; empty state chat mobile; agent routing fix (escribí/código → design, no query); Ctrl+K unificado memoria+KB con {text,score}; 15 mensajes de sesión larga testeados; KB indexada con 10 documentos |
 | v4.0.0  | 2026-04-20  | Platform context persistente (C++ por default); firmware iterativo con diff coloreado (_DiffMixin, intent "modify"); datasheet auto-fetch + indexado KB en background; export ZIP sesión (chat.md + firmware.cpp + decisiones.md); error patterns en vector memory; Wokwi endpoint diagram.json; voice auto-send pipeline |
+| v4.1.0  | 2026-04-20  | CircuitAgent domain-aware (8 dominios, MCU auto-select, hints por dominio, flyback auto-add); SchematicRenderer refactor (14 símbolos, layout funcional, routing ortogonal, color-coding, title block); KiCad exporter nuevo (kicad_exporter.py, símbolos embebidos, net labels, power symbols, endpoint GET /schematic.kicad_sch); PCBRenderer mejorado (placement funcional, routing 2-capas, 14 footprints, Gerber RS-274X 8 archivos + README) |
+| v4.0.1  | 2026-04-20  | Fix crítico intent "modify": (1) "modify" faltaba en tupla de intents válidos en `_classify_intent()` → LLM respondía "modify" pero caía al fallback; (2) MODIFY_KEYWORDS se chequeaba después de DESIGN_KEYWORDS en `_classify_by_keywords()` → "hacelo más rápido" matcheaba design. Ahora el firmware diff se dispara correctamente. |
