@@ -5,7 +5,7 @@ import asyncio
 import uuid as uuid_lib
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, Query, UploadFile, File
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from api.auth import get_current_user
 from api.limiter import limiter
@@ -417,3 +417,143 @@ async def get_circuit_bom_csv(circuit_id: int):
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=bom_{cname}_{circuit_id}.csv"},
     )
+
+
+# ── Feature 1: Import Eagle / KiCad ──────────────────────────────────────────
+
+@router.post("/import")
+@limiter.limit("10/minute")
+async def import_circuit_file(
+    request: Request,
+    file: UploadFile = File(...),
+):
+    """
+    Importa un circuito desde .kicad_sch (KiCad 6+) o .sch (Eagle XML).
+    Retorna el diseño guardado con su ID.
+    """
+    from tools.circuit_importer import import_circuit_file as _import
+
+    content = (await file.read()).decode("utf-8", errors="replace")
+    result  = _import(content, file.filename or "imported")
+
+    if "error" in result:
+        raise HTTPException(status_code=422, detail=result["error"])
+
+    agent     = _get_circuit_agent()
+    design_id = agent.circuit_manager.save_design(result)
+    if design_id < 0:
+        raise HTTPException(status_code=500, detail="Error guardando el circuito importado")
+
+    result["design_id"] = design_id
+    agent.circuit_manager.save_version(design_id, reason="import")
+    return JSONResponse(content=result)
+
+
+# ── Feature 2: Versioning ─────────────────────────────────────────────────────
+
+@router.get("/{circuit_id}/versions")
+async def list_circuit_versions(circuit_id: int):
+    """Lista todas las versiones guardadas de un circuito con diff."""
+    agent    = _get_circuit_agent()
+    versions = agent.circuit_manager.get_versions(circuit_id)
+    return JSONResponse(content={"circuit_id": circuit_id, "versions": versions})
+
+
+@router.get("/{circuit_id}/versions/{version}")
+async def get_circuit_version(circuit_id: int, version: int):
+    """Obtiene el snapshot completo de una versión específica."""
+    agent = _get_circuit_agent()
+    snap  = agent.circuit_manager.get_version_snapshot(circuit_id, version)
+    if snap is None:
+        raise HTTPException(status_code=404, detail=f"Versión {version} no encontrada")
+    return JSONResponse(content=snap)
+
+
+@router.post("/{circuit_id}/versions/save")
+async def save_circuit_version(circuit_id: int, reason: str = "manual"):
+    """Guarda manualmente un snapshot de la versión actual."""
+    agent = _get_circuit_agent()
+    ver   = agent.circuit_manager.save_version(circuit_id, reason=reason)
+    if ver < 0:
+        raise HTTPException(status_code=404, detail="Circuito no encontrado")
+    return JSONResponse(content={"circuit_id": circuit_id, "version": ver, "reason": reason})
+
+
+@router.post("/{circuit_id}/restore/{version}")
+async def restore_circuit_version(circuit_id: int, version: int):
+    """Restaura el circuito a una versión anterior (guarda la actual primero)."""
+    agent   = _get_circuit_agent()
+    success = agent.circuit_manager.restore_to_version(circuit_id, version)
+    if not success:
+        raise HTTPException(status_code=404, detail="Versión o circuito no encontrado")
+    return JSONResponse(content={"circuit_id": circuit_id, "restored_to": version, "status": "ok"})
+
+
+# ── Feature 3: Share via public link ─────────────────────────────────────────
+
+@router.post("/{circuit_id}/share")
+async def share_circuit(circuit_id: int, request: Request):
+    """Genera un link público de solo-lectura para el circuito."""
+    agent   = _get_circuit_agent()
+    circuit = agent.get_circuit_by_id(circuit_id)
+    if not circuit:
+        raise HTTPException(status_code=404, detail="Circuito no encontrado")
+
+    token   = agent.circuit_manager.create_share(circuit_id)
+    if not token:
+        raise HTTPException(status_code=500, detail="Error generando token")
+
+    base    = str(request.base_url).rstrip("/")
+    url     = f"{base}/api/circuits/shared/{token}"
+    viewer  = f"{base}/api/circuits/shared/{token}/viewer"
+    return JSONResponse(content={
+        "circuit_id": circuit_id,
+        "token":      token,
+        "url":        url,
+        "viewer_url": viewer,
+        "message":    "Compartí este link — acceso de solo lectura, sin login requerido",
+    })
+
+
+@router.delete("/{circuit_id}/share")
+async def revoke_circuit_share(circuit_id: int):
+    """Revoca el link público de un circuito."""
+    agent = _get_circuit_agent()
+    agent.circuit_manager.revoke_share(circuit_id)
+    return JSONResponse(content={"circuit_id": circuit_id, "status": "revoked"})
+
+
+# Endpoints públicos (sin autenticación) para circuitos compartidos
+_public_router = APIRouter(prefix="/api/circuits", tags=["circuits-public"])
+
+
+@_public_router.get("/shared/{token}")
+async def get_shared_circuit(token: str):
+    """Retorna los datos de un circuito compartido (read-only, sin auth)."""
+    from database.circuit_design import CircuitDesignManager
+    mgr  = CircuitDesignManager()
+    data = mgr.get_by_share_token(token)
+    if not data:
+        raise HTTPException(status_code=404, detail="Link inválido o expirado")
+    data["shared"] = True
+    data["read_only"] = True
+    return JSONResponse(content=data)
+
+
+@_public_router.get("/shared/{token}/viewer", response_class=HTMLResponse)
+async def get_shared_viewer(token: str):
+    """Abre el viewer de solo-lectura para un circuito compartido."""
+    from database.circuit_design import CircuitDesignManager
+    mgr  = CircuitDesignManager()
+    data = mgr.get_by_share_token(token)
+    if not data:
+        raise HTTPException(status_code=404, detail="Link inválido o expirado")
+    with open("api/static/circuit_viewer.html", "r", encoding="utf-8") as f:
+        html = f.read()
+    circuit_id = data.get("id", 0)
+    # Inject shared token so viewer fetches from /shared/{token} instead of /api/circuits/{id}
+    html = html.replace(
+        "</head>",
+        f'<script>window._SHARED_TOKEN="{token}";window._CIRCUIT_ID={circuit_id};</script>\n</head>',
+    )
+    return HTMLResponse(html)

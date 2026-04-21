@@ -13,40 +13,59 @@ FIRMWARE_DIR = os.path.abspath("./agent_files/firmware")
 
 PLATFORM_PROMPTS = {
     "arduino:avr": """Eres un experto en programación de Arduino (C++).
-Generá código Arduino válido y completo para el siguiente requerimiento.
-Reglas estrictas:
-- Solo código C++ válido para Arduino
+Generá código Arduino C++ válido, robusto y completo para el siguiente requerimiento.
+Reglas obligatorias:
+- Solo código C++ válido para Arduino (AVR)
 - Siempre incluí setup() y loop()
+- MANEJO DE ERRORES: en lecturas de sensores usá rangos de validación y valor de fallback si el sensor falla
+- ESTADO SERIAL: al final de loop() emitir una línea: Serial.println("STATE:" + estadoJSON) donde estadoJSON es un JSON con los valores clave (pines activos, lecturas, estados de actuadores)
+  Ejemplo: STATE:{"D13":1,"A0":512,"relay":0}
+- WATCHDOG: incluí #include <avr/wdt.h> y wdt_enable(WDTO_8S) en setup(); wdt_reset() en loop()
 - Usá las librerías estándar de Arduino
-- Comentá el código brevemente
 - No incluyas explicaciones fuera del código
 - Devolvé SOLO el código, sin markdown ni backticks""",
 
     "esp32:esp32": """Eres un experto en programación de ESP32 con Arduino framework.
-Generá código C++ válido y completo para ESP32.
-Reglas estrictas:
+Generá código C++ válido, robusto y production-ready para ESP32.
+Reglas obligatorias:
 - Código C++ válido para ESP32 con Arduino framework
 - Siempre incluí setup() y loop()
-- Usá las librerías del ESP32 (WiFi.h, etc.) cuando sea necesario
-- Comentá el código brevemente
+- OTA UPDATE: incluí soporte ArduinoOTA básico en setup() y handle en loop() cuando la plataforma lo permite (si hay WiFi en el circuito, siempre incluirlo)
+  ```cpp
+  #include <ArduinoOTA.h>
+  // En setup(): ArduinoOTA.begin();
+  // En loop(): ArduinoOTA.handle();
+  ```
+- WATCHDOG: incluí esp_task_wdt_init(10, true) y esp_task_wdt_add(NULL) en setup(); esp_task_wdt_reset() en loop()
+- MANEJO DE ERRORES: try/catch no existe en C++, usá validación de rangos y retry en inicializaciones de sensores I2C con Wire.begin()
+- ESTADO SERIAL: al final de loop() emitir: Serial.println("STATE:" + estadoJSON) con JSON de valores clave
+  Ejemplo: STATE:{"GPIO2":1,"ADC1":2048,"temp":23.5,"relay":0}
+- Incluí WiFi.h, ArduinoOTA.h cuando haya WiFi
 - No incluyas explicaciones fuera del código
 - Devolvé SOLO el código, sin markdown ni backticks""",
 
     "esp8266:esp8266": """Eres un experto en programación de ESP8266 con Arduino framework.
-Generá código C++ válido y completo para ESP8266.
-Reglas estrictas:
+Generá código C++ válido, robusto y completo para ESP8266.
+Reglas obligatorias:
 - Código C++ válido para ESP8266
 - Siempre incluí setup() y loop()
+- OTA UPDATE: incluí ArduinoOTA básico cuando hay WiFi en el circuito
+- WATCHDOG: usá ESP.wdtEnable(8000) en setup() y ESP.wdtFeed() en loop()
+- ESTADO SERIAL: al final de loop() emitir: Serial.println("STATE:" + estadoJSON) con JSON de valores clave
 - Usá ESP8266WiFi.h para WiFi
 - No incluyas explicaciones fuera del código
 - Devolvé SOLO el código, sin markdown ni backticks""",
 
     "micropython": """Eres un experto en MicroPython para microcontroladores.
-Generá código MicroPython válido y completo.
-Reglas estrictas:
+Generá código MicroPython válido, robusto y completo.
+Reglas obligatorias:
 - Solo código MicroPython válido
-- Usá las librerías estándar de MicroPython (machine, utime, etc.)
-- Comentá el código brevemente
+- Estructura main con try/except global para capturar errores y resetear si necesario
+- MANEJO DE ERRORES: try/except en lecturas de sensores, logging de errores por UART
+- WATCHDOG: usá machine.WDT(timeout=8000) y wdt.feed() en el loop principal
+- ESTADO SERIAL: en el loop principal imprimir: print("STATE:" + json.dumps(estado)) con dict de valores clave
+  Ejemplo: STATE:{"pin2":1,"adc":512,"temp":23.5}
+- Usá las librerías estándar de MicroPython (machine, utime, ujson, etc.)
 - No incluyas explicaciones fuera del código
 - Devolvé SOLO el código, sin markdown ni backticks""",
 }

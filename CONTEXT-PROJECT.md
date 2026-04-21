@@ -1,6 +1,6 @@
 # STRATUM — Contexto del Proyecto
-> Última actualización: 2026-04-20
-> Versión actual: **v4.1.0**
+> Última actualización: 2026-04-21
+> Versión actual: **v4.3.0**
 > Tagline: _"Tu memoria técnica siempre disponible"_
 > Estado: **Production-ready** (local + Railway)
 
@@ -396,6 +396,41 @@ Dominios soportados:
 ✅ **Gerber RS-274X completo** (8 archivos): copper_top.gtl, copper_bottom.gbl, silkscreen_top.gto, soldermask_top.gts, soldermask_bot.gbs, drills.xln (Excellon), outline.gko, README.txt.
 ✅ README.txt en el ZIP Gerber con dimensiones del board y lista de advertencias.
 
+### 4.21 Import Eagle/KiCad (v4.3)
+✅ `tools/circuit_importer.py` — importa `.kicad_sch` (KiCad 6/7/8 S-expression) y `.sch` (Eagle XML).
+✅ Parser S-expression recursivo propio (sin dependencias externas).
+✅ Parser Eagle XML con ElementTree: extrae `<part>` → componentes, `<net>/<pinref>` → nets con nodos reales.
+✅ Auto-detecta formato por extensión y contenido del archivo.
+✅ Endpoint: `POST /api/circuits/import` (multipart/form-data, archivo .kicad_sch o .sch).
+✅ Guarda el circuito importado en DB + crea versión inicial "import" automáticamente.
+
+### 4.22 Versioning de Circuitos (v4.3)
+✅ Tabla `circuit_versions` ya existía — ahora completamente implementada.
+✅ `save_version(circuit_id, reason)` — snapshot JSON del circuito completo con razón del cambio.
+✅ `get_versions(circuit_id)` — lista de versiones con diff (componentes agregados/removidos entre versiones).
+✅ `get_version_snapshot(circuit_id, version)` — snapshot completo de una versión.
+✅ `restore_to_version(circuit_id, version)` — guarda versión actual primero, luego restaura.
+✅ Endpoints:
+  - `GET /api/circuits/{id}/versions` — lista con diff summary
+  - `GET /api/circuits/{id}/versions/{ver}` — snapshot de versión
+  - `POST /api/circuits/{id}/versions/save?reason=...` — snapshot manual
+  - `POST /api/circuits/{id}/restore/{ver}` — restaurar (auto-backup primero)
+
+### 4.23 Share via link público (v4.3)
+✅ Tabla `circuit_shares (token, circuit_id)` — token `secrets.token_urlsafe(16)`, idempotente.
+✅ `POST /api/circuits/{id}/share` → `{token, url, viewer_url}` — genera link público.
+✅ `DELETE /api/circuits/{id}/share` → revoca el token.
+✅ `GET /api/circuits/shared/{token}` — datos del circuito (no requiere auth).
+✅ `GET /api/circuits/shared/{token}/viewer` — viewer HTML de solo-lectura (no requiere auth).
+✅ Router público `_public_router` separado del router autenticado para que los endpoints compartidos no requieran JWT.
+
+### 4.24 Firmware Production-Ready (v4.3)
+✅ **Watchdog timer** en todos los platforms: AVR (`avr/wdt.h`), ESP32 (`esp_task_wdt`), ESP8266 (`ESP.wdtEnable`), MicroPython (`machine.WDT`).
+✅ **OTA Update** (ArduinoOTA) generado automáticamente en ESP32/ESP8266 cuando el circuito tiene WiFi.
+✅ **STATE serial reporting**: loop() emite `STATE:{...}` JSON con valores de pines/sensores/actuadores — compatible con el live hardware visualizer (/ws/hardware-state).
+✅ **Error handling**: validación de rangos en lecturas de sensores, retry en inicializaciones I2C, fallback values.
+✅ Prompts actualizados en todos los platforms (arduino:avr, esp32:esp32, esp8266:esp8266, micropython).
+
 ### 4.16 Wokwi Simulate (v4.0)
 ✅ `GET /api/hardware/wokwi/{device_name}` — genera `diagram.json` del circuito guardado para el dispositivo.
 ✅ Usa `tools/wokwi_simulator.py` existente + `hardware_memory.get_circuit_context()`.
@@ -606,4 +641,6 @@ Las siguientes mejoras están ordenadas por impacto percibido vs herramientas ex
 | v3.9.0  | 2026-04-20  | Nuevo diseño UI CAD-instrument (design system completo); bottom nav eliminado → hamburger mobile; composer simplificado; empty state chat mobile; agent routing fix (escribí/código → design, no query); Ctrl+K unificado memoria+KB con {text,score}; 15 mensajes de sesión larga testeados; KB indexada con 10 documentos |
 | v4.0.0  | 2026-04-20  | Platform context persistente (C++ por default); firmware iterativo con diff coloreado (_DiffMixin, intent "modify"); datasheet auto-fetch + indexado KB en background; export ZIP sesión (chat.md + firmware.cpp + decisiones.md); error patterns en vector memory; Wokwi endpoint diagram.json; voice auto-send pipeline |
 | v4.1.0  | 2026-04-20  | CircuitAgent domain-aware (8 dominios, MCU auto-select, hints por dominio, flyback auto-add); SchematicRenderer refactor (14 símbolos, layout funcional, routing ortogonal, color-coding, title block); KiCad exporter nuevo (kicad_exporter.py, símbolos embebidos, net labels, power symbols, endpoint GET /schematic.kicad_sch); PCBRenderer mejorado (placement funcional, routing 2-capas, 14 footprints, Gerber RS-274X 8 archivos + README) |
+| v4.2.0  | 2026-04-21  | Chat→Circuit inline (orchestrator circuit_design intent + card embebida en chat con preview SVG + KiCad/BOM/Gerber/3D links); Live Hardware State visualizer (WebSocket /ws/hardware-state + serial STATE:{} + live_circuit.js overlay en SVG viewer) |
+| v4.3.0  | 2026-04-21  | Import Eagle/KiCad (POST /circuits/import, parser S-expr + Eagle XML); Versioning (save/list/restore versiones con diff); Share via link público (token URL-safe, router sin auth); Firmware production-ready (watchdog, OTA ESP32/8266, STATE serial, error handling en todos los platforms) |
 | v4.0.1  | 2026-04-20  | Fix crítico intent "modify": (1) "modify" faltaba en tupla de intents válidos en `_classify_intent()` → LLM respondía "modify" pero caía al fallback; (2) MODIFY_KEYWORDS se chequeaba después de DESIGN_KEYWORDS en `_classify_by_keywords()` → "hacelo más rápido" matcheaba design. Ahora el firmware diff se dispara correctamente. |
