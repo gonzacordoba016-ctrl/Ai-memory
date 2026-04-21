@@ -303,6 +303,12 @@ function finishStreaming(data) {
         article.querySelector('.pulse-bar')?.remove();
         const dot = article.querySelector('.dot');
         if (dot) dot.classList.remove('dot-pulse');
+        // Actualizar timestamp al momento real de respuesta
+        const tsEl = article.querySelector('.panel-sub');
+        if (tsEl) {
+          const now = new Date().toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+          tsEl.textContent = `stratum-core · ${now}`;
+        }
         _addCopyButtons(article);
         if (data?.agents_used?.length) {
           const badgeContainer = article.querySelector('.agent-badges');
