@@ -161,6 +161,41 @@
                 <button id="export-pcb">Exportar PCB (Gerber)</button>
                 <button id="export-svg">Exportar SVG</button>
                 <button id="refresh-view">Actualizar Vista</button>
+                <button id="btn-add-comp" style="background:#1a3a2a;border-color:#3fb950;color:#3fb950">+ Agregar</button>
+                <button id="btn-del-comp" style="background:#3a1a1a;border-color:#ff7b72;color:#ff7b72;display:none">✕ Eliminar</button>
+                <button id="btn-save-edit" style="background:#1a2a3a;border-color:#58a6ff;color:#58a6ff;display:none">💾 Guardar</button>
+            </div>
+            <!-- Editor: Add Component modal -->
+            <div id="add-comp-modal" style="display:none;position:fixed;inset:0;background:#000a;z-index:100;align-items:center;justify-content:center">
+                <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px;width:340px;color:#e6edf3">
+                    <h3 style="margin:0 0 12px;font-size:14px">Agregar Componente</h3>
+                    <label style="font-size:11px;color:#8b949e">ID (ej: R2, U3, D2)</label>
+                    <input id="ec-id" placeholder="R2" style="width:100%;margin:4px 0 10px;background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:6px;border-radius:4px;font-size:12px">
+                    <label style="font-size:11px;color:#8b949e">Tipo</label>
+                    <select id="ec-type" style="width:100%;margin:4px 0 10px;background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:6px;border-radius:4px;font-size:12px">
+                        <option value="resistor">Resistor</option>
+                        <option value="capacitor">Capacitor</option>
+                        <option value="led">LED</option>
+                        <option value="diode">Diodo</option>
+                        <option value="transistor_npn">Transistor NPN</option>
+                        <option value="button">Botón/Switch</option>
+                        <option value="arduino_uno">Arduino Uno</option>
+                        <option value="esp32">ESP32</option>
+                        <option value="ic_generic">IC Genérico</option>
+                        <option value="relay">Relay</option>
+                        <option value="motor">Motor</option>
+                        <option value="connector">Conector</option>
+                        <option value="generic">Genérico</option>
+                    </select>
+                    <label style="font-size:11px;color:#8b949e">Nombre / descripción</label>
+                    <input id="ec-name" placeholder="Resistencia 220Ω" style="width:100%;margin:4px 0 10px;background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:6px;border-radius:4px;font-size:12px">
+                    <label style="font-size:11px;color:#8b949e">Valor (opcional)</label>
+                    <input id="ec-value" placeholder="220" style="width:100%;margin:4px 0 16px;background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:6px;border-radius:4px;font-size:12px">
+                    <div style="display:flex;gap:8px;justify-content:flex-end">
+                        <button id="ec-cancel" style="background:none;border:1px solid #30363d;color:#8b949e;padding:6px 14px;border-radius:4px;cursor:pointer">Cancelar</button>
+                        <button id="ec-confirm" style="background:#238636;border:1px solid #2ea043;color:#fff;padding:6px 14px;border-radius:4px;cursor:pointer">Agregar</button>
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -722,9 +757,152 @@
                 alert('No hay circuito para simular');
                 return;
             }
-            
+
             alert(`Simulando circuito: ${currentCircuit.name}\n\nComponentes: ${currentCircuit.components.length}\nRedes: ${currentCircuit.nets.length}`);
         }
+
+        // ── Auth helper ─────────────────────────────────────────────────────
+        function _viewerToken() {
+            return localStorage.getItem('stratum_jwt') || '';
+        }
+        function _viewerFetch(url, opts = {}) {
+            const tok = _viewerToken();
+            if (tok) opts = { ...opts, headers: { 'Authorization': `Bearer ${tok}`, ...(opts.headers || {}) } };
+            return fetch(url, opts);
+        }
+
+        // ── Visual Editor ───────────────────────────────────────────────────
+        let _selectedCompId = null;
+        let _editorDirty    = false;
+
+        function _selectComponent(compId) {
+            // Deselect previous
+            if (_selectedCompId) {
+                const prev = document.getElementById(`comp-${_selectedCompId}`);
+                if (prev) prev.style.outline = '';
+                const prevRect = prev?.querySelector('rect,polygon,circle,ellipse');
+                if (prevRect) prevRect.removeAttribute('filter');
+            }
+            _selectedCompId = compId;
+            const btn = document.getElementById('btn-del-comp');
+            if (compId) {
+                btn.style.display = '';
+                btn.textContent = `✕ Eliminar ${compId}`;
+                // Highlight
+                const g = document.getElementById(`comp-${compId}`);
+                if (g) {
+                    const shape = g.querySelector('rect,polygon,circle,ellipse');
+                    if (shape) shape.setAttribute('stroke', '#f0e68c');
+                }
+            } else {
+                btn.style.display = 'none';
+            }
+        }
+
+        // Patch renderSchematic to wire click → select
+        const _origRenderSchematic = renderSchematic;
+        renderSchematic = function() {
+            _origRenderSchematic();
+            if (!currentCircuit) return;
+            currentCircuit.components.forEach(comp => {
+                const g = document.getElementById(`comp-${comp.id}`);
+                if (g) {
+                    g.style.cursor = 'pointer';
+                    g.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        _selectComponent(comp.id === _selectedCompId ? null : comp.id);
+                    });
+                }
+            });
+        };
+
+        // Delete selected component
+        document.getElementById('btn-del-comp').addEventListener('click', () => {
+            if (!_selectedCompId || !currentCircuit) return;
+            const name = currentCircuit.components.find(c => c.id === _selectedCompId)?.name || _selectedCompId;
+            if (!confirm(`¿Eliminar "${name}" (${_selectedCompId})?`)) return;
+            currentCircuit.components = currentCircuit.components.filter(c => c.id !== _selectedCompId);
+            // Remove nets that only referenced this component
+            currentCircuit.nets = currentCircuit.nets.map(n => ({
+                ...n,
+                nodes: n.nodes.filter(nd => !nd.startsWith(_selectedCompId + '.'))
+            }));
+            _selectedCompId = null;
+            document.getElementById('btn-del-comp').style.display = 'none';
+            _editorDirty = true;
+            document.getElementById('btn-save-edit').style.display = '';
+            renderSchematic();
+            renderComponentsList();
+        });
+
+        // Add Component modal
+        document.getElementById('btn-add-comp').addEventListener('click', () => {
+            document.getElementById('add-comp-modal').style.display = 'flex';
+            document.getElementById('ec-id').focus();
+        });
+        document.getElementById('ec-cancel').addEventListener('click', () => {
+            document.getElementById('add-comp-modal').style.display = 'none';
+        });
+        document.getElementById('ec-confirm').addEventListener('click', () => {
+            if (!currentCircuit) return;
+            const id    = document.getElementById('ec-id').value.trim().toUpperCase();
+            const type  = document.getElementById('ec-type').value;
+            const name  = document.getElementById('ec-name').value.trim() || type;
+            const value = document.getElementById('ec-value').value.trim();
+            if (!id) { alert('Ingresá un ID'); return; }
+            if (currentCircuit.components.find(c => c.id === id)) {
+                alert(`Ya existe un componente con ID "${id}"`); return;
+            }
+            currentCircuit.components.push({ id, name, type, resolved_type: type, value, unit: '' });
+            _editorDirty = true;
+            document.getElementById('btn-save-edit').style.display = '';
+            document.getElementById('add-comp-modal').style.display = 'none';
+            // Reset form
+            ['ec-id','ec-name','ec-value'].forEach(i => document.getElementById(i).value = '');
+            renderSchematic();
+            renderComponentsList();
+        });
+
+        // Save changes to backend
+        document.getElementById('btn-save-edit').addEventListener('click', async () => {
+            if (!currentCircuit || !currentCircuit.id) {
+                alert('El circuito no tiene ID — guardá primero el circuito desde el chat.');
+                return;
+            }
+            const btn = document.getElementById('btn-save-edit');
+            btn.textContent = '⏳ Guardando…';
+            btn.disabled = true;
+            try {
+                const r = await _viewerFetch(`/api/circuits/${currentCircuit.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        components:  currentCircuit.components,
+                        nets:        currentCircuit.nets,
+                        name:        currentCircuit.name,
+                        description: currentCircuit.description,
+                    }),
+                });
+                if (r.ok) {
+                    _editorDirty = false;
+                    btn.textContent = '✓ Guardado';
+                    setTimeout(() => { btn.style.display = 'none'; btn.textContent = '💾 Guardar'; }, 2000);
+                } else {
+                    const e = await r.json();
+                    alert('Error: ' + (e.detail || r.status));
+                    btn.textContent = '💾 Guardar';
+                }
+            } catch(err) {
+                alert('Error de red: ' + err);
+                btn.textContent = '💾 Guardar';
+            }
+            btn.disabled = false;
+        });
+
+        // Warn on unload if dirty
+        window.addEventListener('beforeunload', e => {
+            if (_editorDirty) { e.preventDefault(); e.returnValue = ''; }
+        });
     </script>
     <script src="/static/modules/live_circuit.js"></script>
     <script>

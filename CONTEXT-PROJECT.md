@@ -1,6 +1,6 @@
 # STRATUM — Contexto del Proyecto
 > Última actualización: 2026-04-21
-> Versión actual: **v4.3.0**
+> Versión actual: **v4.4.0**
 > Tagline: _"Tu memoria técnica siempre disponible"_
 > Estado: **Production-ready** (local + Railway)
 
@@ -396,6 +396,29 @@ Dominios soportados:
 ✅ **Gerber RS-274X completo** (8 archivos): copper_top.gtl, copper_bottom.gbl, silkscreen_top.gto, soldermask_top.gts, soldermask_bot.gbs, drills.xln (Excellon), outline.gko, README.txt.
 ✅ README.txt en el ZIP Gerber con dimensiones del board y lista de advertencias.
 
+### 4.25 Multi-usuario real (v4.4)
+✅ `update_owner(design_id, user_id)` en `CircuitDesignManager` — asigna user_id post-parse.
+✅ `/parse` y `/import` endpoints reciben `user_id` de JWT y llaman `update_owner()` / `save_design(user_id)`.
+✅ `GET /api/circuits/` — lista circuitos filtrados por el usuario autenticado (user_id del JWT).
+✅ `list_designs(user_id)` ya filtraba por user_id — ahora se usa correctamente desde los endpoints.
+✅ Auth frontend (`auth.js`) ya guardaba JWT en localStorage y lo inyectaba en todas las requests autenticadas.
+
+### 4.26 Editor Visual de Circuitos (v4.4)
+✅ `update_circuit(design_id, components, nets, name, description)` en `CircuitDesignManager`.
+✅ `PUT /api/circuits/{id}` — actualiza componentes/nets; auto-guarda versión "pre-edit" antes de aplicar cambios.
+✅ Toolbar del viewer: botón **+ Agregar** (modal con 13 tipos de componentes), **✕ Eliminar {id}** (aparece al seleccionar), **💾 Guardar** (aparece cuando hay cambios).
+✅ Click en componente SVG → selección con highlight (stroke amarillo) + botón eliminar contextual.
+✅ Modal de agregar: ID, Tipo (select), Nombre, Valor — valida ID único antes de agregar.
+✅ `beforeunload` avisa si hay cambios sin guardar.
+✅ `_viewerFetch()` helper — usa JWT de localStorage para autenticar requests del viewer.
+
+### 4.27 Tests Automatizados pytest (v4.4)
+✅ `tests/conftest.py` — fixtures `sample_circuit`, `tmp_db` (DB SQLite temporal via monkeypatch), `mgr` (CircuitDesignManager aislado).
+✅ `tests/test_circuit_importer.py` — 18 tests: KiCad S-expression (title, componentes, nets, power symbols excluidos, error en contenido inválido), Eagle XML (componentes, valores, nets con nodos, inferencia de tipo), dispatcher (extensión .kicad_sch/.sch/unsupported, KiCad5 legacy error).
+✅ `tests/test_versioning_sharing.py` — 22 tests: versioning (save, increment, unknown circuit, list, fields, reason, snapshot, restore, auto-backup, diff con added), sharing (create, idempotent, get by token, invalid token, revoke, revoke+recreate), update_circuit (componentes, nombre, nonexistent, update_owner con user isolation).
+✅ `tests/test_firmware_prompts.py` — 16 tests: todos los platforms tienen watchdog/OTA/STATE/error handling; `_clean_code()` elimina backticks y preserva código.
+✅ **56/56 tests pasaron en 1.39s** — sin mocks de LLM, sin llamadas de red, tests de unidad puros.
+
 ### 4.21 Import Eagle/KiCad (v4.3)
 ✅ `tools/circuit_importer.py` — importa `.kicad_sch` (KiCad 6/7/8 S-expression) y `.sch` (Eagle XML).
 ✅ Parser S-expression recursivo propio (sin dependencias externas).
@@ -641,6 +664,7 @@ Las siguientes mejoras están ordenadas por impacto percibido vs herramientas ex
 | v3.9.0  | 2026-04-20  | Nuevo diseño UI CAD-instrument (design system completo); bottom nav eliminado → hamburger mobile; composer simplificado; empty state chat mobile; agent routing fix (escribí/código → design, no query); Ctrl+K unificado memoria+KB con {text,score}; 15 mensajes de sesión larga testeados; KB indexada con 10 documentos |
 | v4.0.0  | 2026-04-20  | Platform context persistente (C++ por default); firmware iterativo con diff coloreado (_DiffMixin, intent "modify"); datasheet auto-fetch + indexado KB en background; export ZIP sesión (chat.md + firmware.cpp + decisiones.md); error patterns en vector memory; Wokwi endpoint diagram.json; voice auto-send pipeline |
 | v4.1.0  | 2026-04-20  | CircuitAgent domain-aware (8 dominios, MCU auto-select, hints por dominio, flyback auto-add); SchematicRenderer refactor (14 símbolos, layout funcional, routing ortogonal, color-coding, title block); KiCad exporter nuevo (kicad_exporter.py, símbolos embebidos, net labels, power symbols, endpoint GET /schematic.kicad_sch); PCBRenderer mejorado (placement funcional, routing 2-capas, 14 footprints, Gerber RS-274X 8 archivos + README) |
+| v4.4.0  | 2026-04-21  | Multi-usuario real (user_id wired en parse/import, GET /circuits/ por usuario, update_owner); Editor visual de circuitos (+ Agregar componente modal, ✕ Eliminar con confirmación, 💾 Guardar → PUT /circuits/{id} con auto-versión, beforeunload dirty-check); Tests pytest 56/56 (test_circuit_importer, test_versioning_sharing, test_firmware_prompts, conftest con fixtures tmp_db) |
 | v4.2.0  | 2026-04-21  | Chat→Circuit inline (orchestrator circuit_design intent + card embebida en chat con preview SVG + KiCad/BOM/Gerber/3D links); Live Hardware State visualizer (WebSocket /ws/hardware-state + serial STATE:{} + live_circuit.js overlay en SVG viewer) |
 | v4.3.0  | 2026-04-21  | Import Eagle/KiCad (POST /circuits/import, parser S-expr + Eagle XML); Versioning (save/list/restore versiones con diff); Share via link público (token URL-safe, router sin auth); Firmware production-ready (watchdog, OTA ESP32/8266, STATE serial, error handling en todos los platforms) |
 | v4.0.1  | 2026-04-20  | Fix crítico intent "modify": (1) "modify" faltaba en tupla de intents válidos en `_classify_intent()` → LLM respondía "modify" pero caía al fallback; (2) MODIFY_KEYWORDS se chequeaba después de DESIGN_KEYWORDS en `_classify_by_keywords()` → "hacelo más rápido" matcheaba design. Ahora el firmware diff se dispara correctamente. |

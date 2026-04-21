@@ -339,6 +339,49 @@ class CircuitDesignManager:
             logger.error(f"[CircuitDesign] Error revocando share: {e}")
             return False
 
+    def update_owner(self, design_id: int, user_id: str) -> bool:
+        """Asigna user_id al diseño (usado después de parse para multi-usuario)."""
+        try:
+            with self._get_conn() as conn:
+                conn.execute(
+                    "UPDATE circuit_designs SET user_id = ? WHERE id = ?",
+                    (user_id, design_id)
+                )
+                conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"[CircuitDesign] Error actualizando owner: {e}")
+            return False
+
+    def update_circuit(self, design_id: int, components: list, nets: list,
+                       name: str = None, description: str = None) -> bool:
+        """Actualiza componentes/nets de un circuito (editor visual)."""
+        try:
+            with self._get_conn() as conn:
+                row = conn.execute(
+                    "SELECT name, description, metadata FROM circuit_designs WHERE id = ?",
+                    (design_id,)
+                ).fetchone()
+                if not row:
+                    return False
+                metadata = _json.loads(row[2]) if row[2] else {}
+                conn.execute(
+                    "UPDATE circuit_designs SET components=?, nets=?, name=?, description=?, "
+                    "updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                    (
+                        _json.dumps(components, ensure_ascii=False),
+                        _json.dumps(nets, ensure_ascii=False),
+                        name or row[0],
+                        description if description is not None else row[1],
+                        design_id,
+                    )
+                )
+                conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"[CircuitDesign] Error actualizando circuito: {e}")
+            return False
+
     def resolve_component_type(self, component_type: str) -> str:
         """Resuelve el tipo de componente usando los aliases."""
         return COMPONENT_ALIASES.get(component_type.lower(), component_type)

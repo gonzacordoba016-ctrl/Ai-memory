@@ -43,11 +43,22 @@ async def get_circuit_viewer():
         return HTMLResponse(f.read())
 
 
+@router.get("/")
+async def list_circuits(user_id: str = Depends(get_current_user)):
+    """Lista todos los circuitos del usuario autenticado."""
+    agent   = _get_circuit_agent()
+    designs = agent.circuit_manager.list_designs(user_id)
+    return JSONResponse(content={"circuits": designs, "total": len(designs)})
+
+
 @router.post("/parse")
 @limiter.limit("5/minute")
-async def parse_circuit(request: Request, description: str, mcu: str = "Arduino Uno"):
+async def parse_circuit(request: Request, description: str, mcu: str = "Arduino Uno",
+                        user_id: str = Depends(get_current_user)):
     agent  = _get_circuit_agent()
     result = await asyncio.to_thread(agent.parse_circuit, description, mcu)
+    if result and result.get("design_id"):
+        agent.circuit_manager.update_owner(result["design_id"], user_id)
     if result:
         return JSONResponse(content=result)
     return JSONResponse(content={"error": "No se pudo parsear el circuito"}, status_code=400)
@@ -233,6 +244,32 @@ async def generate_firmware_for_device(request: Request, device_name: str, body:
     })
 
     return JSONResponse(content={"job_id": job_id, "status": "pending"})
+
+
+@router.put("/{circuit_id}")
+async def update_circuit(circuit_id: int, body: dict):
+    """
+    Actualiza componentes y nets de un circuito desde el editor visual.
+    Body: { "components": [...], "nets": [...], "name"?: str, "description"?: str }
+    Auto-guarda versión antes de aplicar los cambios.
+    """
+    agent = _get_circuit_agent()
+    if not agent.get_circuit_by_id(circuit_id):
+        raise HTTPException(status_code=404, detail="Circuito no encontrado")
+
+    agent.circuit_manager.save_version(circuit_id, reason="pre-edit auto-save")
+
+    ok = agent.circuit_manager.update_circuit(
+        circuit_id,
+        body.get("components", []),
+        body.get("nets", []),
+        name=body.get("name"),
+        description=body.get("description"),
+    )
+    if not ok:
+        raise HTTPException(status_code=500, detail="Error actualizando circuito")
+
+    return JSONResponse(content={"status": "ok", "circuit_id": circuit_id})
 
 
 @router.put("/{circuit_id}/layout")
@@ -426,6 +463,7 @@ async def get_circuit_bom_csv(circuit_id: int):
 async def import_circuit_file(
     request: Request,
     file: UploadFile = File(...),
+    user_id: str = Depends(get_current_user),
 ):
     """
     Importa un circuito desde .kicad_sch (KiCad 6+) o .sch (Eagle XML).
@@ -440,7 +478,7 @@ async def import_circuit_file(
         raise HTTPException(status_code=422, detail=result["error"])
 
     agent     = _get_circuit_agent()
-    design_id = agent.circuit_manager.save_design(result)
+    design_id = agent.circuit_manager.save_design(result, user_id)
     if design_id < 0:
         raise HTTPException(status_code=500, detail="Error guardando el circuito importado")
 
