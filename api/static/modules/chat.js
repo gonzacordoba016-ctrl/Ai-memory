@@ -310,6 +310,10 @@ function finishStreaming(data) {
         }
       }
       _postRender(currentAgentEl);
+      // Circuit design card — inject after message body
+      if (data?.circuit_design_id && article) {
+        _appendCircuitCard(article, data.circuit_design_id, data.circuit_name || 'Circuito');
+      }
     }
   }
   _streamBuffer  = '';
@@ -324,6 +328,46 @@ function finishStreaming(data) {
   updateStatusText('READY_FOR_INPUT', true);
   addLog('Response complete', 'info');
   _scrollToBottom(true);
+}
+
+function _appendCircuitCard(article, id, name) {
+  const card = document.createElement('div');
+  card.className = 'circuit-chat-card';
+  card.style.cssText = [
+    'margin:10px 0 4px 0', 'border:1px solid #00d4ff44', 'border-radius:6px',
+    'background:#0d2137', 'overflow:hidden'
+  ].join(';');
+
+  const hdr = document.createElement('div');
+  hdr.style.cssText = 'padding:6px 10px;background:#00d4ff18;display:flex;align-items:center;gap:8px;border-bottom:1px solid #00d4ff33';
+  hdr.innerHTML = `
+    <span style="color:#00d4ff;font-size:11px;font-family:monospace">⚡ CIRCUITO #${id}</span>
+    <span style="color:#8b949e;font-size:10px;flex:1">${escHtml(name)}</span>
+    <a href="/api/circuits/${id}/schematic.kicad_sch" target="_blank"
+       style="color:#58a6ff;font-size:10px;text-decoration:none;padding:2px 6px;border:1px solid #58a6ff44;border-radius:3px">KiCad</a>
+    <a href="/api/circuits/${id}/bom.csv" target="_blank"
+       style="color:#3fb950;font-size:10px;text-decoration:none;padding:2px 6px;border:1px solid #3fb95044;border-radius:3px">BOM CSV</a>
+    <a href="/api/circuits/${id}/gerber" target="_blank"
+       style="color:#d29922;font-size:10px;text-decoration:none;padding:2px 6px;border:1px solid #d2992244;border-radius:3px">Gerber</a>
+    <a href="/api/circuits/viewer?id=${id}" target="_blank"
+       style="color:#bc8cff;font-size:10px;text-decoration:none;padding:2px 6px;border:1px solid #bc8cff44;border-radius:3px">3D Viewer</a>
+  `;
+
+  const preview = document.createElement('div');
+  preview.style.cssText = 'padding:6px;text-align:center;cursor:pointer';
+  preview.title = 'Click para ver esquemático completo';
+  preview.onclick = () => window.open(`/api/circuits/viewer?id=${id}`, '_blank');
+
+  const img = document.createElement('img');
+  img.src = `/api/circuits/${id}/schematic.svg`;
+  img.alt = 'Esquemático';
+  img.style.cssText = 'max-width:100%;max-height:220px;object-fit:contain;border-radius:3px';
+  img.onerror = () => { preview.style.display = 'none'; };
+  preview.appendChild(img);
+
+  card.appendChild(hdr);
+  card.appendChild(preview);
+  article.appendChild(card);
 }
 
 function updateStatusText(text, ok) {

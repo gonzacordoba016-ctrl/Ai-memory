@@ -48,7 +48,7 @@ class AgentController:
         except Exception as e:
             logger.error(f"Error inicializando knowledge base: {e}")
 
-    async def process_input(self, user_input: str, on_token=None) -> str:
+    async def process_input(self, user_input: str, on_token=None) -> dict:
 
         # 1. Guardar input + detectar plataforma
         self.state.add_message("user", user_input)
@@ -78,6 +78,51 @@ class AgentController:
         sub_context = orch_result["combined_context"]
         logger.info(f"Agentes usados: {agents_used}")
 
+        # Circuit design: respuesta directa con card embebida
+        circuit_result = orch_result["results"].get("circuit_design")
+        if circuit_result and "circuit_design" in agents_used:
+            design_id = circuit_result.get("design_id", 0)
+            cname = circuit_result.get("name", "Circuito")
+            cdesc = circuit_result.get("description", "")
+            comps = circuit_result.get("components", [])
+            nets  = circuit_result.get("nets", [])
+            power = circuit_result.get("power", "")
+            warns = circuit_result.get("warnings", [])
+            drc   = circuit_result.get("drc", {})
+            domain = circuit_result.get("detected_domain", "")
+            mcu   = circuit_result.get("selected_mcu", "")
+            drc_line = "✅ DRC pasado sin errores" if drc.get("passed", True) else \
+                       f"⚠ DRC: {len(drc.get('errors', []))} errores — {drc.get('errors', [{}])[0].get('message','')}"
+
+            hw_md = (
+                f"## 🔌 {cname}\n"
+                f"{cdesc}\n\n"
+                f"**MCU:** {mcu} | **Alimentación:** {power} | **Dominio:** {domain}\n\n"
+                f"**Componentes ({len(comps)}):**\n"
+                + "".join(f"- `{c['id']}` {c['name']}" + (f" — {c.get('value','')}{c.get('unit','')}" if c.get('value') else '') + "\n"
+                          for c in comps[:12])
+                + (f"\n_… y {len(comps)-12} más_\n" if len(comps) > 12 else "")
+                + f"\n**Nets ({len(nets)}):** " + ", ".join(f"`{n['name']}`" for n in nets[:8])
+                + (f" … +{len(nets)-8}" if len(nets) > 8 else "")
+                + f"\n\n**{drc_line}**"
+                + (f"\n\n⚠ **Advertencias:** " + " · ".join(warns[:3]) if warns else "")
+                + f"\n\n---\n"
+                f"📐 **Circuito ID {design_id}** — disponible en:\n"
+                f"- [Esquemático SVG](/api/circuits/{design_id}/schematic.svg)\n"
+                f"- [KiCad .kicad_sch](/api/circuits/{design_id}/schematic.kicad_sch)\n"
+                f"- [BOM CSV](/api/circuits/{design_id}/bom.csv)\n"
+                f"- [Gerber ZIP](/api/circuits/{design_id}/gerber)\n"
+                f"- [Ver en 3D](/api/circuits/viewer?id={design_id})\n"
+            )
+            self.state.add_message("assistant", hw_md)
+            self._store_episode(user_input, hw_md)
+            self.profiler.update_from_interaction(user_input, hw_md)
+            if on_token:
+                for char in hw_md:
+                    await on_token(char)
+            return {"text": hw_md, "circuit_design_id": design_id,
+                    "circuit_name": cname, "agents_used": agents_used}
+
         # Si el hardware agent manejó el comando completamente, devolver directo
         # (evita que el LLM principal reescriba o contradiga la respuesta del agente)
         hw_result = orch_result["results"].get("hardware", "")
@@ -94,7 +139,7 @@ class AgentController:
             if on_token:
                 for char in hw_result:
                     await on_token(char)
-            return hw_result
+            return {"text": hw_result, "agents_used": agents_used}
 
         # 4. Obtener perfil activo de IA + contexto de fuentes
         ai_system_prompt = None
@@ -161,7 +206,7 @@ class AgentController:
         # 8. Auto-fetch datasheets en background (no bloquea)
         asyncio.create_task(self._auto_fetch_datasheets(user_input + " " + response))
 
-        return response
+        return {"text": response, "agents_used": agents_used}
 
     async def _auto_fetch_datasheets(self, text: str):
         try:

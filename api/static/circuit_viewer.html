@@ -726,5 +726,11 @@
             alert(`Simulando circuito: ${currentCircuit.name}\n\nComponentes: ${currentCircuit.components.length}\nRedes: ${currentCircuit.nets.length}`);
         }
     </script>
+    <script src="/static/modules/live_circuit.js"></script>
+    <script>
+        // Auto-start live overlay if ?id= is in the URL
+        const _lcId = new URLSearchParams(location.search).get('id');
+        if (_lcId) LiveCircuit.start(parseInt(_lcId));
+    </script>
 </body>
 </html>

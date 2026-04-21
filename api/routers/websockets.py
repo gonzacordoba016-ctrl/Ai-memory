@@ -131,13 +131,25 @@ async def ws_chat(websocket: WebSocket, session: str = None, token: str = ""):
             finally:
                 processing = False
 
+            # Desempacar respuesta (ahora es dict con text + metadata opcional)
+            if isinstance(response, dict):
+                response_text   = response.get("text", "")
+                agents_used_res = response.get("agents_used", [])
+                circuit_id      = response.get("circuit_design_id")
+                circuit_name    = response.get("circuit_name")
+            else:
+                response_text   = response or ""
+                agents_used_res = getattr(agent, '_last_agents_used', [])
+                circuit_id      = None
+                circuit_name    = None
+
             # Persistir respuesta del agente en la sesión
-            if response:
-                sql_db.store_message("assistant", response, session_id=session_id)
+            if response_text:
+                sql_db.store_message("assistant", response_text, session_id=session_id)
 
             # Título generado por IA tras el primer intercambio completo
             ai_title = None
-            if _is_first_msg and response:
+            if _is_first_msg and response_text:
                 try:
                     from llm.async_client import call_llm_text
                     raw = await asyncio.wait_for(
@@ -159,14 +171,19 @@ async def ws_chat(websocket: WebSocket, session: str = None, token: str = ""):
                     ai_title = user_input[:60].strip()
                     sql_db.update_session_title(session_id, ai_title)
 
-            await websocket.send_text(json.dumps({
-                "type":        "done",
-                "content":     response,
-                "facts":       sql_db.get_all_facts(),
-                "graph":       graph_memory.stats(),
-                "agents_used": getattr(agent, '_last_agents_used', []),
+            done_payload = {
+                "type":          "done",
+                "content":       response_text,
+                "facts":         sql_db.get_all_facts(),
+                "graph":         graph_memory.stats(),
+                "agents_used":   agents_used_res,
                 "session_title": ai_title,
-            }))
+            }
+            if circuit_id:
+                done_payload["circuit_design_id"] = circuit_id
+                done_payload["circuit_name"]      = circuit_name
+
+            await websocket.send_text(json.dumps(done_payload))
 
     except WebSocketDisconnect:
         logger.info(f"WebSocket chat desconectado | session={session_id}")

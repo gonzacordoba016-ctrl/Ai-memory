@@ -111,6 +111,7 @@ _include("stock",            "api.routers.stock")
 _include("decisions",        "api.routers.decisions")
 _include("calc",             "api.routers.calc")
 _include("projects",         "api.routers.projects")
+_include("hardware_state",   "api.routers.hardware_state")
 
 _log.info(f"[STARTUP] Routers OK: {_routers_loaded}")
 if _routers_failed:

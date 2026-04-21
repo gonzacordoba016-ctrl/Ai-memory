@@ -16,6 +16,7 @@ Agentes disponibles:
 - code: ejecutar código Python, cálculos matemáticos, leer/escribir archivos
 - memory: consultar memoria del usuario, historial, hechos conocidos sobre el usuario
 - hardware: programar Arduino/ESP32/ESP8266/PIC/STM32, consultar dispositivos, historial de firmware, guardar decisiones de diseño, circuitos de potencia, PLCs, automatización
+- circuit_design: DISEÑAR un circuito nuevo desde cero (generar netlist, esquemático, PCB, BOM) cuando el usuario pide que SE CREE/DISEÑE/GENERE un circuito completo
 - direct: responder directamente sin sub-agentes (saludos, opiniones, conversación general)
 
 Devolvé ÚNICAMENTE un JSON con:
@@ -28,6 +29,7 @@ Reglas estrictas:
 - Si pregunta por eventos actuales, noticias, precios, resultados deportivos → research
 - Si pregunta por cálculos, código Python, archivos → code
 - Si pregunta por datos del usuario, historial de conversación → memory
+- Si pide DISEÑAR/CREAR/GENERAR/ARMAR un circuito, esquemático o PCB nuevo → circuit_design
 - Si menciona Arduino, ESP32, microcontrolador, LED, sensor, pin, firmware, circuito eléctrico, PLC, ladder, automatización, variador, transformador, potencia, relay, contactor, decisión de diseño → hardware
 - Si es saludo, opinión o pregunta general de conocimiento → direct
 
@@ -60,7 +62,21 @@ ELECTRICAL_CALC_KEYWORDS = [
     "dimensioná", "dimensionar",
 ]
 
+CIRCUIT_DESIGN_KEYWORDS = [
+    "diseñame un circuito", "diseña un circuito", "crea un circuito",
+    "genera un circuito", "generame un circuito", "armame un circuito",
+    "quiero un circuito", "haceme un circuito", "necesito un circuito",
+    "diseñame el esquemático", "crea el esquemático", "genera el esquemático",
+    "diseñame un esquema", "diseñame una pcb", "crea una pcb", "genera una pcb",
+    "make a circuit", "design a circuit", "create a circuit", "generate a circuit",
+    "design me a", "create schematic", "generate schematic",
+    "diseñame el sistema de riego", "diseñame el sistema de domótica",
+    "diseñame el control", "diseñame la fuente", "diseñame el driver",
+    "arma el circuito", "crea el circuito completo",
+]
+
 KEYWORD_ROUTES = {
+    "circuit_design": CIRCUIT_DESIGN_KEYWORDS,
     "hardware": [
         "arduino", "esp32", "esp8266", "pico", "led", "sensor",
         "pin", "flashear", "programar hardware", "micropython", "serial",
@@ -215,6 +231,49 @@ class Orchestrator:
             results["code"] = result
             if result:
                 context_parts.append(f"[Código/Archivos]\n{result}")
+
+        if "circuit_design" in agents_to_run:
+            try:
+                from agent.agents.circuit_agent import CircuitAgent
+                ca = CircuitAgent()
+                # Detect MCU from query
+                mcu = "Arduino Uno"
+                q_l = query.lower()
+                if "esp32" in q_l:   mcu = "ESP32"
+                elif "esp8266" in q_l: mcu = "ESP8266"
+                elif "nano" in q_l:  mcu = "Arduino Nano"
+                elif "mega" in q_l:  mcu = "Arduino Mega"
+                elif "pico" in q_l:  mcu = "Raspberry Pi Pico"
+                elif "stm32" in q_l: mcu = "STM32"
+
+                circuit = await asyncio.to_thread(ca.parse_circuit, query, mcu)
+                if circuit:
+                    results["circuit_design"] = circuit
+                    # Build rich context for LLM explanation
+                    comp_list = ", ".join(
+                        f"{c['id']} {c['name']}" for c in circuit.get("components", [])[:8]
+                    )
+                    net_list = ", ".join(n["name"] for n in circuit.get("nets", [])[:6])
+                    drc = circuit.get("drc", {})
+                    drc_status = "✅ DRC OK" if drc.get("passed", True) else f"⚠ DRC: {len(drc.get('errors',[]))} errores"
+                    context_parts.append(
+                        f"[Circuito Generado — ID {circuit['design_id']}]\n"
+                        f"Nombre: {circuit['name']}\n"
+                        f"Descripción: {circuit['description']}\n"
+                        f"MCU: {circuit.get('selected_mcu','')}\n"
+                        f"Componentes ({len(circuit['components'])}): {comp_list}\n"
+                        f"Nets ({len(circuit['nets'])}): {net_list}\n"
+                        f"Alimentación: {circuit.get('power','')}\n"
+                        f"DRC: {drc_status}\n"
+                        f"Dominio detectado: {circuit.get('detected_domain','')}\n"
+                        f"Advertencias: {len(circuit.get('warnings',[]))} — {'; '.join(circuit.get('warnings',[])[:2])}"
+                    )
+                    logger.info(f"[Orchestrator] CircuitAgent → ID {circuit['design_id']}")
+                else:
+                    context_parts.append("[Circuito] No se pudo generar el circuito — verificá la descripción")
+            except Exception as e:
+                logger.error(f"[Orchestrator] CircuitAgent falló: {e}")
+                context_parts.append(f"[Circuito] Error generando circuito: {e}")
 
         if "hardware" in agents_to_run:
             q_lower = query.lower()
