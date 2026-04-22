@@ -1,6 +1,6 @@
 # STRATUM — Contexto del Proyecto
 > Última actualización: 2026-04-21
-> Versión actual: **v4.4.1**
+> Versión actual: **v4.5.0**
 > Tagline: _"Tu memoria técnica siempre disponible"_
 > Estado: **Production-ready** (local + Railway)
 
@@ -349,7 +349,7 @@ Cambiar perfil → tono y contexto cambian en el siguiente mensaje sin reiniciar
 ✅ Todo se cachea en `agent_files/datasheets/` e indexa en KB automáticamente en background.
 ✅ Hook en `AgentController._auto_fetch_datasheets()` — se dispara como `asyncio.create_task` por cada mensaje.
 
-### 4.17 Generación de Circuitos con Dominio Detectado (v4.1)
+### 4.17 Generación de Circuitos con Dominio Detectado (v4.1 / fix v4.5.0)
 ✅ `CircuitAgent` detecta automáticamente el dominio del proyecto (irrigación, domótica, motor, IoT, display, audio, etc.) con `_detect_domain()`.
 ✅ Selección automática del MCU óptimo por dominio (ESP32 para IoT/riego/domótica, Arduino para control simple).
 ✅ Hints de dominio inyectados en el prompt: componentes recomendados, reglas de protección (flyback para relays, caps bulk para motores, pull-ups I2C), advertencias de seguridad.
@@ -357,6 +357,8 @@ Cambiar perfil → tono y contexto cambian en el siguiente mensaje sin reiniciar
 ✅ Auto-agrega diodo flyback 1N4007 cuando detecta relay sin diodo de protección.
 ✅ Cleanup JSON mejorado: extrae el JSON aunque el LLM incluya texto extra antes/después.
 ✅ Respuesta incluye `detected_domain` y `selected_mcu` para trazabilidad.
+⚠️ Fix v4.5.0: `domain_hint` se calculaba pero nunca se pasaba al `.format()` del `CIRCUIT_PARSE_PROMPT` → circuito de riego salía sin sensor de humedad de suelo (FC-28/YL-69). Fix: `{domain_hint}` agregado al template y `domain_hint=domain_hint` al format call.
+⚠️ Fix v4.5.0: Agregada regla `CRÍTICO: cada nodo en UN SOLO net, nunca repetido` al prompt → elimina warnings de nodos duplicados entre nets.
 
 Dominios soportados:
 - `irrigation` → ESP32, sensor humedad suelo, sensor nivel agua, relay bomba, RTC DS3231
@@ -368,7 +370,7 @@ Dominios soportados:
 - `iot` → ESP32, cap bulk WiFi, LED heartbeat
 - `audio` → ESP32, amplificador I2S, buzzer
 
-### 4.18 SchematicRenderer Mejorado (v4.1)
+### 4.18 SchematicRenderer Mejorado (v4.1 / fix v4.5.0)
 ✅ **Layout funcional**: MCU al centro, entradas a la izquierda, salidas a la derecha, power en franja superior, comunicaciones arriba-derecha.
 ✅ **14 símbolos electrónicos precisos**: resistor (IEC rectangle), LED (triángulo con barra cátodo y flechas de luz), capacitor (placas paralelas con polarity), button (SPST con actuador), MCU (box con header cyan), relay (bobina + contacto), MOSFET-N (símbolo estándar con G/D/S), transistor NPN, diodo, motor (M en círculo), buzzer (con ondas sonoras), sensor genérico, display OLED/LCD, IC genérico.
 ✅ **Color-coding de nets**: VCC/power=rojo, GND=gris, I2C=verde, SPI=magenta, UART=naranja, PWM=naranja oscuro, datos=azul.
@@ -377,6 +379,7 @@ Dominios soportados:
 ✅ **Leyenda de nets** en esquina superior derecha con colores.
 ✅ **Grid de fondo** (dots 20px) como papel de esquemático.
 ✅ **Anotaciones DRC** inline (primeros 3 errores).
+⚠️ Fix v4.5.0: SVG generado con `size=(1000, 700)` fijo → el browser lo mostraba centrado sobre fondo gris al abrir `/api/circuits/{id}/schematic.svg` directamente. Fix: `size=('100%', '100%')` con `viewBox="0 0 1000 700"` → SVG responsivo que llena toda la pantalla.
 
 ### 4.19 KiCad Export — .kicad_sch (v4.1)
 ✅ `tools/kicad_exporter.py` — genera archivos `.kicad_sch` válidos para KiCad 6/7/8.
@@ -395,6 +398,28 @@ Dominios soportados:
 ✅ **SVG mejorado**: fondo PCB verde oscuro #1a4a1a, trazas cobre coloreadas por capa, pads dorados con drill holes, courtyard amarillo, silkscreen con ref ID, info de fabricación al pie.
 ✅ **Gerber RS-274X completo** (8 archivos): copper_top.gtl, copper_bottom.gbl, silkscreen_top.gto, soldermask_top.gts, soldermask_bot.gbs, drills.xln (Excellon), outline.gko, README.txt.
 ✅ README.txt en el ZIP Gerber con dimensiones del board y lista de advertencias.
+
+### 4.29 Circuit Viewer Profesional — 2D + 3D (v4.5.0)
+
+#### Viewer 2D — Esquemático de alta calidad
+✅ `renderSchematic()` reescrita como función `async`: fetch del SVG generado por el servidor (`/api/circuits/{id}/schematic.svg`) e inyectado directamente en el DOM — muestra los 14 símbolos eléctricos reales, grid de fondo, color-coding de nets, title block, badges DRC.
+✅ **Pan/zoom interactivo** sobre el SVG del servidor via `_initSVGPanZoom()`:
+  - Rueda del mouse → zoom (rango 0.15× – 10×)
+  - Click + drag → paneo (viewBox manipulation, sin pérdida de calidad)
+  - Doble clic → reset a vista completa
+✅ **Fallback client-side** (`_renderSchematicFallback()`) para circuitos sin ID (nuevos no guardados) — renderer SVG nativo corregido, con colores por tipo de componente y drag & drop funcionando.
+⚠️ Fix root cause: el renderer anterior hacía `SVG().addTo('#' + container.id)` con `container.id = ''` (vacío) → SVG.js buscaba el selector `#` (inválido) → `draw` undefined → todo el render fallaba silenciosamente → pantalla en blanco.
+
+#### Viewer 3D — Breadboard/PCB Three.js
+✅ **Three.js OrbitControls** (`r128`) agregado vía CDN: rotación, zoom (scroll), pan (botón derecho). `dampingFactor=0.06` para movimiento suave.
+✅ **PCB verde profesional** con borde dorado (EdgesGeometry) — reemplaza el breadboard beige que rotaba solo.
+✅ **Componentes tipados con colores reales**: ESP32 azul oscuro, relay naranja, capacitor celeste, diodo negro, sensor verde, display azul marino, motor driver azul índigo, etc. Tamaños proporcionales al footprint real (ESP32: 32×4×22mm, Arduino Uno: 44×4×32mm).
+✅ **Cables con arco elevado** entre nodos de cada net — colores distintos por red (rojo=VCC, verde=GND, azul=señal, etc.).
+✅ **Labels sprite** flotantes sobre cada componente (canvas texture → THREE.Sprite), texto ID del componente en cyan sobre fondo semitransparente.
+✅ **Iluminación mejorada**: AmbientLight 2.5, DirectionalLight 1.8 con sombras, HemisphereLight para fill desde abajo.
+✅ **Grid helper** oscuro (300 unidades, 30 divisiones) como referencia de profundidad.
+✅ `_resetThreeJS()` — limpia la escena completa al cargar un nuevo circuito (evita duplicación de objetos entre circuitos).
+⚠️ Fix: la animación original hacía `threeScene.children[2].rotation.y += 0.005` → crash si había menos de 3 hijos. Eliminado — el movimiento ahora es solo via OrbitControls.
 
 ### 4.28 Verificación total y hardening (v4.4.1)
 Verificación exhaustiva del proyecto detectó y corrigió 5 issues:
@@ -428,14 +453,14 @@ Fix: comentario explicando `false` (single-user, sin login) vs `true` (JWT oblig
 ✅ `list_designs(user_id)` ya filtraba por user_id — ahora se usa correctamente desde los endpoints.
 ✅ Auth frontend (`auth.js`) ya guardaba JWT en localStorage y lo inyectaba en todas las requests autenticadas.
 
-### 4.26 Editor Visual de Circuitos (v4.4)
+### 4.26 Editor Visual de Circuitos (v4.4 / actualizado v4.5.0)
 ✅ `update_circuit(design_id, components, nets, name, description)` en `CircuitDesignManager`.
 ✅ `PUT /api/circuits/{id}` — actualiza componentes/nets; auto-guarda versión "pre-edit" antes de aplicar cambios.
 ✅ Toolbar del viewer: botón **+ Agregar** (modal con 13 tipos de componentes), **✕ Eliminar {id}** (aparece al seleccionar), **💾 Guardar** (aparece cuando hay cambios).
-✅ Click en componente SVG → selección con highlight (stroke amarillo) + botón eliminar contextual.
 ✅ Modal de agregar: ID, Tipo (select), Nombre, Valor — valida ID único antes de agregar.
 ✅ `beforeunload` avisa si hay cambios sin guardar.
 ✅ `_viewerFetch()` helper — usa JWT de localStorage para autenticar requests del viewer.
+⚠️ v4.5.0: click-to-select migrado de elementos SVG (ya no existen en la vista server-side) a los items de la lista de componentes del sidebar. Cada item tiene `data-comp-id` y llama `_selectComponent()` al hacer clic. `_wireEditorClicksOnList()` se llama al final de `renderComponentsList()`.
 
 ### 4.27 Tests Automatizados pytest (v4.4)
 ✅ `tests/conftest.py` — fixtures `sample_circuit`, `tmp_db` (DB SQLite temporal via monkeypatch), `mgr` (CircuitDesignManager aislado).
@@ -689,6 +714,7 @@ Las siguientes mejoras están ordenadas por impacto percibido vs herramientas ex
 | v3.9.0  | 2026-04-20  | Nuevo diseño UI CAD-instrument (design system completo); bottom nav eliminado → hamburger mobile; composer simplificado; empty state chat mobile; agent routing fix (escribí/código → design, no query); Ctrl+K unificado memoria+KB con {text,score}; 15 mensajes de sesión larga testeados; KB indexada con 10 documentos |
 | v4.0.0  | 2026-04-20  | Platform context persistente (C++ por default); firmware iterativo con diff coloreado (_DiffMixin, intent "modify"); datasheet auto-fetch + indexado KB en background; export ZIP sesión (chat.md + firmware.cpp + decisiones.md); error patterns en vector memory; Wokwi endpoint diagram.json; voice auto-send pipeline |
 | v4.1.0  | 2026-04-20  | CircuitAgent domain-aware (8 dominios, MCU auto-select, hints por dominio, flyback auto-add); SchematicRenderer refactor (14 símbolos, layout funcional, routing ortogonal, color-coding, title block); KiCad exporter nuevo (kicad_exporter.py, símbolos embebidos, net labels, power symbols, endpoint GET /schematic.kicad_sch); PCBRenderer mejorado (placement funcional, routing 2-capas, 14 footprints, Gerber RS-274X 8 archivos + README) |
+| v4.5.0  | 2026-04-21  | Fix domain_hint nunca pasado al prompt (circuito riego sin sensor humedad); regla anti-nodos-duplicados en CIRCUIT_PARSE_PROMPT; SVG responsivo 100%×100% (ya no se ve centrado en gris); Viewer 2D reescrito: fetch SVG servidor + pan/zoom (rueda, drag, doble-clic reset) + fallback client-side corregido (root cause: container.id vacío → SVG.js fallaba silenciosamente); Viewer 3D: OrbitControls r128, PCB verde con borde dorado, componentes tipados por tipo (14 estilos), cables con arco entre nets, sprite labels, iluminación 3 capas, _resetThreeJS(); Editor: click-to-select migrado al sidebar (compatible con server SVG) |
 | v4.4.1  | 2026-04-21  | Verificación total: fix CRÍTICO IndexError parser S-expression (circuit_importer.py — validación bounds + paréntesis sin cerrar); fix ADVERTENCIA component_library.json sin try/except (fallback a dicts vacíos); fix ADVERTENCIA PUT /{id} no chequeaba save_version() retorno; fix INFO guard renderSchematic en viewer; fix INFO MULTI_USER documentado en .env.example. 56/56 tests siguen pasando. |
 | v4.4.0  | 2026-04-21  | Multi-usuario real (user_id wired en parse/import, GET /circuits/ por usuario, update_owner); Editor visual de circuitos (+ Agregar componente modal, ✕ Eliminar con confirmación, 💾 Guardar → PUT /circuits/{id} con auto-versión, beforeunload dirty-check); Tests pytest 56/56 (test_circuit_importer, test_versioning_sharing, test_firmware_prompts, conftest con fixtures tmp_db) |
 | v4.2.0  | 2026-04-21  | Chat→Circuit inline (orchestrator circuit_design intent + card embebida en chat con preview SVG + KiCad/BOM/Gerber/3D links); Live Hardware State visualizer (WebSocket /ws/hardware-state + serial STATE:{} + live_circuit.js overlay en SVG viewer) |
