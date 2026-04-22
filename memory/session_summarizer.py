@@ -1,6 +1,6 @@
 # memory/session_summarizer.py
 
-import requests
+import httpx
 from datetime import datetime, timezone
 from memory.vector_memory import store_memory
 from core.config import LLM_API, LLM_MODEL, PROVIDER
@@ -60,7 +60,7 @@ def _call_llm(conversation: str) -> str | None:
         headers["Authorization"] = f"Bearer {api_key}"
 
     try:
-        response = requests.post(
+        response = httpx.post(
             LLM_API,
             headers=headers,
             json={

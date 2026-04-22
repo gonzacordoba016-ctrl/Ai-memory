@@ -3,7 +3,7 @@
 import os
 import json
 import asyncio
-import requests
+import httpx
 from core.logger import logger
 from core.config import get_llm_headers
 from llm.async_client import stream_llm_async, _get_llm_api, _get_llm_model
@@ -25,7 +25,7 @@ def _call_llm(messages: list, tools: list = [], model: str = None,
     if response_format:
         payload["response_format"] = response_format
 
-    response = requests.post(
+    response = httpx.post(
         _get_llm_api(),
         headers=get_llm_headers(agent_id="memory-agent", agent_name="AIMemoryEngine"),
         json=payload,

@@ -2,7 +2,7 @@
 
 import difflib
 import os
-import requests
+import httpx
 
 from core.config import LLM_API, LLM_MODEL, get_llm_headers
 from core.logger import logger
@@ -43,7 +43,7 @@ class _DiffMixin:
         )
 
         try:
-            response = requests.post(
+            response = httpx.post(
                 LLM_API,
                 headers=get_llm_headers("hardware-agent", "HardwareAgent"),
                 json={

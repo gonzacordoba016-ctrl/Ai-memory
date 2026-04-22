@@ -1,6 +1,6 @@
 # agent/agents/hardware_agent.py
 
-import requests
+import httpx
 from core.config import LLM_API, LLM_MODEL, get_llm_headers
 from core.logger import logger
 from tools.hardware_detector import detect_devices
@@ -43,7 +43,7 @@ class HardwareAgent(_FirmwareMixin, _MemoryOpsMixin, _DesignMixin, _DiffMixin):
     def _classify_intent(self, task: str) -> str:
         """Usa el LLM para clasificar la intención. Fallback a keywords si falla."""
         try:
-            response = requests.post(
+            response = httpx.post(
                 LLM_API,
                 headers=get_llm_headers("hardware-agent", "HardwareAgent"),
                 json={

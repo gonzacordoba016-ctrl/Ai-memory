@@ -4,7 +4,7 @@
 
 import os
 import re
-import requests
+import httpx
 from pathlib import Path
 from core.logger import logger
 
@@ -89,7 +89,7 @@ def fetch_datasheet_text(ic_name: str) -> str | None:
 def _fetch_pdf_text(url: str) -> str | None:
     """Descarga un PDF y extrae texto."""
     try:
-        r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+        r = httpx.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"}, follow_redirects=True)
         if r.status_code != 200:
             return None
         content_type = r.headers.get("content-type", "")
@@ -117,7 +117,7 @@ def _generate_summary(ic_name: str) -> str:
     """Genera un resumen técnico del CI usando el LLM como fallback."""
     try:
         from core.config import LLM_API, LLM_MODEL, get_llm_headers
-        r = requests.post(
+        r = httpx.post(
             LLM_API,
             headers=get_llm_headers("datasheet-fetcher", "DatasheetFetcher"),
             json={

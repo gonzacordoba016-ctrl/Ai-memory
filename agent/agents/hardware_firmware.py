@@ -1,7 +1,7 @@
 # agent/agents/hardware_firmware.py — mixin de programación/compilación para HardwareAgent
 
 import os
-import requests
+import httpx
 from core.config import LLM_API, LLM_MODEL, get_llm_headers
 from core.logger import logger
 from tools.hardware_detector import detect_devices
@@ -220,7 +220,7 @@ class _FirmwareMixin:
 
     def _fix_firmware(self, code: str, error: str, platform: str, task: str) -> str:
         try:
-            response = requests.post(
+            response = httpx.post(
                 LLM_API,
                 headers=get_llm_headers("hardware-agent", "HardwareAgent"),
                 json={

@@ -8,7 +8,7 @@
 import base64
 import json as _json
 import os
-import requests
+import httpx
 from core.logger import logger
 from core.config import get_llm_headers
 from database.hardware_memory import hardware_memory
@@ -159,7 +159,7 @@ class VisionAgent:
                 "max_tokens":  1024,
             }
 
-            response = requests.post(OPENROUTER_URL, json=payload, headers=headers, timeout=120)
+            response = httpx.post(OPENROUTER_URL, json=payload, headers=headers, timeout=120)
             response.raise_for_status()
 
             data = response.json()
@@ -179,7 +179,7 @@ class VisionAgent:
     def _check_ollama_model(self) -> bool:
         """Verifica que LLaVA esté instalado en Ollama."""
         try:
-            result = requests.get(f"{OLLAMA_BASE}/api/tags", timeout=5)
+            result = httpx.get(f"{OLLAMA_BASE}/api/tags", timeout=5)
             if result.status_code != 200:
                 return False
             models   = [m["name"] for m in result.json().get("models", [])]
@@ -199,7 +199,7 @@ class VisionAgent:
                 "stream": False,
                 "options": {"temperature": 0.1, "num_predict": 1024},
             }
-            response = requests.post(
+            response = httpx.post(
                 f"{OLLAMA_BASE}/api/generate",
                 json=payload,
                 timeout=120,

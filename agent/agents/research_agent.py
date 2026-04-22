@@ -1,6 +1,6 @@
 # agent/agents/research_agent.py
 
-import requests
+import httpx
 from agent.agents.base_agent import BaseAgent
 from tools.tool_registry import TOOL_DEFINITIONS, execute_tool
 from knowledge.knowledge_base import search_knowledge
@@ -53,7 +53,7 @@ class ResearchAgent(BaseAgent):
             ]
 
             try:
-                response = requests.post(
+                response = httpx.post(
                     LLM_API,
                     headers=get_llm_headers(
                         agent_id="research-agent",

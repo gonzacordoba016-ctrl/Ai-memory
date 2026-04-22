@@ -4,7 +4,7 @@
 # Usa el LLM para generar código específico y correcto.
 
 import os
-import requests
+import httpx
 from pathlib import Path
 from core.config import LLM_API, LLM_MODEL_SMART as LLM_MODEL, get_llm_headers
 from core.logger import logger
@@ -106,7 +106,7 @@ def generate_firmware(
         user_message += f"\n\nERROR DE COMPILACIÓN DEL INTENTO ANTERIOR:\n{compile_error[:500]}\nCorregí el código para resolver este error específico."
 
     try:
-        response = requests.post(
+        response = httpx.post(
             LLM_API,
             headers=get_llm_headers(
                 agent_id="hardware-agent",
@@ -209,7 +209,7 @@ Genera el firmware C++ que controle exactamente este circuito."""
         user_message += f"\n\nERROR DEL INTENTO ANTERIOR:\n{compile_error[:500]}\nCorregí el código."
 
     try:
-        response = requests.post(
+        response = httpx.post(
             LLM_API,
             headers=get_llm_headers(
                 agent_id="hardware-agent",
