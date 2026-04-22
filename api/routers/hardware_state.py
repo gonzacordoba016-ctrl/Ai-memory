@@ -158,7 +158,7 @@ async def ws_hardware_state(
     """
     await websocket.accept()
     key = _device_key(port, baud)
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     # Subscribe this client
     q: asyncio.Queue = asyncio.Queue(maxsize=500)

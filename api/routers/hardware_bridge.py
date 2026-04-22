@@ -61,8 +61,7 @@ async def send_to_bridge(job_type: str, payload: dict, timeout: float = 120) -> 
     job_id = str(uuid.uuid4())
     message = {"job_id": job_id, "type": job_type, **payload}
 
-    loop = asyncio.get_event_loop()
-    fut: asyncio.Future = loop.create_future()
+    fut: asyncio.Future = asyncio.get_running_loop().create_future()
     _pending[job_id] = fut
 
     try:
@@ -84,17 +83,16 @@ def call_bridge_sync(job_type: str, payload: dict, timeout: float = 120) -> dict
     Versión síncrona de send_to_bridge para llamar desde threads síncronos
     (ej: HardwareAgent.run() que corre en un thread pool).
     """
-    loop = _loop or asyncio.get_event_loop()
-    if loop.is_running():
-        future = asyncio.run_coroutine_threadsafe(
-            send_to_bridge(job_type, payload, timeout), loop
-        )
-        try:
-            return future.result(timeout=timeout + 5)
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-    else:
+    if _loop is None or not _loop.is_running():
+        # Sin loop inyectado — fallback a asyncio.run (crea loop efímero)
         return asyncio.run(send_to_bridge(job_type, payload, timeout))
+    future = asyncio.run_coroutine_threadsafe(
+        send_to_bridge(job_type, payload, timeout), _loop
+    )
+    try:
+        return future.result(timeout=timeout + 5)
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 # ── WebSocket endpoint ────────────────────────────────────────────────────────

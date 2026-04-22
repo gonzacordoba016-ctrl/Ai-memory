@@ -3,6 +3,7 @@
 
 import asyncio
 import json
+import time
 import uuid as uuid_lib
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
@@ -121,7 +122,7 @@ async def ws_chat(websocket: WebSocket, session: str = None, token: str = ""):
             if not user_input:
                 continue
 
-            now = asyncio.get_event_loop().time()
+            now = time.monotonic()
             if processing:
                 await websocket.send_text(json.dumps({
                     "type":    "error",

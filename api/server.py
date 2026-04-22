@@ -134,7 +134,7 @@ async def startup_event():
     # Inyectar event loop en hardware bridge
     try:
         from api.routers import hardware_bridge
-        hardware_bridge.set_event_loop(asyncio.get_event_loop())
+        hardware_bridge.set_event_loop(asyncio.get_running_loop())
     except Exception as e:
         _startup_errors.append(f"hardware_bridge.set_event_loop failed: {e}")
 
