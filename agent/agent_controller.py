@@ -12,7 +12,7 @@ from agent.user_profiler import UserProfiler
 from core.logger import logger
 from agent.orchestrator import Orchestrator
 from llm.openrouter_client import _call_llm
-from llm.async_client import stream_llm_async
+from llm.async_client import call_llm_async, stream_llm_async
 
 
 class AgentController:
@@ -190,7 +190,11 @@ class AgentController:
                 agent_name = "AgentController",
             )
         else:
-            raw      = await asyncio.to_thread(_call_llm, messages)
+            raw      = await call_llm_async(
+                messages   = messages,
+                agent_id   = "agent-controller",
+                agent_name = "AgentController",
+            )
             response = raw["choices"][0]["message"].get("content", "")
 
         if not response:
