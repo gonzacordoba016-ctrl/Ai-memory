@@ -64,6 +64,16 @@ async def parse_circuit(request: Request, description: str, mcu: str = "Arduino 
     return JSONResponse(content={"error": "No se pudo parsear el circuito"}, status_code=400)
 
 
+@router.get("/{circuit_id}", response_class=JSONResponse)
+async def get_circuit(circuit_id: int):
+    """Devuelve el circuito completo como JSON."""
+    agent = _get_circuit_agent()
+    data  = agent.get_circuit_by_id(circuit_id)
+    if not data:
+        return JSONResponse(content={"error": "Circuito no encontrado"}, status_code=404)
+    return JSONResponse(content=data)
+
+
 @router.get("/{circuit_id}/schematic.svg")
 async def get_schematic_svg(circuit_id: int):
     agent        = _get_circuit_agent()

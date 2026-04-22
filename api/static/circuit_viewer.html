@@ -368,10 +368,34 @@
         
         // Cargar circuito de muestra al iniciar
         window.addEventListener('load', () => {
-            loadSampleCircuit();
+            const params = new URLSearchParams(window.location.search);
+            const circuitId = params.get('id');
+            if (circuitId) {
+                loadCircuitById(parseInt(circuitId));
+            } else {
+                loadSampleCircuit();
+            }
         });
-        
-        // Función para cargar circuito de ejemplo
+
+        async function loadCircuitById(id) {
+            try {
+                const res = await _viewerFetch(`/api/circuits/${id}`);
+                if (!res.ok) { loadSampleCircuit(); return; }
+                const data = await res.json();
+                if (data.error) { loadSampleCircuit(); return; }
+                data.id = data.id || id;
+                currentCircuit = data;
+                updateCircuitInfo();
+                renderSchematic();
+                renderComponentsList();
+                renderNetsList();
+            } catch (e) {
+                console.error('[Viewer] Error cargando circuito:', e);
+                loadSampleCircuit();
+            }
+        }
+
+        // Función para cargar circuito de ejemplo (fallback)
         function loadSampleCircuit() {
             const sampleCircuit = {
                 "name": "LED Blinker",
@@ -389,7 +413,6 @@
                 "power": "5V USB",
                 "warnings": []
             };
-            
             currentCircuit = sampleCircuit;
             updateCircuitInfo();
             renderSchematic();
