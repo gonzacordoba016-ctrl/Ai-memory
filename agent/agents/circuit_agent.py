@@ -62,6 +62,14 @@ DOMINIO: Sistema de riego inteligente
 - Opcionalmente: LCD I2C (20x4 o 16x2) para mostrar estado
 - Power: la bomba va a 12V o 220V AC separado, el MCU a 5V USB o 7-12V DC → regulador 5V
 - WARNING: nunca mezcles la tierra del circuito de control con la línea AC de la bomba
+
+ASIGNACIÓN DE PINES ESP32 (OBLIGATORIO, sin conflictos):
+- I2C SDA → U1.GPIO21 (exclusivo para RTC, LCD — NO asignar a otro periférico)
+- I2C SCL → U1.GPIO22 (exclusivo para RTC, LCD — NO asignar a otro periférico)
+- HC-SR04 TRIG → U1.GPIO5  (nunca GPIO21 o GPIO22)
+- HC-SR04 ECHO → U1.GPIO18 (nunca GPIO21 o GPIO22)
+- Relay control → U1.GPIO23
+- FC-28 DATA (analógico) → U1.GPIO34
 """,
     "domotics": """
 DOMINIO: Domótica / Home Automation
@@ -314,16 +322,37 @@ class CircuitAgent:
                 for net in relay_nets for d_id in diode_ids
             )
             if not has_flyback:
-                new_id = f"D_fly_{relay_id}"
-                if new_id not in comp_ids:
-                    components.append({
-                        "id": new_id,
-                        "name": f"Diodo flyback 1N4007 {relay_id}",
-                        "type": "diode", "resolved_type": "diode",
-                        "value": "1N4007", "auto_added": True,
-                    })
-                    comp_ids.add(new_id)
-                    warnings.append(f"[Auto] Diodo flyback {new_id} (1N4007) agregado para relay {relay_id}")
+                # Reusar diodo existente sin nets si lo hay, o crear uno nuevo
+                connected_comps = {node.split(".")[0] for n in nets for node in n.get("nodes", [])}
+                unconnected_diodes = [d for d in diode_ids if d not in connected_comps]
+                if unconnected_diodes:
+                    new_id = unconnected_diodes[0]
+                else:
+                    new_id = f"D_fly_{relay_id}"
+                    if new_id not in comp_ids:
+                        components.append({
+                            "id": new_id,
+                            "name": f"Diodo flyback 1N4007 {relay_id}",
+                            "type": "diode", "resolved_type": "diode",
+                            "value": "1N4007", "auto_added": True,
+                        })
+                        comp_ids.add(new_id)
+                warnings.append(f"[Auto] Diodo flyback {new_id} (1N4007) conectado para relay {relay_id}")
+
+                # Conectar diodo: cátodo al net de control del relay, ánodo a GND
+                ctrl_net = next(
+                    (n for n in relay_nets
+                     if any("ctrl" in n["name"].lower() or "coil" in n["name"].lower()
+                            for _ in [1])),
+                    relay_nets[0] if relay_nets else None,
+                )
+                gnd_net = next(
+                    (n for n in nets if "gnd" in n["name"].lower()), None
+                )
+                if ctrl_net and f"{new_id}.cathode" not in ctrl_net["nodes"]:
+                    ctrl_net["nodes"].append(f"{new_id}.cathode")
+                if gnd_net and f"{new_id}.anode" not in gnd_net["nodes"]:
+                    gnd_net["nodes"].append(f"{new_id}.anode")
 
     def _apply_domain_rules(self, circuit_data: Dict[str, Any], domain: str) -> None:
         """Validaciones extra por dominio."""

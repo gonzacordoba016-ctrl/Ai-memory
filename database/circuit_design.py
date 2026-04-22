@@ -94,9 +94,12 @@ class CircuitDesignManager:
             # Mergear metadata extra (source_tool, type, etc.) con power/warnings
             extra_meta = circuit_data.get("metadata", {}) or {}
             metadata = _json.dumps({
-                "power":    circuit_data.get("power", extra_meta.get("power", "")),
-                "warnings": circuit_data.get("warnings", extra_meta.get("warnings", [])),
-                **{k: v for k, v in extra_meta.items() if k not in ("power", "warnings")},
+                "power":           circuit_data.get("power", extra_meta.get("power", "")),
+                "warnings":        circuit_data.get("warnings", extra_meta.get("warnings", [])),
+                "detected_domain": circuit_data.get("detected_domain", extra_meta.get("detected_domain", "")),
+                "selected_mcu":    circuit_data.get("selected_mcu", extra_meta.get("selected_mcu", "")),
+                **{k: v for k, v in extra_meta.items()
+                   if k not in ("power", "warnings", "detected_domain", "selected_mcu")},
             }, ensure_ascii=False)
 
             with self._get_conn() as conn:
@@ -136,9 +139,11 @@ class CircuitDesignManager:
                 "description": row[2],
                 "components": components,
                 "nets": nets,
-                "power": metadata.get("power", ""),
-                "warnings": metadata.get("warnings", []),
-                "positions": metadata.get("positions", {}),
+                "power":           metadata.get("power", ""),
+                "warnings":        metadata.get("warnings", []),
+                "positions":       metadata.get("positions", {}),
+                "detected_domain": metadata.get("detected_domain", ""),
+                "selected_mcu":    metadata.get("selected_mcu", ""),
                 "created_at": row[6],
                 "updated_at": row[7]
             }

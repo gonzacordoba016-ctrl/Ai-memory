@@ -356,6 +356,7 @@
                     });
                 } else if (view === 'pcb') {
                     pcbView.classList.remove('hidden');
+                    renderPCB();
                 }
             });
         });
@@ -394,6 +395,7 @@
                 if (data.error) { loadSampleCircuit(); return; }
                 data.id = data.id || id;
                 currentCircuit = data;
+                pcbView.dataset.loaded = '';
                 updateCircuitInfo();
                 renderSchematic();
                 renderComponentsList();
@@ -519,6 +521,45 @@
             svgEl.addEventListener('dblclick', () => {
                 [vx, vy, vw, vh] = origVB; scale = 1; applyVB();
             });
+        }
+
+        // ── Layout PCB — carga SVG del servidor ──────────────────────────────
+        let _pcbLoaded = false;
+        async function renderPCB() {
+            if (!currentCircuit) return;
+            const circuitId = currentCircuit.id || currentCircuit.design_id;
+            if (!circuitId) {
+                pcbView.innerHTML =
+                    '<div style="display:flex;height:100%;align-items:center;justify-content:center;' +
+                    'color:#555;font-family:monospace;font-size:13px">PCB no disponible (circuito sin ID)</div>';
+                return;
+            }
+            // Solo recargar si cambia el circuito
+            const marker = `pcb-${circuitId}`;
+            if (pcbView.dataset.loaded === marker) return;
+
+            pcbView.innerHTML =
+                '<div style="display:flex;height:100%;align-items:center;justify-content:center;' +
+                'color:#555;font-family:monospace;font-size:13px">Generando PCB…</div>';
+            try {
+                const res = await _viewerFetch(`/api/circuits/${circuitId}/pcb.svg`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const svgText = await res.text();
+                pcbView.innerHTML = '';
+                const wrapper = document.createElement('div');
+                wrapper.style.cssText = 'width:100%;height:100%;overflow:auto;background:#1a4a1a;';
+                wrapper.innerHTML = svgText;
+                const svgEl = wrapper.querySelector('svg');
+                if (svgEl) {
+                    svgEl.style.cssText = 'display:block;max-width:100%;height:auto;';
+                }
+                pcbView.appendChild(wrapper);
+                pcbView.dataset.loaded = marker;
+            } catch(e) {
+                pcbView.innerHTML =
+                    `<div style="display:flex;height:100%;align-items:center;justify-content:center;` +
+                    `color:#f85149;font-family:monospace;font-size:12px">Error cargando PCB: ${e.message}</div>`;
+            }
         }
 
         // Fallback renderizado básico para circuitos sin ID (recién generados no guardados)
