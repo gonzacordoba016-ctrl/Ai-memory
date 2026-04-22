@@ -260,7 +260,12 @@ async def export_session(session_id: str):
         firmware_blocks = []
         for m in msgs:
             role = "**Usuario**" if m["role"] == "user" else "**Agente**"
-            chat_lines.append(f"---\n{role}\n\n{m['content']}\n\n")
+            elapsed = ""
+            if m["role"] == "assistant" and m.get("elapsed_ms"):
+                ms = m["elapsed_ms"]
+                elapsed = f" _({ms/1000:.1f}s)_" if ms >= 1000 else f" _({ms}ms)_"
+            ts_str = f" `{m['timestamp'][:19]}`" if m.get("timestamp") else ""
+            chat_lines.append(f"---\n{role}{ts_str}{elapsed}\n\n{m['content']}\n\n")
             # Extraer bloques de firmware C++
             if m["role"] == "assistant" and ("void setup()" in m["content"] or "```cpp" in m["content"]):
                 import re

@@ -138,6 +138,7 @@ async def ws_chat(websocket: WebSocket, session: str = None, token: str = ""):
 
             last_message_time = now
             processing = True
+            _msg_start_ts = time.monotonic()
 
             # Persistir mensaje del usuario en la sesión
             sql_db.store_message("user", user_input, session_id=session_id)
@@ -200,9 +201,11 @@ async def ws_chat(websocket: WebSocket, session: str = None, token: str = ""):
                 circuit_id      = None
                 circuit_name    = None
 
+            elapsed_ms = int((time.monotonic() - _msg_start_ts) * 1000)
+
             # Persistir respuesta del agente en la sesión
             if response_text:
-                sql_db.store_message("assistant", response_text, session_id=session_id)
+                sql_db.store_message("assistant", response_text, session_id=session_id, elapsed_ms=elapsed_ms)
 
             # Título: fallback inmediato + generación LLM en background
             if _is_first_msg and response_text:
@@ -216,6 +219,7 @@ async def ws_chat(websocket: WebSocket, session: str = None, token: str = ""):
                 "type":        "done",
                 "content":     response_text,
                 "agents_used": agents_used_res,
+                "elapsed_ms":  elapsed_ms,
             }
             # Incluir facts/graph solo si cambiaron en este ciclo (o en la primera respuesta)
             if last_facts_seq != sql_db._facts_seq:

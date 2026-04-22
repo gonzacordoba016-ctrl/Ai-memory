@@ -1,3 +1,9 @@
+// ── HELPERS ───────────────────────────────────────────────────────────────
+function _fmtElapsed(ms) {
+  if (!ms || ms <= 0) return null;
+  return ms < 1000 ? ms + 'ms' : (ms / 1000).toFixed(1) + 's';
+}
+
 // ── SCROLL INTELIGENTE ────────────────────────────────────────────────────
 function _isNearBottom(el, threshold = 80) {
   return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
@@ -97,7 +103,7 @@ async function loadSessionHistory(sid) {
     document.getElementById('chat-empty')?.remove();
     msgs.forEach(m => {
       if (m.role !== 'user' && m.role !== 'assistant') return;
-      addMessage(m.role === 'user' ? 'user' : 'agent', m.content, m.agents_used || []);
+      addMessage(m.role === 'user' ? 'user' : 'agent', m.content, m.agents_used || [], false, m.elapsed_ms);
     });
     addLog(`Historial reanudado — ${msgs.length} mensajes`, 'info');
   } catch(e) {}
@@ -206,7 +212,7 @@ function _exportMD(btn) {
   URL.revokeObjectURL(url);
 }
 
-function addMessage(role, content, agents = [], streaming = false) {
+function addMessage(role, content, agents = [], streaming = false, elapsed_ms = null) {
   const msgs = document.getElementById('messages');
   if (!msgs) return null;
   const ts = new Date().toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
@@ -247,7 +253,7 @@ function addMessage(role, content, agents = [], streaming = false) {
       <div class="msg-head">
         <span class="dot${streaming ? ' dot-pulse' : ''}" style="color:var(--accent)"></span>
         <span class="label label-accent">AGENT</span>
-        <span class="panel-sub">stratum-core · ${ts}</span>
+        <span class="panel-sub">stratum-core · ${ts}${elapsed_ms && !streaming ? ' · ' + _fmtElapsed(elapsed_ms) : ''}</span>
         <div class="ml-auto flex items-center gap-1 agent-badges">${agentBadges}</div>
         <div class="flex gap-0 ml-1">
           <button class="btn btn-ghost tts-btn" onclick="_ttsSpeak(this)" title="TTS"
@@ -313,7 +319,8 @@ function finishStreaming(data) {
         const tsEl = article.querySelector('.panel-sub');
         if (tsEl) {
           const now = new Date().toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-          tsEl.textContent = `stratum-core · ${now}`;
+          const elapsed = _fmtElapsed(data?.elapsed_ms);
+          tsEl.textContent = `stratum-core · ${now}${elapsed ? ' · ' + elapsed : ''}`;
         }
         _addCopyButtons(article);
         if (data?.agents_used?.length) {

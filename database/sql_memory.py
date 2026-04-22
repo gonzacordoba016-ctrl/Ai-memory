@@ -110,6 +110,12 @@ class SQLMemory:
                 except Exception:
                     pass
 
+            # Migration: agregar elapsed_ms si no existía
+            try:
+                conn.execute("ALTER TABLE conversations ADD COLUMN elapsed_ms INTEGER DEFAULT NULL")
+            except Exception:
+                pass
+
             conn.execute("CREATE INDEX IF NOT EXISTS idx_conversations_session ON conversations(session_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id)")
 
@@ -175,12 +181,12 @@ class SQLMemory:
     # CONVERSACIONES
     # ======================
 
-    def store_message(self, role: str, content: str, session_id: str = "default", user_id: str = "default"):
+    def store_message(self, role: str, content: str, session_id: str = "default", user_id: str = "default", elapsed_ms: int = None):
         """Guarda un mensaje en el historial de conversaciones."""
         with self._get_connection() as conn:
             conn.execute(
-                "INSERT INTO conversations (user_id, session_id, role, content) VALUES (?, ?, ?, ?)",
-                (user_id, session_id, role, content)
+                "INSERT INTO conversations (user_id, session_id, role, content, elapsed_ms) VALUES (?, ?, ?, ?, ?)",
+                (user_id, session_id, role, content, elapsed_ms)
             )
             conn.commit()
 
@@ -189,17 +195,17 @@ class SQLMemory:
         with self._get_connection() as conn:
             if session_id:
                 rows = conn.execute(
-                    "SELECT role, content FROM conversations "
+                    "SELECT role, content, timestamp, elapsed_ms FROM conversations "
                     "WHERE user_id = ? AND session_id = ? ORDER BY id DESC LIMIT ?",
                     (user_id, session_id, limit)
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT role, content FROM conversations "
+                    "SELECT role, content, timestamp, elapsed_ms FROM conversations "
                     "WHERE user_id = ? ORDER BY id DESC LIMIT ?",
                     (user_id, limit)
                 ).fetchall()
-        return [{"role": row[0], "content": row[1]} for row in reversed(rows)]
+        return [{"role": row[0], "content": row[1], "timestamp": row[2], "elapsed_ms": row[3]} for row in reversed(rows)]
 
     def get_conversation_by_session(self, session_id: str, limit: int = 20, user_id: str = "default") -> list[dict]:
         """Retorna el historial de una sesión específica."""
