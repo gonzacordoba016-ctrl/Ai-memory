@@ -141,7 +141,7 @@ CIRCUIT_PARSE_PROMPT = """Eres un ingeniero electrónico. Genera una netlist JSO
 
 Descripción: "{description}"
 MCU: "{mcu}"
-
+{domain_hint}
 Reglas obligatorias (aplica todas):
 - LEDs: resistencia limitadora en serie (220Ω típico)
 - Relay: diodo flyback 1N4007 en bobina
@@ -150,6 +150,7 @@ Reglas obligatorias (aplica todas):
 - Nomenclatura: U1-U99, R1-R99, C1-C99, D1-D99, RL1+, MOD1+
 - Pines reales del MCU (ej: U1.GPIO34, U1.GND, U1.3V3)
 - Nets descriptivos (VCC_5V, GND, RELAY_CTRL, DATA_SENS, etc.)
+- CRÍTICO: cada nodo (ej: U1.GND) debe aparecer en UN SOLO net, nunca repetido
 
 Responde ÚNICAMENTE con JSON válido, sin markdown:
 {{"name":"...","description":"...","components":[{{"id":"U1","name":"{mcu}","type":"esp32"}},{{"id":"RL1","name":"Relay 5V","type":"relay_module"}},{{"id":"D1","name":"Diodo flyback 1N4007","type":"diode","value":"1N4007"}}],"nets":[{{"name":"VCC_5V","nodes":["U1.VIN","RL1.VCC"]}},{{"name":"GND","nodes":["U1.GND","RL1.GND"]}}],"power":"5V USB","warnings":[]}}"""
@@ -170,6 +171,7 @@ class CircuitAgent:
             prompt = CIRCUIT_PARSE_PROMPT.format(
                 description=description,
                 mcu=best_mcu,
+                domain_hint=domain_hint,
             )
 
             logger.info(f"[CircuitAgent] parse_circuit START — domain={domain} mcu={best_mcu} model={LLM_MODEL_SMART!r} prompt_len={len(prompt)}")
