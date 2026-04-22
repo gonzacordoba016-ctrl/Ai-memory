@@ -2,7 +2,9 @@
 
 import sqlite3
 import os
+import threading
 import uuid as _uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 from core.config import SQL_DB_PATH
@@ -17,14 +19,21 @@ class SQLMemory:
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
         self._facts_seq = 0
+        self._lock = threading.RLock()
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA synchronous=NORMAL")
         self._init_db()
 
     # ======================
     # CONEXIÓN
     # ======================
 
+    @contextmanager
     def _get_connection(self):
-        return sqlite3.connect(self.db_path)
+        with self._lock:
+            with self._conn:
+                yield self._conn
 
     # ======================
     # INICIALIZACIÓN

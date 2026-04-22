@@ -4,6 +4,8 @@ import sqlite3
 import json as _json
 import os
 import pathlib
+import threading
+from contextlib import contextmanager
 from typing import Dict, Any, List, Optional
 from core.logger import get_logger
 
@@ -28,10 +30,17 @@ COMPONENT_ALIASES: dict = _lib_data["aliases"]
 class CircuitDesignManager:
     def __init__(self):
         self.db_path = DB_PATH
+        self._lock = threading.RLock()
+        self._conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA synchronous=NORMAL")
         self._init_db()
-        
+
+    @contextmanager
     def _get_conn(self):
-        return sqlite3.connect(self.db_path)
+        with self._lock:
+            with self._conn:
+                yield self._conn
         
     def _init_db(self):
         with self._get_conn() as conn:

@@ -10,6 +10,8 @@
 
 # ── Base de datos y memoria (datos personales) ────────────
 database/memory.db
+database/memory.db-wal
+database/memory.db-shm
 database/graph_memory.json
 memory_db/
 agent_files/firmware/
