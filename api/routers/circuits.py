@@ -2,7 +2,9 @@
 # Circuit Router: parseo de circuitos, esquemáticos SVG, breadboard 3D, PCB, Gerber, firmware
 
 import asyncio
+import time
 import uuid as uuid_lib
+from collections import OrderedDict
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, UploadFile, File
@@ -30,6 +32,34 @@ def _get_circuit_agent() -> CircuitAgent:
     if _circuit_agent is None:
         _circuit_agent = CircuitAgent()
     return _circuit_agent
+
+
+# ── Cache LRU del SVG de schematic ────────────────────────────────────
+# Key: (circuit_id, updated_at). Si el circuito cambia, updated_at cambia
+# y la key también — invalidación natural sin lógica manual.
+_SVG_CACHE: "OrderedDict[tuple, dict]" = OrderedDict()
+_SVG_CACHE_MAX = 20
+_SVG_CACHE_TTL = 600  # 10 minutos
+
+
+def _svg_cache_get(circuit_id: int, updated_at: str):
+    key = (circuit_id, updated_at)
+    entry = _SVG_CACHE.get(key)
+    if not entry:
+        return None
+    if time.time() - entry["ts"] >= _SVG_CACHE_TTL:
+        del _SVG_CACHE[key]
+        return None
+    _SVG_CACHE.move_to_end(key)
+    return entry["svg"]
+
+
+def _svg_cache_set(circuit_id: int, updated_at: str, svg: str):
+    key = (circuit_id, updated_at)
+    _SVG_CACHE[key] = {"svg": svg, "ts": time.time()}
+    _SVG_CACHE.move_to_end(key)
+    while len(_SVG_CACHE) > _SVG_CACHE_MAX:
+        _SVG_CACHE.popitem(last=False)
 
 
 class FirmwareRequest(BaseModel):
@@ -80,7 +110,11 @@ async def get_schematic_svg(circuit_id: int):
     circuit_data = agent.get_circuit_by_id(circuit_id)
     if not circuit_data:
         return JSONResponse(content={"error": "Circuito no encontrado"}, status_code=404)
-    svg = SchematicRenderer().render_schematic_svg(circuit_data)
+    updated_at = str(circuit_data.get("updated_at", ""))
+    svg = _svg_cache_get(circuit_id, updated_at)
+    if svg is None:
+        svg = SchematicRenderer().render_schematic_svg(circuit_data)
+        _svg_cache_set(circuit_id, updated_at, svg)
     return HTMLResponse(content=svg, media_type="image/svg+xml")
 
 

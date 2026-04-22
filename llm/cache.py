@@ -53,15 +53,28 @@ class SemanticCache:
     def get(self, messages: list[dict], model: str) -> Optional[str]:
         """Retorna respuesta cacheada si hay un hit, o None."""
         key_text = self._prompt_key(messages)
+        now = time.time()
+
+        # ── Fast-path: match exacto por hash MD5 del key_text ─────────
+        text_hash = hashlib.md5(key_text.encode()).hexdigest()
+        for entry in self._entries:
+            if entry.get("hash") != text_hash:
+                continue
+            if entry["model"] != model:
+                continue
+            if now - entry["ts"] > CACHE_TTL_SECONDS:
+                continue
+            age = int(now - entry["ts"])
+            logger.info(f"[LLMCache] HIT exact hash age={age}s model={model}")
+            return entry["response"]
+
+        # ── Slow-path: similaridad cosine sobre embeddings ────────────
         query_vec = self._embed(key_text)
         if query_vec is None:
             return None
 
-        now = time.time()
         best_score, best_entry = 0.0, None
-
         for entry in self._entries:
-            # Ignorar entradas expiradas o de otro modelo
             if entry["model"] != model:
                 continue
             if now - entry["ts"] > CACHE_TTL_SECONDS:
