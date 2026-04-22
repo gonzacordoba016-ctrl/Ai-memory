@@ -144,7 +144,7 @@ class SchematicRenderer:
     def render_schematic_svg(self, circuit_data: Dict[str, Any],
                               width: int = 1000, height: int = 700) -> str:
         try:
-            dwg = svgwrite.Drawing(size=(width, height),
+            dwg = svgwrite.Drawing(size=('100%', '100%'),
                                    viewBox=f"0 0 {width} {height}")
 
             # Background grid
