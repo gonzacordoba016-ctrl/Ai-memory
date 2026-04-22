@@ -1,6 +1,6 @@
 # STRATUM — Contexto del Proyecto
-> Última actualización: 2026-04-21
-> Versión actual: **v4.5.0**
+> Última actualización: 2026-04-22
+> Versión actual: **v4.6.0**
 > Tagline: _"Tu memoria técnica siempre disponible"_
 > Estado: **Production-ready** (local + Railway)
 
@@ -683,7 +683,91 @@ Las siguientes mejoras están ordenadas por impacto percibido vs herramientas ex
 
 ---
 
-## 11. PENDIENTE TÉCNICO
+## 11. PERFORMANCE — v4.6.0 (2026-04-22)
+
+### Análisis aplicado: 11 fixes en 6 commits
+
+#### 🔴 Alto impacto (resueltos)
+
+**Fix 1 — Streaming char-by-char → bloque único (`agent_controller.py`)**
+- Rutas `hw_md` y `hw_result` enviaban 500+ `await on_token(char)` individuales.
+- Reemplazado por un único `await on_token(text)`. El cliente recibe el mismo JSON, sin overhead de 500 round-trips.
+
+**Fix 2 + 8 — Conexión SQLite persistente + WAL (`sql_memory.py`, `circuit_design.py`)**
+- Ambas clases abrían una conexión nueva por operación (~5ms de overhead × 5 ops/mensaje).
+- Ahora: conexión persistente (`check_same_thread=False`) + `threading.RLock()` + `PRAGMA journal_mode=WAL` + `PRAGMA synchronous=NORMAL`.
+- `_get_connection()` / `_get_conn()` son `@contextmanager` que ceden la conexión bajo lock — callers sin cambios.
+- `.gitignore`: `memory.db-wal` / `memory.db-shm` agregados.
+- Tests: 0.79s → 0.41s (−48% de tiempo en test suite).
+
+**Fix 3 — Dirty flag facts/graph (`sql_memory.py`, `graph_memory.py`, `websockets.py`, `chat.js`)**
+- `get_all_facts()` y `graph_memory.stats()` se ejecutaban tras cada mensaje aunque nada había cambiado.
+- Solución: contadores de mutación `_facts_seq` (incrementa en `store_fact`/`delete_fact`) y `_seq` (incrementa en `add_relation`). El handler WS compara antes de llamarlos.
+- `done` payload omite `facts`/`graph` cuando no cambiaron; el cliente conserva los últimos.
+- `chat.js`: tolera `facts`/`graph` ausentes en `done`.
+
+**Fix 4 — `call_llm_async` directo en `agent_controller.py`**
+- El fallback no-streaming usaba `asyncio.to_thread(_call_llm, messages)` — spawn de thread + `requests.post` bloqueante.
+- Reemplazado por `await call_llm_async(messages=..., agent_id=..., agent_name=...)` — httpx async con connection pool compartido, sin thread extra.
+
+#### 🟡 Impacto medio (resueltos)
+
+**Fix 5 — Cache LRU del SVG schematic (`api/routers/circuits.py`)**
+- `SchematicRenderer().render_schematic_svg(circuit_data)` se recalculaba desde cero en cada request.
+- Agregado: `OrderedDict` LRU de 20 entradas, TTL 10 min, key = `(circuit_id, updated_at)`. Invalidación automática cuando el circuito cambia.
+
+**Fix 6 — Título de sesión en background (`websockets.py`, `chat.js`)**
+- La generación del título LLM bloqueaba el `done` 2-4s extra.
+- Ahora: `done` se envía inmediato con fallback `user_input[:60]` guardado en DB. El título LLM llega como evento `session_title` separado vía `asyncio.create_task(_generate_title_async(...))`.
+- `chat.js`: nuevo handler para `data.type === 'session_title'` que actualiza el texto del sidebar.
+
+**Fix 7 — GZipMiddleware (`api/server.py`)**
+- No había compresión HTTP. JSON y SVGs viajaban sin comprimir.
+- `app.add_middleware(GZipMiddleware, minimum_size=1000)` — una línea, aplica solo a respuestas HTTP (no WebSocket).
+
+**Fix 8** — ver Fix 2.
+
+#### 🟢 Bajo impacto (resueltos)
+
+**Fix 9 — Fast-path hash exacto en `llm/cache.py`**
+- `SemanticCache.get()` computaba embedding MiniLM + cosine similarity en cada llamada aunque existiera un hit exacto.
+- Agregado fast-path: MD5 del `key_text` se calcula antes de `_embed()`. Si hay entry con mismo hash, model y TTL vigente → retorna directo, sin llamar MiniLM.
+
+**Fix 10 — `asyncio.get_event_loop()` deprecado**
+- 5 ocurrencias: `api/server.py`, `api/routers/websockets.py`, `api/routers/hardware_state.py`, `api/routers/hardware_bridge.py` (×2).
+- Reemplazados por `asyncio.get_running_loop()` en contextos async; `time.monotonic()` para rate-limit clock; `call_bridge_sync` simplificado para no depender de `get_event_loop()`.
+
+**Fix 11 — `requests` → `httpx` en 10 archivos de producción**
+- `import requests` / `requests.post` / `requests.get` reemplazados por `httpx` drop-in en:
+  `memory/session_summarizer.py`, `llm/openrouter_client.py`,
+  `agent/agents/hardware_{agent,design,diff,firmware}.py`,
+  `agent/agents/{research,vision}_agent.py`,
+  `tools/{datasheet_fetcher,firmware_generator}.py`.
+- `datasheet_fetcher`: agregado `follow_redirects=True` (httpx es strict por defecto).
+- `eval/test_e2e_api.py`, `guide-test.py`, `GUIDE.md` sin tocar (scripts externos).
+- Producción sin dependencia directa en `requests`.
+
+### Stack técnico actualizado
+- SQLite: **WAL mode** + conexión persistente (sin overhead de open/close).
+- HTTP interno: **httpx** exclusivamente (requests eliminado de producción).
+- WebSocket `done`: **liviano** (facts/graph solo cuando cambian, título en background).
+- Compresión: **GZip** en respuestas HTTP ≥1000B.
+- SemanticCache: **fast-path MD5** antes de MiniLM.
+- SVG schematic: **LRU cache** 20 entradas / 10min.
+
+### Commits de la sesión
+```
+66ff10f  perf: fix 11 — requests → httpx en 10 archivos de producción
+0017aa7  perf: fix 10 — asyncio.get_event_loop() (deprecado)
+3280f8a  perf: ronda 4 — cache SVG schematic + fast-path hash llm cache
+450f45c  perf: ronda 3 — call_llm async directo en agent_controller
+ed31a91  perf: ronda 2 — conexión SQLite persistente + WAL
+3fd3e67  perf: ronda 1 — 4 fixes de performance
+```
+
+---
+
+## 12. PENDIENTE TÉCNICO
 
 - HardwareAgent: por defecto genera MicroPython en vez de C++/Arduino — system prompt de `_design_consult` debe preferir C++/Arduino salvo que el usuario pida explícitamente MicroPython
 - Parser KiCad v5: usar coordenadas de pines reales del `.lib` si está disponible (actualmente usa `P X Y` del componente como fallback)
@@ -714,6 +798,7 @@ Las siguientes mejoras están ordenadas por impacto percibido vs herramientas ex
 | v3.9.0  | 2026-04-20  | Nuevo diseño UI CAD-instrument (design system completo); bottom nav eliminado → hamburger mobile; composer simplificado; empty state chat mobile; agent routing fix (escribí/código → design, no query); Ctrl+K unificado memoria+KB con {text,score}; 15 mensajes de sesión larga testeados; KB indexada con 10 documentos |
 | v4.0.0  | 2026-04-20  | Platform context persistente (C++ por default); firmware iterativo con diff coloreado (_DiffMixin, intent "modify"); datasheet auto-fetch + indexado KB en background; export ZIP sesión (chat.md + firmware.cpp + decisiones.md); error patterns en vector memory; Wokwi endpoint diagram.json; voice auto-send pipeline |
 | v4.1.0  | 2026-04-20  | CircuitAgent domain-aware (8 dominios, MCU auto-select, hints por dominio, flyback auto-add); SchematicRenderer refactor (14 símbolos, layout funcional, routing ortogonal, color-coding, title block); KiCad exporter nuevo (kicad_exporter.py, símbolos embebidos, net labels, power symbols, endpoint GET /schematic.kicad_sch); PCBRenderer mejorado (placement funcional, routing 2-capas, 14 footprints, Gerber RS-274X 8 archivos + README) |
+| v4.6.0  | 2026-04-22  | Performance: 11 fixes aplicados — SQLite persistente + WAL, dirty flag facts/graph, streaming en bloque, call_llm_async directo, SVG LRU cache, título en background, GZipMiddleware, fast-path hash SemanticCache, asyncio.get_event_loop() → get_running_loop(), requests → httpx (10 archivos). Tests: 56/56. |
 | v4.5.0  | 2026-04-21  | Fix domain_hint nunca pasado al prompt (circuito riego sin sensor humedad); regla anti-nodos-duplicados en CIRCUIT_PARSE_PROMPT; SVG responsivo 100%×100% (ya no se ve centrado en gris); Viewer 2D reescrito: fetch SVG servidor + pan/zoom (rueda, drag, doble-clic reset) + fallback client-side corregido (root cause: container.id vacío → SVG.js fallaba silenciosamente); Viewer 3D: OrbitControls r128, PCB verde con borde dorado, componentes tipados por tipo (14 estilos), cables con arco entre nets, sprite labels, iluminación 3 capas, _resetThreeJS(); Editor: click-to-select migrado al sidebar (compatible con server SVG) |
 | v4.4.1  | 2026-04-21  | Verificación total: fix CRÍTICO IndexError parser S-expression (circuit_importer.py — validación bounds + paréntesis sin cerrar); fix ADVERTENCIA component_library.json sin try/except (fallback a dicts vacíos); fix ADVERTENCIA PUT /{id} no chequeaba save_version() retorno; fix INFO guard renderSchematic en viewer; fix INFO MULTI_USER documentado en .env.example. 56/56 tests siguen pasando. |
 | v4.4.0  | 2026-04-21  | Multi-usuario real (user_id wired en parse/import, GET /circuits/ por usuario, update_owner); Editor visual de circuitos (+ Agregar componente modal, ✕ Eliminar con confirmación, 💾 Guardar → PUT /circuits/{id} con auto-versión, beforeunload dirty-check); Tests pytest 56/56 (test_circuit_importer, test_versioning_sharing, test_firmware_prompts, conftest con fixtures tmp_db) |
