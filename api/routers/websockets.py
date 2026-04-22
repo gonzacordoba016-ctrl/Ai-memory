@@ -39,6 +39,35 @@ async def _ws_require_auth(websocket: WebSocket, token: str = "") -> bool:
 _WS_RATE_WINDOW = 3.0
 
 
+async def _generate_title_async(websocket: WebSocket, session_id: str, user_input: str):
+    """Genera el título en background y lo emite como evento separado."""
+    try:
+        from llm.async_client import call_llm_text
+        raw = await asyncio.wait_for(
+            call_llm_text(
+                messages=[{"role": "user", "content":
+                    f"Resume en máximo 5 palabras, en español, el tema de esta consulta. "
+                    f"Solo devolvé el título, sin puntuación ni comillas.\n\nConsulta: {user_input[:200]}"}],
+                temperature=0,
+                timeout=15,
+                agent_id="title-gen",
+                agent_name="TitleGen",
+            ),
+            timeout=15,
+        )
+        title = (raw or "").strip()[:60]
+        if not title:
+            return
+        sql_db.update_session_title(session_id, title)
+        await websocket.send_text(json.dumps({
+            "type":       "session_title",
+            "session_id": session_id,
+            "title":      title,
+        }))
+    except Exception as e:
+        logger.warning(f"[TitleGen] falló en background: {e}")
+
+
 @router.websocket("/ws/chat")
 async def ws_chat(websocket: WebSocket, session: str = None, token: str = ""):
     if not await _ws_require_auth(websocket, token):
@@ -80,6 +109,8 @@ async def ws_chat(websocket: WebSocket, session: str = None, token: str = ""):
 
     last_message_time = 0.0
     processing = False
+    last_facts_seq = None
+    last_graph_seq = None
 
     try:
         while True:
@@ -172,38 +203,26 @@ async def ws_chat(websocket: WebSocket, session: str = None, token: str = ""):
             if response_text:
                 sql_db.store_message("assistant", response_text, session_id=session_id)
 
-            # Título generado por IA tras el primer intercambio completo
-            ai_title = None
+            # Título: fallback inmediato + generación LLM en background
             if _is_first_msg and response_text:
-                try:
-                    from llm.async_client import call_llm_text
-                    raw = await asyncio.wait_for(
-                        call_llm_text(
-                            messages=[{"role": "user", "content":
-                                f"Resume en máximo 5 palabras, en español, el tema de esta consulta. "
-                                f"Solo devolvé el título, sin puntuación ni comillas.\n\nConsulta: {user_input[:200]}"}],
-                            temperature=0,
-                            timeout=15,
-                            agent_id="title-gen",
-                            agent_name="TitleGen",
-                        ),
-                        timeout=15,
-                    )
-                    ai_title = raw.strip()[:60] if raw else None
-                    if ai_title:
-                        sql_db.update_session_title(session_id, ai_title)
-                except Exception:
-                    ai_title = user_input[:60].strip()
-                    sql_db.update_session_title(session_id, ai_title)
+                _fallback_title = user_input[:60].strip()
+                sql_db.update_session_title(session_id, _fallback_title)
+                asyncio.create_task(_generate_title_async(
+                    websocket, session_id, user_input
+                ))
 
             done_payload = {
-                "type":          "done",
-                "content":       response_text,
-                "facts":         sql_db.get_all_facts(),
-                "graph":         graph_memory.stats(),
-                "agents_used":   agents_used_res,
-                "session_title": ai_title,
+                "type":        "done",
+                "content":     response_text,
+                "agents_used": agents_used_res,
             }
+            # Incluir facts/graph solo si cambiaron en este ciclo (o en la primera respuesta)
+            if last_facts_seq != sql_db._facts_seq:
+                done_payload["facts"] = sql_db.get_all_facts()
+                last_facts_seq = sql_db._facts_seq
+            if last_graph_seq != graph_memory._seq:
+                done_payload["graph"] = graph_memory.stats()
+                last_graph_seq = graph_memory._seq
             if circuit_id:
                 done_payload["circuit_design_id"] = circuit_id
                 done_payload["circuit_name"]      = circuit_name

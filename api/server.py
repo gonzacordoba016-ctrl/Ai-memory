@@ -43,6 +43,7 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 try:
     from slowapi import _rate_limit_exceeded_handler
@@ -75,6 +76,9 @@ app.add_middleware(
     allow_headers=["*"],
     allow_credentials=True,
 )
+
+# Compresión GZip — solo aplica a respuestas HTTP (no WebSocket)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 try:
     app.mount("/static", StaticFiles(directory="api/static"), name="static")

@@ -16,6 +16,7 @@ class SQLMemory:
 
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
+        self._facts_seq = 0
         self._init_db()
 
     # ======================
@@ -144,6 +145,7 @@ class SQLMemory:
                 (user_id, key, value)
             )
             conn.commit()
+        self._facts_seq += 1
 
     def get_all_facts(self, user_id: str = "default") -> dict:
         """Retorna todos los hechos como diccionario {clave: valor}."""
@@ -158,6 +160,7 @@ class SQLMemory:
         with self._get_connection() as conn:
             conn.execute("DELETE FROM facts WHERE key = ? AND user_id = ?", (key, user_id))
             conn.commit()
+        self._facts_seq += 1
 
     # ======================
     # CONVERSACIONES

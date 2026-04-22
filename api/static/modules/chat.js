@@ -67,6 +67,12 @@ function connectWS() {
       }
       loadStats();
       loadSessions();
+    } else if (data.type === 'session_title') {
+      // Evento asíncrono: el título LLM llega después del 'done'
+      const sid = data.session_id || _session_id;
+      const el = document.querySelector(`#sess-${sid} .text-\\[10px\\]`);
+      if (el) el.textContent = data.title;
+      loadSessions();
     } else if (data.type === 'error') {
       finishStreaming(null);
       // Detectar rate limit y mostrar countdown en lugar de burbuja de error

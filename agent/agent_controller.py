@@ -118,8 +118,7 @@ class AgentController:
             self._store_episode(user_input, hw_md)
             self.profiler.update_from_interaction(user_input, hw_md)
             if on_token:
-                for char in hw_md:
-                    await on_token(char)
+                await on_token(hw_md)
             return {"text": hw_md, "circuit_design_id": design_id,
                     "circuit_name": cname, "agents_used": agents_used}
 
@@ -137,8 +136,7 @@ class AgentController:
                 if code_blocks:
                     self.state.set_firmware_draft(code_blocks[0])
             if on_token:
-                for char in hw_result:
-                    await on_token(char)
+                await on_token(hw_result)
             return {"text": hw_result, "agents_used": agents_used}
 
         # 4. Obtener perfil activo de IA + contexto de fuentes

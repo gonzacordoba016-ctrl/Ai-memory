@@ -27,6 +27,7 @@ class GraphMemory:
         if self._initialized:
             return
         self.graph = nx.DiGraph()
+        self._seq  = 0
         self._load()
         self._initialized = True
 
@@ -75,6 +76,7 @@ class GraphMemory:
             updated_at = datetime.now(timezone.utc).isoformat(),
         )
         self.save()
+        self._seq += 1
         logger.info(f"Grafo: [{subject}] --{predicate}--> [{obj}]")
 
     def add_facts_from_dict(self, facts: dict, user_label: str = "usuario"):
