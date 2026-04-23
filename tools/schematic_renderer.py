@@ -298,31 +298,70 @@ class SchematicRenderer:
         t = comp.get("resolved_type", comp.get("type", "generic")).lower()
 
         dispatch = {
-            "resistor":         self._sym_resistor,
-            "led":              self._sym_led,
-            "led_rgb":          self._sym_led,
-            "capacitor":        self._sym_capacitor,
-            "button":           self._sym_button,
-            "arduino_uno":      self._sym_mcu,
-            "arduino_nano":     self._sym_mcu,
-            "arduino_mega":     self._sym_mcu,
-            "esp32":            self._sym_mcu,
-            "esp8266":          self._sym_mcu,
-            "stm32":            self._sym_mcu,
-            "pico":             self._sym_mcu,
-            "relay":            self._sym_relay,
-            "relay_module":     self._sym_relay,
-            "mosfet":           self._sym_mosfet,
-            "mosfet_n":         self._sym_mosfet,
-            "transistor":       self._sym_transistor,
-            "diode":            self._sym_diode,
-            "motor":            self._sym_motor,
-            "motor_driver":     self._sym_ic_generic,
-            "buzzer":           self._sym_buzzer,
-            "sensor":           self._sym_sensor,
-            "display":          self._sym_display,
-            "oled":             self._sym_display,
-            "lcd":              self._sym_display,
+            "resistor":                 self._sym_resistor,
+            "led":                      self._sym_led,
+            "led_rgb":                  self._sym_led,
+            "capacitor":                self._sym_capacitor,
+            "capacitor_electrolytic":   self._sym_capacitor,
+            "button":                   self._sym_button,
+            "arduino_uno":              self._sym_mcu,
+            "arduino_nano":             self._sym_mcu,
+            "arduino_mega":             self._sym_mcu,
+            "arduino_micro":            self._sym_mcu,
+            "esp32":                    self._sym_mcu,
+            "esp8266":                  self._sym_mcu,
+            "stm32":                    self._sym_mcu,
+            "pico":                     self._sym_mcu,
+            "raspberry_pi_pico":        self._sym_mcu,
+            "relay":                    self._sym_relay,
+            "relay_module":             self._sym_relay,
+            "mosfet":                   self._sym_mosfet,
+            "mosfet_n":                 self._sym_mosfet,
+            "transistor":               self._sym_transistor,
+            "diode":                    self._sym_diode,
+            "motor":                    self._sym_motor,
+            "dc_motor":                 self._sym_motor,
+            "stepper":                  self._sym_stepper,
+            "stepper_motor":            self._sym_stepper,
+            "servo":                    self._sym_servo,
+            "motor_driver":             self._sym_l298n,
+            "l298n":                    self._sym_l298n,
+            "drv8825":                  self._sym_stepper_driver,
+            "a4988":                    self._sym_stepper_driver,
+            "tb6600":                   self._sym_stepper_driver,
+            "uln2003":                  self._sym_ic_generic,
+            "buzzer":                   self._sym_buzzer,
+            "sensor":                   self._sym_sensor,
+            "moisture_sensor":          self._sym_moisture,
+            "hc_sr04":                  self._sym_ultrasonic,
+            "ultrasonic":               self._sym_ultrasonic,
+            "ultrasonic_sensor":        self._sym_ultrasonic,
+            "display":                  self._sym_display,
+            "oled":                     self._sym_display,
+            "lcd":                      self._sym_display,
+            "voltage_regulator":        self._sym_regulator,
+            "lm7805":                   self._sym_regulator,
+            "ams1117":                  self._sym_regulator,
+            "lm317":                    self._sym_regulator,
+            "regulator":                self._sym_regulator,
+            "buck_converter":           self._sym_converter,
+            "boost_converter":          self._sym_converter,
+            "buck_boost":               self._sym_converter,
+            "wifi_module":              self._sym_rf_module,
+            "bluetooth":                self._sym_rf_module,
+            "hc05":                     self._sym_rf_module,
+            "hc_05":                    self._sym_rf_module,
+            "nrf24l01":                 self._sym_rf_module,
+            "rf_module":                self._sym_rf_module,
+            "lora":                     self._sym_rf_module,
+            "connector":                self._sym_connector,
+            "header":                   self._sym_connector,
+            "pin_header":               self._sym_connector,
+            "terminal_block":           self._sym_connector,
+            "inductor":                 self._sym_inductor,
+            "battery":                  self._sym_battery,
+            "battery_18650":            self._sym_battery,
+            "lipo":                     self._sym_battery,
         }
         draw_fn = dispatch.get(t, self._sym_generic)
         draw_fn(dwg, x, y, comp)
@@ -580,6 +619,240 @@ class SchematicRenderer:
         dwg.add(dwg.text(short, insert=(x, y + 4),
                          font_size=9, fill="#cccccc",
                          font_family="monospace", text_anchor="middle"))
+
+    def _sym_l298n(self, dwg, x, y, comp):
+        """L298N dual H-bridge driver — wide IC body with labeled power/signal pins."""
+        W, H = 70, 50
+        name = comp.get("name", "L298N")[:8]
+        dwg.add(dwg.rect(insert=(x - W//2, y - H//2), size=(W, H),
+                         fill="#1a1a2e", stroke="#ff8833", stroke_width=1.5))
+        dwg.add(dwg.rect(insert=(x - W//2, y - H//2), size=(W, 14),
+                         fill="#ff8833", fill_opacity=0.2))
+        dwg.add(dwg.text(name, insert=(x, y - H//2 + 10),
+                         font_size=9, fill="#ff8833",
+                         font_family="monospace", text_anchor="middle"))
+        for i, lbl in enumerate(["IN1", "IN2", "EN"]):
+            dwg.add(dwg.text(lbl, insert=(x - W//2 + 4, y - 6 + i * 12),
+                             font_size=7, fill="#aaaaaa", font_family="monospace"))
+        for i, lbl in enumerate(["OUT1", "OUT2"]):
+            dwg.add(dwg.text(lbl, insert=(x + 10, y - 2 + i * 12),
+                             font_size=7, fill="#ff8833", font_family="monospace"))
+
+    def _sym_stepper_driver(self, dwg, x, y, comp):
+        """DRV8825/A4988 stepper driver module — compact rectangular IC."""
+        W, H = 56, 42
+        name = (comp.get("name", comp.get("id", "DRV")) or "")[:7]
+        dwg.add(dwg.rect(insert=(x - W//2, y - H//2), size=(W, H),
+                         fill="#0d1f0d", stroke="#44ff44", stroke_width=1.5))
+        dwg.add(dwg.text(name, insert=(x, y - 4),
+                         font_size=9, fill="#44ff44",
+                         font_family="monospace", text_anchor="middle"))
+        for i, lbl in enumerate(["STP", "DIR", "EN"]):
+            dwg.add(dwg.text(lbl, insert=(x - W//2 + 3, y - H//2 + 20 + i * 10),
+                             font_size=7, fill="#aaaaaa", font_family="monospace"))
+        for i, lbl in enumerate(["A1", "A2", "B1", "B2"]):
+            dwg.add(dwg.text(lbl, insert=(x + W//2 - 16, y - H//2 + 12 + i * 8),
+                             font_size=7, fill="#44ff44", font_family="monospace"))
+
+    def _sym_regulator(self, dwg, x, y, comp):
+        """TO-220 voltage regulator (LM7805, AMS1117) — tab + body shape."""
+        # Body
+        dwg.add(dwg.rect(insert=(x - 16, y - 14), size=(32, 28),
+                         fill="#1a1a1a", stroke="#ccaa00", stroke_width=1.5))
+        # Heatsink tab (top)
+        dwg.add(dwg.rect(insert=(x - 8, y - 22), size=(16, 10),
+                         fill="#333300", stroke="#ccaa00", stroke_width=1))
+        # 3 pins (bottom)
+        for dx in (-10, 0, 10):
+            dwg.add(dwg.line(start=(x + dx, y + 14), end=(x + dx, y + 24),
+                             stroke="#ccaa00", stroke_width=2))
+        name = (comp.get("name", "REG") or "")[:7]
+        dwg.add(dwg.text(name, insert=(x, y + 5),
+                         font_size=8, fill="#ccaa00",
+                         font_family="monospace", text_anchor="middle"))
+
+    def _sym_moisture(self, dwg, x, y, comp):
+        """FC-28 / YL-69 soil moisture sensor — fork-prong shape."""
+        W, H = 28, 40
+        # Body PCB
+        dwg.add(dwg.rect(insert=(x - W//2, y - H//2 + 10), size=(W, 20),
+                         fill="#0d2137", stroke="#44ffaa", stroke_width=1.5, rx=2))
+        dwg.add(dwg.text("FC28", insert=(x, y + 8),
+                         font_size=7, fill="#44ffaa",
+                         font_family="monospace", text_anchor="middle"))
+        # Prongs
+        for dx in (-8, 8):
+            dwg.add(dwg.rect(insert=(x + dx - 3, y + 10), size=(6, 20),
+                             fill="#228833", stroke="#44ffaa", stroke_width=1))
+        # Signal leads top
+        for dx, lbl in [(-8, "A"), (0, "V"), (8, "G")]:
+            dwg.add(dwg.line(start=(x + dx, y - H//2 + 10), end=(x + dx, y - H//2),
+                             stroke="#44ffaa", stroke_width=1.5))
+            dwg.add(dwg.text(lbl, insert=(x + dx, y - H//2 - 2),
+                             font_size=6, fill="#44ffaa",
+                             font_family="monospace", text_anchor="middle"))
+
+    def _sym_ultrasonic(self, dwg, x, y, comp):
+        """HC-SR04 ultrasonic sensor — dual transducer circles."""
+        # PCB body
+        dwg.add(dwg.rect(insert=(x - 30, y - 16), size=(60, 32),
+                         fill="#0d2137", stroke="#55ccff", stroke_width=1.5, rx=3))
+        # Left transducer (Trig)
+        dwg.add(dwg.circle(center=(x - 16, y), r=10,
+                           fill="#112233", stroke="#55ccff", stroke_width=1.5))
+        dwg.add(dwg.text("T", insert=(x - 16, y + 4),
+                         font_size=8, fill="#55ccff",
+                         font_family="monospace", text_anchor="middle"))
+        # Right transducer (Echo)
+        dwg.add(dwg.circle(center=(x + 16, y), r=10,
+                           fill="#112233", stroke="#55ccff", stroke_width=1.5))
+        dwg.add(dwg.text("E", insert=(x + 16, y + 4),
+                         font_size=8, fill="#55ccff",
+                         font_family="monospace", text_anchor="middle"))
+        # Sound wave arcs
+        for r in (14, 19):
+            dwg.add(dwg.path(
+                d=f"M {x+30} {y-r//2} Q {x+30+r//3} {y} {x+30} {y+r//2}",
+                fill="none", stroke="#55ccff", stroke_width=1, stroke_opacity=0.5))
+
+    def _sym_connector(self, dwg, x, y, comp):
+        """Generic pin header / terminal block."""
+        pins = int(comp.get("pins", comp.get("value", 2)) or 2)
+        pins = max(2, min(pins, 8))
+        H = pins * 10 + 4
+        W = 24
+        dwg.add(dwg.rect(insert=(x - W//2, y - H//2), size=(W, H),
+                         fill="#1a1a1a", stroke="#888888", stroke_width=1.5, rx=2))
+        for i in range(pins):
+            py = y - H//2 + 7 + i * 10
+            dwg.add(dwg.circle(center=(x - W//2 + 5, py), r=3,
+                               fill="none", stroke="#aaaaaa", stroke_width=1))
+            dwg.add(dwg.line(start=(x - W//2 - 8, py), end=(x - W//2, py),
+                             stroke="#aaaaaa", stroke_width=1.5))
+        dwg.add(dwg.text(f"J{pins}", insert=(x + 4, y + 4),
+                         font_size=8, fill="#888888",
+                         font_family="monospace", text_anchor="middle"))
+
+    def _sym_rf_module(self, dwg, x, y, comp):
+        """HC-05 Bluetooth / nRF24L01 RF module — box with antenna."""
+        W, H = 56, 38
+        name = (comp.get("name", "RF") or "")[:8]
+        dwg.add(dwg.rect(insert=(x - W//2, y - H//2), size=(W, H),
+                         fill="#1a0d2e", stroke="#cc44ff", stroke_width=1.5, rx=3))
+        # Antenna stub
+        dwg.add(dwg.line(start=(x + W//2, y - H//4),
+                         end=(x + W//2 + 12, y - H//4),
+                         stroke="#cc44ff", stroke_width=2))
+        dwg.add(dwg.line(start=(x + W//2 + 12, y - H//4 - 6),
+                         end=(x + W//2 + 12, y - H//4 + 6),
+                         stroke="#cc44ff", stroke_width=1))
+        # Signal waves
+        for r in (4, 8):
+            dwg.add(dwg.path(
+                d=f"M {x+W//2+14} {y-H//4-r} Q {x+W//2+18+r} {y-H//4} {x+W//2+14} {y-H//4+r}",
+                fill="none", stroke="#cc44ff", stroke_width=1, stroke_opacity=0.6))
+        dwg.add(dwg.text(name, insert=(x, y + 4),
+                         font_size=9, fill="#cc44ff",
+                         font_family="monospace", text_anchor="middle"))
+
+    def _sym_converter(self, dwg, x, y, comp):
+        """Buck/boost DC-DC converter module."""
+        W, H = 58, 40
+        is_boost = "boost" in (comp.get("resolved_type", comp.get("type", "")) or "").lower()
+        color = "#ffcc55" if is_boost else "#55ccff"
+        label = "BOOST" if is_boost else "BUCK"
+        dwg.add(dwg.rect(insert=(x - W//2, y - H//2), size=(W, H),
+                         fill="#111111", stroke=color, stroke_width=1.5, rx=3))
+        # Inductor coil symbol inside
+        cx0 = x - 10
+        for i in range(4):
+            dwg.add(dwg.path(
+                d=f"M {cx0 + i*5} {y} Q {cx0+i*5+2} {y-8} {cx0+i*5+5} {y}",
+                fill="none", stroke=color, stroke_width=1.5))
+        dwg.add(dwg.text(label, insert=(x, y + 14),
+                         font_size=8, fill=color,
+                         font_family="monospace", text_anchor="middle"))
+        # Vin / Vout leads
+        dwg.add(dwg.line(start=(x - W//2 - 10, y), end=(x - W//2, y),
+                         stroke=color, stroke_width=1.5))
+        dwg.add(dwg.line(start=(x + W//2, y), end=(x + W//2 + 10, y),
+                         stroke=color, stroke_width=1.5))
+        dwg.add(dwg.text("IN", insert=(x - W//2 - 14, y + 4),
+                         font_size=7, fill=color, font_family="monospace"))
+        dwg.add(dwg.text("OUT", insert=(x + W//2 + 2, y + 4),
+                         font_size=7, fill=color, font_family="monospace"))
+
+    def _sym_stepper(self, dwg, x, y, comp):
+        """Stepper motor — circle with coil windings marks."""
+        dwg.add(dwg.circle(center=(x, y), r=22,
+                           fill="none", stroke="#44aaff", stroke_width=1.5))
+        dwg.add(dwg.text("STEP", insert=(x, y + 5),
+                         font_size=9, fill="#44aaff",
+                         font_family="Arial", font_weight="bold", text_anchor="middle"))
+        # 4 coil leads
+        for angle_deg, lbl in [(45, "A+"), (135, "A-"), (225, "B+"), (315, "B-")]:
+            rad = math.radians(angle_deg)
+            ex, ey = x + 22 * math.cos(rad), y + 22 * math.sin(rad)
+            lx, ly = x + 34 * math.cos(rad), y + 34 * math.sin(rad)
+            dwg.add(dwg.line(start=(ex, ey), end=(lx, ly),
+                             stroke="#44aaff", stroke_width=1.5))
+
+    def _sym_servo(self, dwg, x, y, comp):
+        """Servo motor — rectangular body with horn indicator."""
+        W, H = 46, 30
+        dwg.add(dwg.rect(insert=(x - W//2, y - H//2), size=(W, H),
+                         fill="#0d1a0d", stroke="#66ff66", stroke_width=1.5, rx=4))
+        # Output horn circle
+        dwg.add(dwg.circle(center=(x, y - H//2 - 8), r=7,
+                           fill="none", stroke="#66ff66", stroke_width=1.5))
+        dwg.add(dwg.line(start=(x, y - H//2 - 8), end=(x + 7, y - H//2 - 8),
+                         stroke="#66ff66", stroke_width=2))
+        dwg.add(dwg.text("SRV", insert=(x, y + 5),
+                         font_size=9, fill="#66ff66",
+                         font_family="monospace", text_anchor="middle"))
+        # 3-wire connector
+        for i, (dx, c) in enumerate([(-8, "#ff4444"), (0, "#888888"), (8, "#ffff44")]):
+            dwg.add(dwg.line(start=(x + dx, y + H//2), end=(x + dx, y + H//2 + 10),
+                             stroke=c, stroke_width=2))
+
+    def _sym_inductor(self, dwg, x, y, comp):
+        """Inductor / coil symbol — 4 bumps."""
+        bumps = 4
+        bw = 8
+        total = bumps * bw
+        x0 = x - total // 2
+        for i in range(bumps):
+            cx_b = x0 + i * bw + bw // 2
+            dwg.add(dwg.path(
+                d=f"M {x0+i*bw} {y} Q {cx_b} {y-14} {x0+(i+1)*bw} {y}",
+                fill="none", stroke="#e6edf3", stroke_width=1.8))
+        dwg.add(dwg.line(start=(x - total // 2 - 15, y), end=(x - total // 2, y),
+                         stroke="#e6edf3", stroke_width=1.5))
+        dwg.add(dwg.line(start=(x + total // 2, y), end=(x + total // 2 + 15, y),
+                         stroke="#e6edf3", stroke_width=1.5))
+        val = comp.get("value", "")
+        if val:
+            dwg.add(dwg.text(val, insert=(x, y + 14),
+                             font_size=8, fill="#aaaaff",
+                             font_family="monospace", text_anchor="middle"))
+
+    def _sym_battery(self, dwg, x, y, comp):
+        """Battery / power cell symbol — stacked plates."""
+        for i, (w, is_long) in enumerate([(20, True), (12, False), (20, True), (12, False)]):
+            py = y - 14 + i * 7
+            dwg.add(dwg.line(start=(x - w//2, py), end=(x + w//2, py),
+                             stroke="#44ff44", stroke_width=2.5 if is_long else 1.5))
+        dwg.add(dwg.line(start=(x, y - 14), end=(x, y - 24),
+                         stroke="#44ff44", stroke_width=1.5))
+        dwg.add(dwg.line(start=(x, y + 14), end=(x, y + 24),
+                         stroke="#44ff44", stroke_width=1.5))
+        dwg.add(dwg.text("+", insert=(x + 14, y - 18),
+                         font_size=11, fill="#44ff44", font_family="Arial"))
+        val = comp.get("value", "")
+        if val:
+            dwg.add(dwg.text(val, insert=(x, y + 35),
+                             font_size=8, fill="#44ff44",
+                             font_family="monospace", text_anchor="middle"))
 
     def _sym_generic(self, dwg, x, y, comp):
         """Fallback generic symbol."""

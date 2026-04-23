@@ -1,6 +1,7 @@
 # agent/agents/hardware_firmware.py — mixin de programación/compilación para HardwareAgent
 
 import os
+import re
 import httpx
 from core.config import LLM_API, LLM_MODEL, get_llm_headers
 from core.logger import logger
@@ -9,6 +10,40 @@ from tools.firmware_generator import generate_firmware
 from tools.firmware_flasher import flash_firmware, compile_firmware, install_missing_libraries
 from tools.serial_monitor import read_serial
 from database.hardware_memory import hardware_memory
+
+
+def _extract_compile_errors(raw_error: str, max_lines: int = 25) -> str:
+    """
+    Extracts the relevant error/warning lines from verbose arduino-cli output.
+    Filters out build progress noise (Compiling ..., Linking ...) and keeps
+    only lines that contain actual compiler diagnostics.
+    Returns at most max_lines lines so the LLM prompt stays concise.
+    """
+    if not raw_error:
+        return ""
+    relevant = []
+    for line in raw_error.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        # Skip build progress lines
+        if any(stripped.startswith(pfx) for pfx in (
+            "Compiling ", "Linking ", "Building ", "Using ", "FQBN:",
+            "Platform ", "Sketch uses", "Global variables", "avrdude",
+        )):
+            continue
+        # Keep lines that look like compiler diagnostics
+        if any(marker in stripped for marker in (
+            " error:", " warning:", " note:", "undefined reference",
+            "was not declared", "expected", "no matching", "cannot convert",
+            "redefinition", "multiple definition", "no such file",
+        )):
+            relevant.append(line)
+    if not relevant:
+        # Fallback: return last max_lines of raw output
+        lines = [l for l in raw_error.splitlines() if l.strip()]
+        return "\n".join(lines[-max_lines:])
+    return "\n".join(relevant[:max_lines])
 
 
 class _FirmwareMixin:
@@ -102,6 +137,7 @@ class _FirmwareMixin:
             return f"Error generando el firmware: {firmware['error']}"
 
         compile_result = compile_firmware(firmware["dir"], device["fqbn"])
+        lib_result = {"any_installed": False, "installed": [], "failed": []}
         if not compile_result["success"]:
 
             # ── PASO 1: Auto-instalar librerías faltantes ────────────────────
@@ -113,10 +149,14 @@ class _FirmwareMixin:
                 )
                 compile_result = compile_firmware(firmware["dir"], device["fqbn"])
 
-            # ── PASO 2: Si aún falla, pedir corrección al LLM ───────────────
-            if not compile_result["success"]:
+            # ── PASO 2: Hasta 2 correcciones LLM ────────────────────────────
+            for fix_attempt in range(2):
+                if compile_result["success"]:
+                    break
+                logger.info(f"[HardwareAgent] Fix LLM intento {fix_attempt + 1}/2")
                 corrected = self._fix_firmware(
-                    firmware["code"], compile_result["error"], device["platform"], task
+                    firmware["code"], compile_result["error"],
+                    device["platform"], task, attempt=fix_attempt
                 )
                 if corrected:
                     with open(firmware["path"], "w") as f:
@@ -138,11 +178,12 @@ class _FirmwareMixin:
                     device["name"], task, firmware["code"],
                     success=False, notes=compile_result["error"][:200]
                 )
+                clean_err = _extract_compile_errors(compile_result["error"])
                 return (
-                    f"No pude compilar el firmware.\n"
-                    f"Error: {compile_result['error'][:300]}\n"
+                    f"No pude compilar el firmware tras 2 intentos de corrección.\n"
+                    f"Error: {clean_err}\n"
                     f"{libs_msg}\n"
-                    f"```cpp\n{firmware['code'][:400]}\n```"
+                    f"```cpp\n{firmware['code'][:500]}\n```"
                 )
 
         flash_result = flash_firmware(firmware["dir"], device["fqbn"], device["port"])
@@ -151,9 +192,10 @@ class _FirmwareMixin:
                 device["name"], task, firmware["code"],
                 success=False, notes=flash_result["error"][:200]
             )
+            flash_err = _extract_compile_errors(flash_result["error"]) or flash_result["error"][:300]
             return (
                 f"Compiló pero no pude flashear.\n"
-                f"Error: {flash_result['error'][:300]}"
+                f"Error: {flash_err}"
             )
 
         serial_output = read_serial(device["port"], duration=4)
@@ -218,7 +260,18 @@ class _FirmwareMixin:
             + (f"Monitor serial:\n{serial_out}" if serial_out else "")
         )
 
-    def _fix_firmware(self, code: str, error: str, platform: str, task: str) -> str:
+    def _fix_firmware(self, code: str, error: str, platform: str,
+                       task: str, attempt: int = 0) -> str:
+        """
+        Ask the LLM to fix compile errors.
+        attempt=0 → normal fix; attempt=1 → more aggressive, includes previous failures context.
+        """
+        clean_err = _extract_compile_errors(error)
+        attempt_note = (
+            "\nEste es el segundo intento. El primer fix no funcionó. "
+            "Revisá con más cuidado los tipos, includes y definiciones."
+            if attempt > 0 else ""
+        )
         try:
             response = httpx.post(
                 LLM_API,
@@ -228,23 +281,34 @@ class _FirmwareMixin:
                     "messages": [
                         {
                             "role": "system",
-                            "content": "Corregí el código con errores de compilación. Devolvé SOLO el código, sin markdown."
+                            "content": (
+                                f"Sos un experto en {platform}. "
+                                "Corregí TODOS los errores de compilación en el código. "
+                                "Devolvé SOLO el código fuente corregido, sin comentarios "
+                                "ni bloques markdown."
+                                + attempt_note
+                            )
                         },
                         {
                             "role": "user",
-                            "content": f"Código:\n{code}\n\nError:\n{error}\n\nTarea: {task}"
+                            "content": (
+                                f"Tarea original: {task}\n\n"
+                                f"Código con errores:\n```cpp\n{code}\n```\n\n"
+                                f"Errores de compilación:\n{clean_err}"
+                            )
                         }
                     ],
-                    "temperature": 0.1,
+                    "temperature": 0.05 if attempt > 0 else 0.1,
                 },
                 timeout=180
             )
             response.raise_for_status()
             fixed = response.json()["choices"][0]["message"]["content"].strip()
+            # Strip any accidental markdown fences
             return "\n".join(
                 l for l in fixed.split("\n")
                 if not l.strip().startswith("```")
             ).strip()
         except Exception as e:
-            logger.error(f"[HardwareAgent] Error corrigiendo: {e}")
+            logger.error(f"[HardwareAgent] Error corrigiendo (intento {attempt+1}): {e}")
             return ""

@@ -222,6 +222,7 @@ async def generate_firmware_for_device(request: Request, device_name: str, body:
                 device_name,
                 past_errors=past_errors if attempt == 1 else [],
                 compile_error=last_error,
+                components=circuit.get("components"),
             )
             if "error" in fw:
                 raise RuntimeError(fw["error"])
@@ -499,6 +500,84 @@ async def get_circuit_bom_csv(circuit_id: int):
         content=csv_content,
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=bom_{cname}_{circuit_id}.csv"},
+    )
+
+
+# ── Export ZIP bundle ─────────────────────────────────────────────────────────
+
+@router.get("/{circuit_id}/export.zip")
+async def export_circuit_zip(circuit_id: int):
+    """
+    Descarga un ZIP con todos los archivos del proyecto:
+    schematic.svg, <name>.kicad_sch, bom.csv, netlist.json, pcb_layout.svg,
+    gerber/<layer>.gbr, README.txt
+    """
+    import zipfile
+    import io
+    import json as _json
+    from tools.kicad_exporter import export_kicad_schematic
+    from tools.bom_generator import generate_bom, bom_to_csv
+    from database.component_stock import get_stock_db
+    from tools.electrical_drc import run_drc
+
+    agent        = _get_circuit_agent()
+    circuit_data = agent.get_circuit_by_id(circuit_id)
+    if not circuit_data:
+        raise HTTPException(status_code=404, detail="Circuito no encontrado")
+
+    cname = (circuit_data.get("name") or "circuit").replace(" ", "_")[:40]
+
+    bom    = generate_bom(circuit_data, get_stock_db().get_all())
+    drc    = run_drc(circuit_data)
+    gerber = PCBRenderer().generate_gerber_files(circuit_data)
+
+    drc_lines = []
+    for issue in drc.get("issues", []):
+        drc_lines.append(f"  [{issue.get('severity','?').upper()}] {issue.get('rule','')} — {issue.get('message','')}")
+    drc_summary = "\n".join(drc_lines) if drc_lines else "  Sin problemas encontrados."
+
+    readme = (
+        f"Stratum Circuit Export\n"
+        f"======================\n"
+        f"Circuito : {circuit_data.get('name', 'Sin nombre')}\n"
+        f"ID       : {circuit_id}\n"
+        f"Exportado: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n"
+        f"MCU      : {circuit_data.get('mcu', '-')}\n"
+        f"Componentes: {len(circuit_data.get('components', []))}\n\n"
+        f"ARCHIVOS\n"
+        f"--------\n"
+        f"  schematic.svg       — Esquemático SVG (abrir en navegador)\n"
+        f"  {cname}.kicad_sch  — Esquemático KiCad v6 (abrir en KiCad)\n"
+        f"  bom.csv             — Lista de materiales\n"
+        f"  netlist.json        — Netlist completa (JSON)\n"
+        f"  pcb_layout.svg      — Layout PCB SVG\n"
+        f"  gerber/             — Archivos Gerber para fabricación\n\n"
+        f"DRC (Design Rule Check)\n"
+        f"-----------------------\n"
+        f"{drc_summary}\n"
+    )
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(f"{cname}/schematic.svg",
+                    SchematicRenderer().render_schematic_svg(circuit_data))
+        zf.writestr(f"{cname}/{cname}.kicad_sch",
+                    export_kicad_schematic(circuit_data))
+        zf.writestr(f"{cname}/bom.csv",
+                    bom_to_csv(bom))
+        zf.writestr(f"{cname}/netlist.json",
+                    _json.dumps(circuit_data, ensure_ascii=False, indent=2))
+        zf.writestr(f"{cname}/pcb_layout.svg",
+                    PCBRenderer().render_pcb_svg(circuit_data))
+        for filename, content in gerber.items():
+            zf.writestr(f"{cname}/gerber/{filename}", content)
+        zf.writestr(f"{cname}/README.txt", readme)
+
+    buf.seek(0)
+    return Response(
+        content=buf.read(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename=stratum_{cname}_{circuit_id}.zip"},
     )
 
 

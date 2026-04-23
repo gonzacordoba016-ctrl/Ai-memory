@@ -224,21 +224,91 @@ _LIB_PWR_GND = '''\
 
 _TYPE_TO_LIB = {
     "resistor":       "Device:R",
+    "resistencia":    "Device:R",
     "capacitor":      "Device:C",
+    "capacitor_electrolytic": "Device:C",
     "led":            "Device:LED",
     "led_rgb":        "Device:LED",
     "diode":          "Device:D",
     "1n4007":         "Device:D",
     "1n5819":         "Device:D",
+    "zener":          "Device:D",
     "button":         "Device:SW_Push",
     "switch":         "Device:SW_Push",
 }
 
-# Everything not in the map above uses Device:IC_Generic
+# ──────────────────────────────────────────────────────────────────────────────
+# Component type → KiCad footprint string
+# ──────────────────────────────────────────────────────────────────────────────
+
+_TYPE_TO_FOOTPRINT: Dict[str, str] = {
+    "resistor":              "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
+    "resistencia":           "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
+    "capacitor":             "Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm",
+    "capacitor_electrolytic":"Capacitor_THT:CP_Radial_D8.0mm_P3.50mm",
+    "led":                   "LED_THT:LED_D5.0mm",
+    "led_rgb":               "LED_THT:LED_D5.0mm_RGB",
+    "diode":                 "Diode_THT:D_DO-41_SOD81_P10.16mm_Horizontal",
+    "1n4007":                "Diode_THT:D_DO-41_SOD81_P10.16mm_Horizontal",
+    "1n5819":                "Diode_THT:D_DO-41_SOD81_P10.16mm_Horizontal",
+    "zener":                 "Diode_THT:D_DO-35_SOD27_P7.62mm_Horizontal",
+    "transistor":            "Package_TO_SOT_THT:TO-92_Inline",
+    "mosfet":                "Package_TO_SOT_THT:TO-220-3_Vertical",
+    "mosfet_n":              "Package_TO_SOT_THT:TO-220-3_Vertical",
+    "button":                "Button_Switch_THT:SW_PUSH_6mm",
+    "switch":                "Button_Switch_THT:SW_SPDT_PCB",
+    "relay_module":          "Connector_PinHeader_2.54mm:PinHeader_1x05_P2.54mm_Vertical",
+    "relay":                 "Relay_THT:Relay_SPDT_Omron_G5LE-1",
+    "fuse":                  "Fuseholder_Holder_3AG",
+    "inductor":              "Inductor_THT:L_Axial_L5.3mm_D2.2mm_P10.16mm_Horizontal",
+    "crystal":               "Crystal:Crystal_HC49-4H_Vertical",
+    "arduino_uno":           "Module:Arduino_UNO_SMD",
+    "arduino_nano":          "Module:Arduino_Nano",
+    "arduino_mega":          "Module:Arduino_Mega2560_THT",
+    "arduino_micro":         "Module:Arduino_Micro",
+    "esp32":                 "Module:ESP32-WROOM-32",
+    "esp8266":               "Module:NodeMCU-v1.0",
+    "raspberry_pi_pico":     "Module:RPi_Pico",
+    "stm32":                 "Module:STM32_DevBoard",
+    "voltage_regulator":     "Package_TO_SOT_THT:TO-220-3_Vertical",
+    "lm7805":                "Package_TO_SOT_THT:TO-220-3_Vertical",
+    "lm317":                 "Package_TO_SOT_THT:TO-220-3_Vertical",
+    "ams1117":               "Package_TO_SOT_THT:SOT-223-3_TabPin2",
+    "buck_converter":        "Module:DC-DC_Converter",
+    "boost_converter":       "Module:DC-DC_Converter",
+    "oled":                  "Display:OLED_SSD1306_128x64",
+    "lcd":                   "Display:LCD_16x2_I2C",
+    "hc_sr04":               "Sensor:HC-SR04",
+    "dht22":                 "Sensor:DHT22",
+    "dht11":                 "Sensor:DHT11",
+    "bmp280":                "Sensor:BMP280",
+    "mpu6050":               "Sensor:MPU-6050",
+    "ds18b20":               "Package_TO_SOT_THT:TO-92_Inline",
+    "l298n":                 "Module:L298N",
+    "drv8825":               "Module:DRV8825",
+    "a4988":                 "Module:A4988",
+    "servo":                 "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical",
+    "motor":                 "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
+    "buzzer":                "Buzzer_Beeper:Buzzer_12x9.5RM7.6",
+    "connector":             "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical",
+    "rtc":                   "Package_DIP:DIP-16_W7.62mm",
+    "ds3231":                "Package_DIP:DIP-16_W7.62mm",
+    "mpu6050":               "Package_DIP:DIP-8_W7.62mm",
+}
+
 
 def _lib_id(comp: Dict) -> str:
     t = comp.get("resolved_type", comp.get("type", "generic")).lower()
     return _TYPE_TO_LIB.get(t, "Device:IC_Generic")
+
+
+def _footprint(comp: Dict) -> str:
+    """Return KiCad footprint string for a component."""
+    fp = (comp.get("footprint") or "").strip()
+    if fp and ":" in fp:
+        return fp  # already a full KiCad footprint ref
+    t = comp.get("resolved_type", comp.get("type", "")).lower()
+    return _TYPE_TO_FOOTPRINT.get(t, "")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -447,7 +517,8 @@ class KiCadExporter:
             val_str = f"{val}{unit_s}" if unit_s else val
             lines.append(f'    (property "Value" "{_esc(val_str)}" (at {_fmt(cx+2.54)} {_fmt(cy+2.54)} 0)')
             lines.append(f'      (effects (font (size 1.27 1.27))))')
-            lines.append(f'    (property "Footprint" "" (at 0 0 0)')
+            fp_str = _esc(_footprint(comp))
+            lines.append(f'    (property "Footprint" "{fp_str}" (at 0 0 0)')
             lines.append(f'      (effects (font (size 1.27 1.27)) (hide yes)))')
             lines.append(f'  )')
 

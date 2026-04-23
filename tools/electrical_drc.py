@@ -84,6 +84,26 @@ def _nodes_of(net: dict) -> list[str]:
     return net.get("nodes", net.get("pins", []))
 
 
+def _parse_cap_uf(value: str) -> float:
+    """Parse a capacitor value string → µF float (best effort, returns 0 on failure)."""
+    if not value:
+        return 0.0
+    v = value.strip().lower().replace(",", ".")
+    try:
+        if "mf" in v:
+            return float(v.replace("mf", "")) * 1000
+        if "µf" in v or "uf" in v:
+            return float(v.replace("µf", "").replace("uf", ""))
+        if "nf" in v:
+            return float(v.replace("nf", "")) / 1000
+        if "pf" in v:
+            return float(v.replace("pf", "")) / 1_000_000
+        # bare number → assume µF
+        return float(v)
+    except ValueError:
+        return 0.0
+
+
 def _comp_refs_in_net(net: dict) -> set[str]:
     """Retorna los IDs de componente conectados en este net."""
     refs = set()
@@ -302,8 +322,7 @@ def run_drc(circuit: dict) -> dict:
                                          f"Recomendado: 100nF entre RESET y GND para estabilidad."))
                     break
 
-    # ── Check 12: OVERCURRENT_PIN ────────────────────────────────────────────
-    # Si hay más de 3 LEDs en el mismo pin de MCU (simplificación)
+    # ── Check 12: OVERCURRENT_PIN ─────────────────────────────────────────────
     if mcu_ids and led_ids:
         mcu_pin_leds: dict[str, list[str]] = {}
         for net in nets:
@@ -320,6 +339,89 @@ def run_drc(circuit: dict) -> dict:
                                      f"Máximo recomendado: 1 LED por pin (40mA). "
                                      f"Usá transistor/MOSFET para manejar múltiples LEDs.",
                                      net=pin))
+
+    # ── Check 13: SIGNAL_5V_ON_3V3_GPIO ──────────────────────────────────────
+    # HC-SR04 ECHO outputs 5V but ESP32/Pico GPIOs are 3.3V — level shifter needed
+    _3V3_MCUS = {"esp32", "esp8266", "raspberry_pi_pico", "stm32", "adafruit_feather",
+                 "seeeduino_xiao"}
+    _5V_SENSORS = {"hc_sr04", "hcsr04", "ultrasonic", "ultrasonic_sensor"}
+
+    has_3v3_mcu = any(_comp_type(c) in _3V3_MCUS for c in components)
+    sensor_5v_ids = {c.get("id") for c in components if _comp_type(c) in _5V_SENSORS}
+
+    if has_3v3_mcu and sensor_5v_ids:
+        for s_id in sensor_5v_ids:
+            s_nets = comp_nets.get(s_id, set())
+            for net_name in s_nets:
+                if _is_vcc_net(net_name) or _is_gnd_net(net_name):
+                    continue
+                net_c = net_comps.get(net_name, set())
+                mcu_on_net = net_c & mcu_ids
+                r_on_net   = net_c & resistor_ids
+                if mcu_on_net and not r_on_net:
+                    mcu_id = next(iter(mcu_on_net))
+                    if _comp_type(comp_by_id.get(mcu_id, {})) in _3V3_MCUS:
+                        issues.append(_issue(
+                            "SIGNAL_5V_ON_3V3_GPIO", "error",
+                            f"{s_id}: sensor 5V (ECHO/OUT) conectado directamente a GPIO 3.3V "
+                            f"de {mcu_id}. Agregá divisor resistivo (1kΩ + 2kΩ) o level shifter.",
+                            component=s_id, net=net_name))
+                        break
+
+    # ── Check 14: MOTOR_DIRECT_TO_MCU ────────────────────────────────────────
+    # DC/stepper motor connected straight to MCU GPIO — needs H-bridge/driver
+    _RAW_MOTOR_TYPES = {"motor", "dc_motor", "stepper", "stepper_motor"}
+    _MOTOR_DRIVER_TYPES = {"motor_driver", "l298n", "drv8825", "a4988", "tb6600",
+                           "uln2003", "l293d", "h_bridge"}
+
+    raw_motor_ids = {c.get("id") for c in components if _comp_type(c) in _RAW_MOTOR_TYPES}
+    driver_ids    = {c.get("id") for c in components if _comp_type(c) in _MOTOR_DRIVER_TYPES}
+
+    if raw_motor_ids and mcu_ids and not driver_ids:
+        for m_id in raw_motor_ids:
+            m_nets = comp_nets.get(m_id, set())
+            for net_name in m_nets:
+                if _is_vcc_net(net_name) or _is_gnd_net(net_name):
+                    continue
+                net_c = net_comps.get(net_name, set())
+                if net_c & mcu_ids:
+                    issues.append(_issue(
+                        "MOTOR_DIRECT_TO_MCU", "error",
+                        f"{m_id}: motor conectado directamente a GPIO del MCU sin driver. "
+                        f"El motor puede destruir el MCU (picos >500mA). "
+                        f"Usá L298N, DRV8825 o ULN2003 como driver intermedio.",
+                        component=m_id, net=net_name))
+                    break
+
+    # ── Check 15: ESP_WIFI_NO_BULK_CAP ───────────────────────────────────────
+    # ESP32/ESP8266 without a bulk capacitor on VCC — WiFi peak current causes brownout
+    _WIFI_MCUS = {"esp32", "esp8266"}
+    wifi_mcu_ids = {c.get("id") for c in components if _comp_type(c) in _WIFI_MCUS}
+
+    if wifi_mcu_ids:
+        _ELEC_CAP_TYPES = {"capacitor_electrolytic", "cap_electrolytic", "electrolytic"}
+        elec_cap_ids = {c.get("id") for c in components
+                        if _comp_type(c) in _ELEC_CAP_TYPES
+                        or (_comp_type(c) in _CAPACITOR_TYPES
+                            and _parse_cap_uf(c.get("value", "")) >= 10)}
+
+        has_bulk = False
+        for net in nets:
+            if not _is_vcc_net(net.get("name", "")):
+                continue
+            net_c = _comp_refs_in_net(net)
+            if net_c & wifi_mcu_ids and net_c & elec_cap_ids:
+                has_bulk = True
+                break
+
+        if not has_bulk:
+            esp_names = [comp_by_id.get(i, {}).get("name", i) for i in list(wifi_mcu_ids)[:2]]
+            issues.append(_issue(
+                "ESP_WIFI_NO_BULK_CAP", "warning",
+                f"{', '.join(esp_names)}: módulo WiFi sin capacitor bulk en VCC. "
+                f"El transmisor WiFi genera picos de 350mA que causan brownout/reset. "
+                f"Agregá 100µF electrolítico + 100nF cerámico entre VCC y GND.",
+                component=list(wifi_mcu_ids)[0]))
 
     # ── Clasificar y construir respuesta ─────────────────────────────────────
     errors   = [i for i in issues if i["severity"] == "error"]

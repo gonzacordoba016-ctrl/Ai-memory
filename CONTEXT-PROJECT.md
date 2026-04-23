@@ -1,6 +1,6 @@
 # STRATUM — Contexto del Proyecto
 > Última actualización: 2026-04-22
-> Versión actual: **v4.6.0**
+> Versión actual: **v4.7.0**
 > Tagline: _"Tu memoria técnica siempre disponible"_
 > Estado: **Production-ready** (local + Railway)
 
@@ -390,6 +390,59 @@ Dominios soportados:
 ✅ **Title block** con nombre, fecha, descripción y fuente de alimentación.
 ✅ Placement en grid de 2.54mm (100mil). MCU centrado, pasivos en grilla adyacente.
 ✅ Endpoint: `GET /api/circuits/{id}/schematic.kicad_sch` — descarga directa.
+
+### 4.30 MCU Pin Assignment Rules (v4.7.0)
+✅ `MCU_PIN_RULES` dict en `circuit_agent.py` con restricciones exactas para 6 plataformas: Arduino Uno, Nano, Mega, Raspberry Pi Pico, ESP32, ESP8266.
+✅ `_mcu_pin_rules(mcu: str) -> str` — resolución fuzzy (substring match) del MCU detectado al bloque de reglas correspondiente.
+✅ `{mcu_pin_rules}` inyectado en `CIRCUIT_PARSE_PROMPT` — el LLM recibe las restricciones reales de pines antes de generar la netlist (PWM solo en D3/D5/D6/D9/D10/D11 en Uno, ADC seguro solo en GPIO32-39 con WiFi en ESP32, GPIO34/35/36/39 input-only, etc.).
+
+### 4.31 SchematicRenderer — 15+ símbolos nuevos (v4.7.0)
+✅ Dispatch dict expandido de ~25 a ~60 entradas: `capacitor_electrolytic`, `arduino_micro`, `raspberry_pi_pico`, `dc_motor`, `stepper`/`stepper_motor`, `servo`, `l298n`, `drv8825`/`a4988`/`tb6600`, `moisture_sensor`, `hc_sr04`/`ultrasonic`, `voltage_regulator`/`lm7805`/`ams1117`/`lm317`/`regulator`, `buck_converter`/`boost_converter`, `hc_05`/`hc05`/`nrf24l01`/`rf_module`/`lora`, `connector`/`header`/`pin_header`/`terminal_block`, `inductor`, `battery`/`battery_18650`/`lipo`.
+✅ 12 nuevos métodos símbolo SVG: `_sym_l298n`, `_sym_stepper_driver`, `_sym_regulator`, `_sym_moisture`, `_sym_ultrasonic`, `_sym_connector`, `_sym_rf_module`, `_sym_converter`, `_sym_stepper`, `_sym_servo`, `_sym_inductor`, `_sym_battery`.
+
+### 4.32 Electrical DRC — 3 checks nuevos (v4.7.0)
+✅ Check 13 `SIGNAL_5V_ON_3V3_GPIO` — sensor 5V (HC-SR04, ECHO) directo en GPIO de ESP32/Pico sin divisor resistivo → `error`.
+✅ Check 14 `MOTOR_DIRECT_TO_MCU` — motor DC/stepper en GPIO sin driver (L298N/DRV8825) → `error`.
+✅ Check 15 `ESP_WIFI_NO_BULK_CAP` — ESP32/ESP8266 sin capacitor bulk ≥10µF en VCC → `warning`.
+✅ Helper `_parse_cap_uf(value)` — parsea strings "100nF", "10µF", "1mF" a float µF para el check de bulk cap.
+
+### 4.33 BOM Grouping + KiCad Footprints (v4.7.0)
+✅ BOM agrupado: componentes idénticos (mismo tipo+valor para pasivos, mismo tipo+nombre para módulos) se consolidan en una línea con `qty_needed` y `refs` (lista de IDs).
+✅ `_group_key(comp)` y `_resolve_footprint(comp)` en `bom_generator.py`.
+✅ `_TYPE_TO_FOOTPRINT` dict (~50 entradas) mapea tipo de componente a footprint KiCad real (e.g. `"resistor"` → `"Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"`).
+✅ `bom_to_csv()` actualizado: columnas `Refs`, `Footprint`, compatible backward con `ref` (singular).
+✅ KiCad exporter (`kicad_exporter.py`) también usa `_TYPE_TO_FOOTPRINT` — rellena la propiedad `"Footprint"` en cada instancia de símbolo.
+
+### 4.34 Firmware — Retry 2x + Error Parsing inteligente (v4.7.0)
+✅ `_extract_compile_errors(raw_error, max_lines=25)` — filtra el ruido verbose de arduino-cli (líneas `Compiling/Linking/Building/Using/FQBN/Platform/Sketch uses/avrdude`) y retiene solo las líneas con diagnósticos reales (`error:`, `warning:`, `undefined reference`, `was not declared`, etc.).
+✅ Loop de corrección LLM extendido a 2 intentos: intento 0 con `temperature=0.1`, intento 1 con `temperature=0.05` y nota explícita "el primer fix no funcionó".
+✅ Auto-instalación de librerías faltantes (`install_missing_libraries()`) antes de los intentos LLM.
+
+### 4.35 Firmware Snippet Library (v4.7.0)
+✅ `COMPONENT_SNIPPETS` dict en `firmware_generator.py` con patrones de código validados para 18+ tipos: DHT22/DHT11, DS18B20, HC-SR04, BMP280, MPU6050, relay, servo, OLED, LCD, RTC/DS3231, moisture sensor, PIR, L298N, DRV8825/A4988, NeoPixel/WS2812, HX711, FC-28. Cada entrada tiene `includes`, `lib` (nombre para arduino-cli) y `snippet` con el código de uso real.
+✅ `_SNIPPET_ALIASES` — mapea tipos resueltos internos al snippet key correspondiente.
+✅ `get_firmware_snippets(components)` — escanea lista de componentes, colecta snippets relevantes, retorna bloque formateado con includes, hints de instalación y código de ejemplo.
+✅ Inyectado automáticamente en el system prompt de `generate_firmware()` y `generate_firmware_for_circuit()` cuando se proveen componentes.
+
+### 4.36 PCB Renderer — Mejoras visuales profesionales (v4.7.0)
+✅ DRC error highlighting: componentes con errores DRC reciben borde rojo + SVG `<filter id="glow">` (feMorphology + feGaussianBlur + feComposite) + badge "!" rojo superpuesto.
+✅ GND copper pour: rectángulos de cobre hachureados cerca de los pads GND (`fill="url(#hatch)"`).
+✅ Via symbols en junctions de trazas: círculo gris con drill hole oscuro, hasta 40 vías por diseño.
+✅ Pad rendering correcto: pads SMD rectangulares (`rx="0.2"`) para ICs/módulos grandes; pads THT circulares con drill hole interior negro para pasivos.
+✅ Pin 1 chamfer: triángulo de polígono en la esquina superior-izquierda del footprint de ICs.
+✅ Leyenda de capas en esquina superior-derecha: Top Copper / Bottom Copper / Vias con swatches de color.
+✅ DRC summary strip al pie del board con conteo de errores y warnings.
+✅ `stroke-linecap="round"` en todas las trazas de cobre.
+
+### 4.37 Export ZIP Bundle (v4.7.0)
+✅ `GET /api/circuits/{id}/export.zip` — descarga un ZIP completo del proyecto con:
+  - `schematic.svg` — esquemático renderizado (listo para abrir en navegador)
+  - `<name>.kicad_sch` — esquemático KiCad v6 (abrir en KiCad 6/7/8)
+  - `bom.csv` — lista de materiales con cantidad y footprints
+  - `netlist.json` — netlist completa en JSON
+  - `pcb_layout.svg` — layout PCB con capas y pads
+  - `gerber/<layer>.gbr` — archivos Gerber RS-274X para fabricación
+  - `README.txt` — resumen del proyecto + resultados DRC
 
 ### 4.20 PCBRenderer Mejorado (v4.1)
 ✅ **Placement funcional**: MCU en centro, pasivos pequeños en cluster adyacente, módulos grandes en columna izquierda, varios en fila inferior.
@@ -798,6 +851,7 @@ ed31a91  perf: ronda 2 — conexión SQLite persistente + WAL
 | v3.9.0  | 2026-04-20  | Nuevo diseño UI CAD-instrument (design system completo); bottom nav eliminado → hamburger mobile; composer simplificado; empty state chat mobile; agent routing fix (escribí/código → design, no query); Ctrl+K unificado memoria+KB con {text,score}; 15 mensajes de sesión larga testeados; KB indexada con 10 documentos |
 | v4.0.0  | 2026-04-20  | Platform context persistente (C++ por default); firmware iterativo con diff coloreado (_DiffMixin, intent "modify"); datasheet auto-fetch + indexado KB en background; export ZIP sesión (chat.md + firmware.cpp + decisiones.md); error patterns en vector memory; Wokwi endpoint diagram.json; voice auto-send pipeline |
 | v4.1.0  | 2026-04-20  | CircuitAgent domain-aware (8 dominios, MCU auto-select, hints por dominio, flyback auto-add); SchematicRenderer refactor (14 símbolos, layout funcional, routing ortogonal, color-coding, title block); KiCad exporter nuevo (kicad_exporter.py, símbolos embebidos, net labels, power symbols, endpoint GET /schematic.kicad_sch); PCBRenderer mejorado (placement funcional, routing 2-capas, 14 footprints, Gerber RS-274X 8 archivos + README) |
+| v4.7.0  | 2026-04-22  | Auditoría Semanas 1-3: MCU pin rules (6 plataformas), 15+ símbolos SVG nuevos, 3 DRC checks nuevos (5V→3V3/motor sin driver/ESP bulk cap), BOM agrupado+footprints KiCad, firmware retry 2x+error parsing inteligente, snippet library 18+ componentes, PCB renderer profesional (DRC highlight/copper pour/vias/pads/leyenda), export ZIP bundle (/export.zip). Tests: 56/56. |
 | v4.6.0  | 2026-04-22  | Performance: 11 fixes aplicados — SQLite persistente + WAL, dirty flag facts/graph, streaming en bloque, call_llm_async directo, SVG LRU cache, título en background, GZipMiddleware, fast-path hash SemanticCache, asyncio.get_event_loop() → get_running_loop(), requests → httpx (10 archivos). Tests: 56/56. |
 | v4.5.0  | 2026-04-21  | Fix domain_hint nunca pasado al prompt (circuito riego sin sensor humedad); regla anti-nodos-duplicados en CIRCUIT_PARSE_PROMPT; SVG responsivo 100%×100% (ya no se ve centrado en gris); Viewer 2D reescrito: fetch SVG servidor + pan/zoom (rueda, drag, doble-clic reset) + fallback client-side corregido (root cause: container.id vacío → SVG.js fallaba silenciosamente); Viewer 3D: OrbitControls r128, PCB verde con borde dorado, componentes tipados por tipo (14 estilos), cables con arco entre nets, sprite labels, iluminación 3 capas, _resetThreeJS(); Editor: click-to-select migrado al sidebar (compatible con server SVG) |
 | v4.4.1  | 2026-04-21  | Verificación total: fix CRÍTICO IndexError parser S-expression (circuit_importer.py — validación bounds + paréntesis sin cerrar); fix ADVERTENCIA component_library.json sin try/except (fallback a dicts vacíos); fix ADVERTENCIA PUT /{id} no chequeaba save_version() retorno; fix INFO guard renderSchematic en viewer; fix INFO MULTI_USER documentado en .env.example. 56/56 tests siguen pasando. |

@@ -142,6 +142,77 @@ def _select_mcu(description: str, domain: str, user_mcu: str) -> str:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# MCU PIN RULES — injected into prompt to prevent GPIO conflicts
+# ──────────────────────────────────────────────────────────────────────────────
+
+MCU_PIN_RULES: Dict[str, str] = {
+    "Arduino Uno": """
+PINES ARDUINO UNO (obligatorio respetar):
+- Digital: D0-D13  (D0/D1 = UART — no usar si hay UART activo)
+- Analógico: A0-A5 (ADC 10-bit)
+- PWM disponible SOLO en: D3, D5, D6, D9, D10, D11
+- I2C: SDA=A4, SCL=A5  (exclusivos — no asignar a otro periférico)
+- SPI: MOSI=D11, MISO=D12, SCK=D13, SS=D10
+- Límite: 40 mA por pin, 200 mA total MCU
+""",
+    "Arduino Nano": """
+PINES ARDUINO NANO (obligatorio respetar):
+- Digital: D0-D13  (D0/D1 = UART)
+- Analógico: A0-A7  (A6/A7 solo lectura analógica, sin función digital)
+- PWM disponible SOLO en: D3, D5, D6, D9, D10, D11
+- I2C: SDA=A4, SCL=A5  (exclusivos)
+- SPI: MOSI=D11, MISO=D12, SCK=D13, SS=D10
+""",
+    "Arduino Mega": """
+PINES ARDUINO MEGA (obligatorio respetar):
+- Digital: D0-D53
+- Analógico: A0-A15
+- PWM disponible en: D2-D13, D44-D46
+- I2C: SDA=D20, SCL=D21  (exclusivos)
+- SPI: MOSI=D51, MISO=D50, SCK=D52, SS=D53
+- UART adicional: Serial1=D18/D19, Serial2=D16/D17, Serial3=D14/D15
+""",
+    "Raspberry Pi Pico": """
+PINES RASPBERRY PI PICO (obligatorio respetar):
+- GPIO: GP0-GP28  (máx 3.3V — NO tolera 5V)
+- ADC: SOLO GP26(ADC0), GP27(ADC1), GP28(ADC2)
+- I2C0: SDA=GP4, SCL=GP5  |  I2C1: SDA=GP6, SCL=GP7
+- SPI0: MOSI=GP3, MISO=GP4, SCK=GP2  |  SPI1: MOSI=GP11, MISO=GP12, SCK=GP10
+- PWM: todos los pines (pares GP0/GP1, GP2/GP3, ...)
+- Sensor 5V → divisor resistivo o level shifter obligatorio
+""",
+    "ESP32": """
+PINES ESP32 (obligatorio respetar — evitar conflictos):
+- ADC seguro con WiFi: GPIO32-GPIO39  (evitar GPIO0/2/15 para ADC)
+- Input-only (sin pull-up): GPIO34, GPIO35, GPIO36, GPIO39
+- I2C (por defecto): SDA=GPIO21, SCL=GPIO22  (exclusivos)
+- SPI (por defecto): MOSI=GPIO23, MISO=GPIO19, SCK=GPIO18, SS=GPIO5
+- UART0 (USB): TX=GPIO1, RX=GPIO3  |  UART2: TX=GPIO17, RX=GPIO16
+- DAC verdadero: GPIO25, GPIO26
+- Máx 3.3V en entradas — sensor 5V → divisor de tensión obligatorio
+""",
+    "ESP8266": """
+PINES ESP8266 (obligatorio respetar):
+- GPIO disponibles: GPIO0, GPIO2, GPIO4, GPIO5, GPIO12-GPIO16
+- GPIO0/2/15: estado en boot — no conectar a GND ni periféricos que los fuerzen
+- ADC: solo A0 (0-1V, o 0-3.3V según módulo)
+- I2C: SDA=GPIO4, SCL=GPIO5  (software I2C)
+- SPI: MOSI=GPIO13, MISO=GPIO12, SCK=GPIO14, SS=GPIO15
+- Máx 3.3V en entradas
+""",
+}
+
+
+def _mcu_pin_rules(mcu: str) -> str:
+    """Returns formatted pin constraint block for the given MCU string."""
+    mcu_lower = mcu.lower()
+    for key, rules in MCU_PIN_RULES.items():
+        if key.lower() in mcu_lower or any(w in mcu_lower for w in key.lower().split()):
+            return rules
+    return ""
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # MAIN PROMPT
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -150,6 +221,7 @@ CIRCUIT_PARSE_PROMPT = """Eres un ingeniero electrónico. Genera una netlist JSO
 Descripción: "{description}"
 MCU: "{mcu}"
 {domain_hint}
+{mcu_pin_rules}
 Reglas obligatorias (aplica todas):
 - LEDs: resistencia limitadora en serie (220Ω típico)
 - Relay: diodo flyback 1N4007 en bobina
@@ -180,6 +252,7 @@ class CircuitAgent:
                 description=description,
                 mcu=best_mcu,
                 domain_hint=domain_hint,
+                mcu_pin_rules=_mcu_pin_rules(best_mcu),
             )
 
             logger.info(f"[CircuitAgent] parse_circuit START — domain={domain} mcu={best_mcu} model={LLM_MODEL_SMART!r} prompt_len={len(prompt)}")
