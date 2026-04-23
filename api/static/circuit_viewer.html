@@ -737,23 +737,35 @@
                 breadboardView.clientWidth / Math.max(breadboardView.clientHeight, 1),
                 0.1, 2000
             );
-            threeCamera.position.set(60, 90, 140);
-            threeCamera.lookAt(0, 0, 0);
+            threeCamera.position.set(0, 55, 170);
+            threeCamera.lookAt(0, 8, 0);
 
-            threeRenderer = new THREE.WebGLRenderer({ antialias: true });
+            threeRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
             threeRenderer.setPixelRatio(window.devicePixelRatio || 1);
             threeRenderer.shadowMap.enabled = true;
+            threeRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            threeRenderer.setClearColor(0x1a1a2e, 1);
             threeRenderer.setSize(breadboardView.clientWidth, breadboardView.clientHeight);
             breadboardView.innerHTML = '';
             breadboardView.appendChild(threeRenderer.domElement);
 
-            // Luces
-            threeScene.add(new THREE.AmbientLight(0x404040, 2.5));
-            const dir = new THREE.DirectionalLight(0xffffff, 1.8);
-            dir.position.set(80, 150, 80);
+            // Luces — reducir ambient para que se vean sombras y profundidad
+            threeScene.add(new THREE.AmbientLight(0x6677aa, 0.55));
+            const dir = new THREE.DirectionalLight(0xffffff, 2.8);
+            dir.position.set(60, 120, 80);
             dir.castShadow = true;
+            dir.shadow.mapSize.width  = 2048;
+            dir.shadow.mapSize.height = 2048;
+            dir.shadow.camera.near = 1;
+            dir.shadow.camera.far  = 500;
+            dir.shadow.camera.left = dir.shadow.camera.bottom = -180;
+            dir.shadow.camera.right = dir.shadow.camera.top  =  180;
             threeScene.add(dir);
-            threeScene.add(new THREE.HemisphereLight(0x334466, 0x111111, 0.8));
+            // Fill light from opposite side
+            const fill = new THREE.DirectionalLight(0x8899cc, 0.7);
+            fill.position.set(-80, 40, -60);
+            threeScene.add(fill);
+            threeScene.add(new THREE.HemisphereLight(0x335577, 0x111122, 0.5));
 
             // Grid
             threeScene.add(new THREE.GridHelper(300, 30, 0x222233, 0x1a1a2e));
@@ -1055,10 +1067,30 @@
                 threeScene.add(ic);
                 topY = 20;
 
+            } else if (t === 'rtc' || t === 'ds3231' || t === 'ds1307') {
+                // RTC module: small PCB with coin cell holder
+                const bGeo = new THREE.BoxGeometry(38, 1.6, 22);
+                mesh = new THREE.Mesh(bGeo, new THREE.MeshStandardMaterial({ color: 0x004488, roughness: 0.8 }));
+                mesh.position.set(x, 0.8, z);
+                threeScene.add(mesh);
+                // Coin cell holder (CR2032)
+                const cellGeo = new THREE.CylinderGeometry(6, 6, 3.2, 20);
+                const cell = new THREE.Mesh(cellGeo, new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.8, roughness: 0.2 }));
+                cell.position.set(x + 10, 3.2, z);
+                threeScene.add(cell);
+                // IC chip
+                const icGeo = new THREE.BoxGeometry(8, 2, 6);
+                const ic = new THREE.Mesh(icGeo, new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 }));
+                ic.position.set(x - 10, 2.6, z);
+                threeScene.add(ic);
+                _addEdgeHighlight(mesh, 0x3399ff);
+                topY = 6;
+
             } else if (t === 'sensor' || t === 'moisture_sensor' || t === 'hc_sr04' || t === 'ultrasonic') {
-                // Sensor module: flat green board
+                // Sensor module: flat board — use teal/purple to avoid blending with PCB
+                const sensorColor = (t === 'moisture_sensor' || t === 'sensor') ? 0x1a3a5c : 0x3a2a5c;
                 const bGeo = new THREE.BoxGeometry(18, 1.6, 12);
-                mesh = new THREE.Mesh(bGeo, new THREE.MeshStandardMaterial({ color: 0x1a5c34, roughness: 0.8 }));
+                mesh = new THREE.Mesh(bGeo, new THREE.MeshStandardMaterial({ color: sensorColor, roughness: 0.8 }));
                 mesh.position.set(x, 0.8, z);
                 threeScene.add(mesh);
                 // Transducer circles for ultrasonic

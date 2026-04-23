@@ -399,6 +399,24 @@ class SchematicRenderer:
             "battery":               self._sym_battery,
             "battery_18650":         self._sym_battery,
             "lipo":                  self._sym_battery,
+            # RTC modules
+            "rtc":                   self._sym_rtc,
+            "ds3231":                self._sym_rtc,
+            "ds1307":                self._sym_rtc,
+            "pcf8523":               self._sym_rtc,
+            # Explicit diode part numbers
+            "1n4007":                self._sym_diode,
+            "1n5819":                self._sym_diode,
+            "1n4148":                self._sym_diode,
+            "zener":                 self._sym_diode,
+            # Explicit transistors
+            "bc547":                 self._sym_transistor,
+            "bc557":                 self._sym_transistor,
+            "2n2222":                self._sym_transistor,
+            # Explicit MOSFETs
+            "irf520":                self._sym_mosfet,
+            "irf540":                self._sym_mosfet,
+            "irfz44":                self._sym_mosfet,
         }
         draw_fn = dispatch.get(t, self._sym_generic)
         draw_fn(dwg, x, y, comp)
@@ -903,15 +921,59 @@ class SchematicRenderer:
                              font_size=8, fill="#117700",
                              font_family="monospace", text_anchor="middle"))
 
+    def _sym_rtc(self, dwg, x, y, comp):
+        """RTC module — IC box + coin cell symbol."""
+        W, H = 52, 32
+        name = comp.get("name", comp.get("id","RTC"))[:10]
+        dwg.add(dwg.rect(insert=(x-W//2,y-H//2), size=(W,H),
+                         fill="#e8f0ff", stroke="#224488", stroke_width=1.8, rx=2))
+        # Header bar
+        dwg.add(dwg.rect(insert=(x-W//2,y-H//2), size=(W,14),
+                         fill="#224488", fill_opacity=0.15, rx=2))
+        dwg.add(dwg.text("RTC", insert=(x,y-H//2+10),
+                         font_size=9, fill="#224488",
+                         font_family="monospace", text_anchor="middle", font_weight="bold"))
+        dwg.add(dwg.text(name, insert=(x,y+8),
+                         font_size=8, fill="#334455",
+                         font_family="monospace", text_anchor="middle"))
+        # Coin cell symbol (small circle on side)
+        dwg.add(dwg.circle(center=(x+W//2+8,y), r=7,
+                           fill="none", stroke="#888899", stroke_width=1.5))
+        dwg.add(dwg.line(start=(x+W//2+12,y), end=(x+W//2+18,y),
+                         stroke="#888899", stroke_width=1.2))
+        # I2C pin stubs
+        for sign, label in [(-1,"SDA"), (-1,"SCL"), (1,"VCC"), (1,"GND")]:
+            yi = y - 8 + (0 if label in ("SDA","VCC") else 8)
+            x_body = x + sign * W//2
+            x_tip  = x + sign * (W//2 + 12)
+            dwg.add(dwg.line(start=(x_body,yi), end=(x_tip,yi),
+                             stroke=self._PIN_COLOR, stroke_width=1))
+            dwg.add(dwg.text(label, insert=(x_tip + sign*4, yi+3),
+                             font_size=6, fill="#667788",
+                             font_family="monospace",
+                             text_anchor="start" if sign > 0 else "end"))
+
     def _sym_generic(self, dwg, x, y, comp):
         """Fallback generic IC."""
-        W, H = 44, 30
-        t = comp.get("resolved_type", comp.get("type","?"))[:7]
+        W, H = 48, 34
+        name = comp.get("name", comp.get("id","?"))[:10]
+        t = comp.get("resolved_type", comp.get("type","?"))[:8]
         dwg.add(dwg.rect(insert=(x-W//2,y-H//2), size=(W,H),
-                         fill="#f4f4f4", stroke="#666677", stroke_width=1.2, rx=2))
-        dwg.add(dwg.text(t, insert=(x,y+4),
-                         font_size=8, fill="#444455",
+                         fill="#f0f0f8", stroke="#6666aa", stroke_width=1.5, rx=2))
+        # Small type label at top
+        dwg.add(dwg.text(t, insert=(x,y-H//2+10),
+                         font_size=7, fill="#8888aa",
                          font_family="monospace", text_anchor="middle"))
+        dwg.add(dwg.text(name, insert=(x,y+5),
+                         font_size=8, fill="#333355",
+                         font_family="monospace", text_anchor="middle"))
+        # Generic pin stubs (2 each side)
+        for sign in [-1, 1]:
+            for i, yi in enumerate([y-8, y+4]):
+                x_body = x + sign * W//2
+                x_tip  = x + sign * (W//2 + 10)
+                dwg.add(dwg.line(start=(x_body,yi), end=(x_tip,yi),
+                                 stroke=self._PIN_COLOR, stroke_width=1))
 
     # ── Legend ───────────────────────────────────────────────────────────────
 
