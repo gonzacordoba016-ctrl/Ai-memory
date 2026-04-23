@@ -1,6 +1,6 @@
 # STRATUM — Contexto del Proyecto
-> Última actualización: 2026-04-22
-> Versión actual: **v4.7.0**
+> Última actualización: 2026-04-23
+> Versión actual: **v4.9.0**
 > Tagline: _"Tu memoria técnica siempre disponible"_
 > Estado: **Production-ready** (local + Railway)
 
@@ -434,6 +434,44 @@ Dominios soportados:
 ✅ DRC summary strip al pie del board con conteo de errores y warnings.
 ✅ `stroke-linecap="round"` en todas las trazas de cobre.
 
+### 4.39 3D Viewer Lighting + Schematic Dispatch Fix (v4.9.0)
+✅ **3D Viewer — iluminación y cámara**:
+  - `AmbientLight` reducido de 2.5 → 0.55: componentes ahora muestran sombras y profundidad real.
+  - Cámara movida a `(0, 55, 170)` mirando `(0, 8, 0)` — ángulo oblicuo en vez de cenital, revela altura de componentes.
+  - `PCFSoftShadowMap` + `shadow.mapSize` 2048×2048 — sombras suaves de alta resolución.
+  - Fill light añadido `(−80, 40, −60)` — ilumina cara trasera de componentes para evitar áreas negras.
+  - Fondo del renderer cambiado a `#1a1a2e` (azul oscuro EDA) — contrasta con PCB verde.
+✅ **3D Viewer — nuevos meshes y color fix**:
+  - Sensor modules (`moisture_sensor`, `sensor`): color cambiado de `0x1a5c34` (idéntico al PCB) a `0x1a3a5c` — ya no se funden con el board.
+  - RTC module (`rtc`, `ds3231`, `ds1307`): nuevo mesh con PCB azul, portapila CR2032 (cilindro plateado), chip IC negro, edge highlight cyan.
+✅ **Esquemático — dispatch expandido**:
+  - Nuevo método `_sym_rtc()`: symbol IC box + barra header "RTC" + I2C pin stubs (SDA/SCL/VCC/GND) + símbolo portapila lateral.
+  - Dispatch de tipos explícitos añadidos: `1n4007`, `1n5819`, `1n4148`, `zener` → `_sym_diode`; `rtc`, `ds3231`, `ds1307`, `pcf8523` → `_sym_rtc`; `bc547`, `bc557`, `2n2222` → `_sym_transistor`; `irf520`, `irf540`, `irfz44` → `_sym_mosfet`.
+  - `_sym_generic` mejorado: muestra tipo (7 chars) + nombre + 4 pin stubs (2 por lado) en vez de solo una caja gris.
+
+### 4.38 EDA Visualization — Light Theme KiCad-style (v4.8.0)
+✅ **`tools/schematic_renderer.py`** reescrito completo — tema EDA light:
+  - Fondo crema `#f5f6f7` + grilla fina (20px) + grilla mayor (100px) + borde área.
+  - Paleta net dark/saturated para fondo claro: VCC=#cc0000, GND=#1a1a1a, I2C=#007744, SPI=#770077, UART=#885500.
+  - 14+ símbolos SVG reescritos con `_SYM_STROKE=#1a1a2e`, fills claros por grupo funcional (MCU=#e8f0ff, sensor=#e8fff4, driver=#fff0e8, comm=#f4e8ff).
+  - `_draw_power_rails()`: símbolo VCC (flecha arriba) y GND (3 líneas horizontales decrecientes) por red de alimentación.
+  - MCU symbol: caja con header azul, pin stubs numerados 4×2 lados, nombre abreviado.
+  - Title block EDA: sección inferior con dividers — TITLE / MCU+Power / Domain+Count / DRC badge / Stratum watermark.
+✅ **`tools/pcb_renderer.py`** — pads THT y courtyard por componente:
+  - Courtyard individual dashed amarillo (`#ffcc00`, dasharray 0.6,0.4) con clearance 0.5mm por componente.
+  - Pads THT: anillo anular dorado (outer circle) + drill hole negro (inner circle).
+  - Pads SMD con pitch calculado desde altura del componente.
+  - Silkscreen blanco dashed por componente, ref label sobre courtyard.
+✅ **`api/static/circuit_viewer.html`** — 3D parametric completo:
+  - `_addComponent3D(comp, t, x, z)`: geometrías por tipo — resistor (CylinderGeometry horizontal + 3 bands + leads), LED (cuerpo + dome esférico translúcido), capacitor electrolítico (cilindro alto + disc plateado + K stripe), diodo axial (cylinder + cathode band), Arduino (PCB + USB + pin headers + IC), ESP32 (PCB + shield metálico + antenna trace), relay (cuerpo + coil housing), display (PCB + pantalla emissive), L298N (board + heatsink fins + IC), genérico IC (flat box + 4 filas de pines dorados).
+  - `MeshStandardMaterial` con roughness/metalness reemplaza MeshPhongMaterial.
+  - Layout: MCU types sorted first, resto en grid.
+  - Wire arcs: smooth 5 puntos con `sin(t * PI)` en Y.
+✅ **`agent/orchestrator.py`** — routing fix `circuit_design`:
+  - `CIRCUIT_DESIGN_KEYWORDS` ampliado: `"parsea un circuito"`, `"parsea el circuito"`, `"parsea este circuito"`, `"parse a circuit"`, `"generá el esquemático"`, `"generá un circuito"`, `"generá la netlist"`, `"generar circuito"`, `"generar esquemático"`, `"generar netlist"`.
+  - Root cause: `_keyword_route` itera el dict en orden; `hardware` keywords contenían `"circuito"` — capturaba antes que `circuit_design`.
+✅ **Modelo LLM**: migrado a `anthropic/claude-sonnet-4-6` via Railway env vars (`OPENROUTER_MODEL`, `LLM_MODEL_SMART`, `LLM_MODEL_FAST`). Revirtido a `openai/gpt-4o-mini` por créditos insuficientes en OpenRouter (402 Payment Required).
+
 ### 4.37 Export ZIP Bundle (v4.7.0)
 ✅ `GET /api/circuits/{id}/export.zip` — descarga un ZIP completo del proyecto con:
   - `schematic.svg` — esquemático renderizado (listo para abrir en navegador)
@@ -851,6 +889,8 @@ ed31a91  perf: ronda 2 — conexión SQLite persistente + WAL
 | v3.9.0  | 2026-04-20  | Nuevo diseño UI CAD-instrument (design system completo); bottom nav eliminado → hamburger mobile; composer simplificado; empty state chat mobile; agent routing fix (escribí/código → design, no query); Ctrl+K unificado memoria+KB con {text,score}; 15 mensajes de sesión larga testeados; KB indexada con 10 documentos |
 | v4.0.0  | 2026-04-20  | Platform context persistente (C++ por default); firmware iterativo con diff coloreado (_DiffMixin, intent "modify"); datasheet auto-fetch + indexado KB en background; export ZIP sesión (chat.md + firmware.cpp + decisiones.md); error patterns en vector memory; Wokwi endpoint diagram.json; voice auto-send pipeline |
 | v4.1.0  | 2026-04-20  | CircuitAgent domain-aware (8 dominios, MCU auto-select, hints por dominio, flyback auto-add); SchematicRenderer refactor (14 símbolos, layout funcional, routing ortogonal, color-coding, title block); KiCad exporter nuevo (kicad_exporter.py, símbolos embebidos, net labels, power symbols, endpoint GET /schematic.kicad_sch); PCBRenderer mejorado (placement funcional, routing 2-capas, 14 footprints, Gerber RS-274X 8 archivos + README) |
+| v4.9.0  | 2026-04-23  | 3D viewer: AmbientLight 2.5→0.55, cámara oblicua (0,55,170), PCFSoftShadowMap 2048, fill light, fondo #1a1a2e, sensor color fix, RTC mesh (CR2032+IC). Schematic: _sym_rtc nuevo, dispatch 14 tipos explícitos (1n4007/zener/bc547/irf520/etc), _sym_generic mejorado con pins. |
+| v4.8.0  | 2026-04-22  | EDA visualization rewrite: schematic light theme KiCad-style (fondo crema, grilla, 14 símbolos, title block, power rails VCC/GND); PCB THT annular pads + courtyard dashed + SMD pads; 3D viewer parametric completo (10 tipos de geometrías, MeshStandardMaterial, wire arcs suaves); routing fix "parsea un circuito" → circuit_design; migración modelo Claude Sonnet 4.6 (revertida por créditos). |
 | v4.7.0  | 2026-04-22  | Auditoría Semanas 1-3: MCU pin rules (6 plataformas), 15+ símbolos SVG nuevos, 3 DRC checks nuevos (5V→3V3/motor sin driver/ESP bulk cap), BOM agrupado+footprints KiCad, firmware retry 2x+error parsing inteligente, snippet library 18+ componentes, PCB renderer profesional (DRC highlight/copper pour/vias/pads/leyenda), export ZIP bundle (/export.zip). Tests: 56/56. |
 | v4.6.0  | 2026-04-22  | Performance: 11 fixes aplicados — SQLite persistente + WAL, dirty flag facts/graph, streaming en bloque, call_llm_async directo, SVG LRU cache, título en background, GZipMiddleware, fast-path hash SemanticCache, asyncio.get_event_loop() → get_running_loop(), requests → httpx (10 archivos). Tests: 56/56. |
 | v4.5.0  | 2026-04-21  | Fix domain_hint nunca pasado al prompt (circuito riego sin sensor humedad); regla anti-nodos-duplicados en CIRCUIT_PARSE_PROMPT; SVG responsivo 100%×100% (ya no se ve centrado en gris); Viewer 2D reescrito: fetch SVG servidor + pan/zoom (rueda, drag, doble-clic reset) + fallback client-side corregido (root cause: container.id vacío → SVG.js fallaba silenciosamente); Viewer 3D: OrbitControls r128, PCB verde con borde dorado, componentes tipados por tipo (14 estilos), cables con arco entre nets, sprite labels, iluminación 3 capas, _resetThreeJS(); Editor: click-to-select migrado al sidebar (compatible con server SVG) |
