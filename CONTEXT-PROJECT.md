@@ -1,6 +1,6 @@
 # STRATUM — Contexto del Proyecto
 > Última actualización: 2026-04-23
-> Versión actual: **v4.9.0**
+> Versión actual: **v4.10.0**
 > Tagline: _"Tu memoria técnica siempre disponible"_
 > Estado: **Production-ready** (local + Railway)
 
@@ -889,6 +889,7 @@ ed31a91  perf: ronda 2 — conexión SQLite persistente + WAL
 | v3.9.0  | 2026-04-20  | Nuevo diseño UI CAD-instrument (design system completo); bottom nav eliminado → hamburger mobile; composer simplificado; empty state chat mobile; agent routing fix (escribí/código → design, no query); Ctrl+K unificado memoria+KB con {text,score}; 15 mensajes de sesión larga testeados; KB indexada con 10 documentos |
 | v4.0.0  | 2026-04-20  | Platform context persistente (C++ por default); firmware iterativo con diff coloreado (_DiffMixin, intent "modify"); datasheet auto-fetch + indexado KB en background; export ZIP sesión (chat.md + firmware.cpp + decisiones.md); error patterns en vector memory; Wokwi endpoint diagram.json; voice auto-send pipeline |
 | v4.1.0  | 2026-04-20  | CircuitAgent domain-aware (8 dominios, MCU auto-select, hints por dominio, flyback auto-add); SchematicRenderer refactor (14 símbolos, layout funcional, routing ortogonal, color-coding, title block); KiCad exporter nuevo (kicad_exporter.py, símbolos embebidos, net labels, power symbols, endpoint GET /schematic.kicad_sch); PCBRenderer mejorado (placement funcional, routing 2-capas, 14 footprints, Gerber RS-274X 8 archivos + README) |
+| v4.10.0 | 2026-04-23  | KiCad Symbol Renderer (Opción B): parser S-expressions KiCad (kicad_sym_parser.py), renderer con auto-fit (kicad_sym_renderer.py), 13 símbolos reales descargados de gitlab.com/kicad/libraries (R,C,C_Polarized,L,D,LED,Battery,ESP32,ESP8266,DS3231,DS1307). Integrado en schematic_renderer.py con fallback transparente. Símbolos KiCad activos: resistor/capacitor/inductor/diodo/LED/batería/ESP32/ESP8266/RTC. |
 | v4.9.0  | 2026-04-23  | 3D viewer: AmbientLight 2.5→0.55, cámara oblicua (0,55,170), PCFSoftShadowMap 2048, fill light, fondo #1a1a2e, sensor color fix, RTC mesh (CR2032+IC). Schematic: _sym_rtc nuevo, dispatch 14 tipos explícitos (1n4007/zener/bc547/irf520/etc), _sym_generic mejorado con pins. |
 | v4.8.0  | 2026-04-22  | EDA visualization rewrite: schematic light theme KiCad-style (fondo crema, grilla, 14 símbolos, title block, power rails VCC/GND); PCB THT annular pads + courtyard dashed + SMD pads; 3D viewer parametric completo (10 tipos de geometrías, MeshStandardMaterial, wire arcs suaves); routing fix "parsea un circuito" → circuit_design; migración modelo Claude Sonnet 4.6 (revertida por créditos). |
 | v4.7.0  | 2026-04-22  | Auditoría Semanas 1-3: MCU pin rules (6 plataformas), 15+ símbolos SVG nuevos, 3 DRC checks nuevos (5V→3V3/motor sin driver/ESP bulk cap), BOM agrupado+footprints KiCad, firmware retry 2x+error parsing inteligente, snippet library 18+ componentes, PCB renderer profesional (DRC highlight/copper pour/vias/pads/leyenda), export ZIP bundle (/export.zip). Tests: 56/56. |

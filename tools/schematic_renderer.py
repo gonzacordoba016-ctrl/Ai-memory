@@ -4,6 +4,9 @@ import svgwrite
 from typing import Dict, Any, List, Tuple, Optional
 import math
 from core.logger import get_logger
+from tools.kicad_sym_renderer import KiCadSymRenderer as _KSR
+
+_kicad = _KSR()
 
 logger = get_logger(__name__)
 
@@ -334,6 +337,27 @@ class SchematicRenderer:
     def _draw_component(self, dwg, comp: Dict, pos: Tuple[int, int]):
         x, y = pos
         t = comp.get("resolved_type", comp.get("type", "generic")).lower()
+
+        # ── Try KiCad symbol first ──────────────────────────────────────────
+        if _kicad.render(dwg, x, y, t):
+            ref  = comp.get("id", "?")
+            val  = comp.get("value", "")
+            unit = comp.get("unit", "")
+            name = comp.get("name", "")
+            dwg.add(dwg.text(ref, insert=(x, y - 42),
+                             font_size=10, fill=self._TEXT_REF,
+                             font_family="monospace", text_anchor="middle",
+                             font_weight="bold"))
+            if val:
+                dwg.add(dwg.text(f"{val}{unit}", insert=(x, y - 30),
+                                 font_size=9, fill=self._TEXT_VAL,
+                                 font_family="monospace", text_anchor="middle"))
+            if name and name != ref:
+                dwg.add(dwg.text(name[:24], insert=(x, y + 56),
+                                 font_size=8, fill="#445588",
+                                 font_family="Arial", text_anchor="middle"))
+            return
+
         dispatch = {
             "resistor":              self._sym_resistor,
             "led":                   self._sym_led,
