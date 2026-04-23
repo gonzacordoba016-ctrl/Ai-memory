@@ -73,6 +73,10 @@ CIRCUIT_DESIGN_KEYWORDS = [
     "diseñame el sistema de riego", "diseñame el sistema de domótica",
     "diseñame el control", "diseñame la fuente", "diseñame el driver",
     "arma el circuito", "crea el circuito completo",
+    "parsea un circuito", "parsea el circuito", "parsea este circuito",
+    "parse a circuit", "parse circuit",
+    "generá el esquemático", "generá un circuito", "generá la netlist",
+    "generar circuito", "generar esquemático", "generar netlist",
 ]
 
 KEYWORD_ROUTES = {
