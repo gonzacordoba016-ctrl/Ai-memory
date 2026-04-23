@@ -283,65 +283,100 @@ class PCBRenderer:
                 is_drc_error = cid in drc_error_comps
                 body_color   = _body_color(ctype)
                 border_color = "#ff3333" if is_drc_error else "#daa520"
-                border_w     = 0.5 if is_drc_error else 0.25
+                border_w     = 0.5 if is_drc_error else 0.2
 
-                # Component body
+                # ── Courtyard (dashed yellow rect, 0.5mm clearance per side) ───
+                cy_off = 0.5
+                svg.append(
+                    f'<rect x="{cx-hw-cy_off:.3f}" y="{cy-hh-cy_off:.3f}" '
+                    f'width="{w+cy_off*2:.3f}" height="{h+cy_off*2:.3f}" '
+                    f'fill="none" stroke="#ffcc00" stroke-width="0.15" '
+                    f'stroke-dasharray="0.6,0.4"/>'
+                )
+
+                # ── Silkscreen component outline (white, dashed) ──────────────
+                svg.append(
+                    f'<rect x="{cx-hw:.3f}" y="{cy-hh:.3f}" width="{w:.3f}" height="{h:.3f}" '
+                    f'fill="none" stroke="white" stroke-width="0.12" '
+                    f'stroke-dasharray="1,0.5" opacity="0.6"/>'
+                )
+
+                # ── Component body fill ───────────────────────────────────────
                 svg.append(
                     f'<rect x="{cx-hw:.3f}" y="{cy-hh:.3f}" width="{w:.3f}" height="{h:.3f}" '
                     f'fill="{body_color}" stroke="{border_color}" stroke-width="{border_w:.2f}" rx="0.5"'
                     + (' filter="url(#glow)"' if is_drc_error else '') + '/>'
                 )
 
-                # Pin 1 corner chamfer
+                # ── Pin 1 corner chamfer ──────────────────────────────────────
                 svg.append(
-                    f'<polygon points="{cx-hw:.2f},{cy-hh:.2f} {cx-hw+1.5:.2f},{cy-hh:.2f} '
-                    f'{cx-hw:.2f},{cy-hh+1.5:.2f}" fill="#daa520" fill-opacity="0.7"/>'
+                    f'<polygon points="{cx-hw:.2f},{cy-hh:.2f} {cx-hw+1.8:.2f},{cy-hh:.2f} '
+                    f'{cx-hw:.2f},{cy-hh+1.8:.2f}" fill="#daa520" fill-opacity="0.8"/>'
                 )
 
-                # Pads — rectangular for ICs/modules, oval for passives
+                # ── Pads ──────────────────────────────────────────────────────
                 if ctype in _MCU_TYPES or ctype in _LARGE_TYPES:
-                    # Multiple pads along sides
-                    n_pins = max(2, min(6, int(w / 3)))
-                    for side, (px_base, py_base, dxs, dys) in enumerate([
-                        (cx - hw, cy - hh + 1.5, 0, h / (n_pins + 1)),    # left
-                        (cx + hw, cy - hh + 1.5, 0, h / (n_pins + 1)),    # right
-                    ]):
+                    # SMD pads along left/right sides
+                    n_pins = max(2, min(8, int(h / 2.5)))
+                    pad_pitch = h / (n_pins + 1)
+                    for side_x in [cx - hw, cx + hw]:
                         for i in range(1, n_pins + 1):
-                            px_ = px_base
-                            py_ = py_base + (i - 1) * dys
+                            py_ = cy - hh + i * pad_pitch
                             svg.append(
-                                f'<rect x="{px_-0.4:.3f}" y="{py_-0.6:.3f}" '
-                                f'width="0.8" height="1.2" class="pad-smd" rx="0.2"/>'
+                                f'<rect x="{side_x-0.5:.3f}" y="{py_-0.7:.3f}" '
+                                f'width="1.0" height="1.4" class="pad-smd" rx="0.2"/>'
                             )
                 else:
-                    # Two circular THT pads
+                    # THT annular ring pads (copper ring + drill hole)
                     is_gnd_comp = any(
-                        cid in n.get("nodes", [f"{cid}.x"])[0] and
-                        ("gnd" in n.get("name", "").lower())
-                        for n in nets
+                        any(n.split(".")[0] == cid for n in net.get("nodes", []))
+                        and "gnd" in net.get("name", "").lower()
+                        for net in nets
                     )
-                    pad_cls = "pad-gnd" if is_gnd_comp else "pad"
-                    for px_, py_ in [(cx - hw, cy), (cx + hw, cy)]:
-                        svg.append(f'<circle cx="{px_:.3f}" cy="{py_:.3f}" r="0.7" class="{pad_cls}"/>')
-                        svg.append(f'<circle cx="{px_:.3f}" cy="{py_:.3f}" r="0.35" fill="#111"/>')
+                    pad_r_outer = 0.9
+                    pad_r_inner = 0.4  # drill
+                    pad_color   = "#b87333" if is_gnd_comp else "#daa520"
+                    for px_, py_ in [(cx - w*0.3, cy), (cx + w*0.3, cy)]:
+                        # Annular ring (filled circle)
+                        svg.append(
+                            f'<circle cx="{px_:.3f}" cy="{py_:.3f}" r="{pad_r_outer:.2f}" '
+                            f'fill="{pad_color}" stroke="#111" stroke-width="0.1"/>'
+                        )
+                        # Drill hole
+                        svg.append(
+                            f'<circle cx="{px_:.3f}" cy="{py_:.3f}" r="{pad_r_inner:.2f}" '
+                            f'fill="#0a1a0a"/>'
+                        )
 
-                # Silkscreen ref label
-                fs = max(1.0, min(2.2, w * 0.28))
+                # ── Silkscreen ref label ───────────────────────────────────────
+                fs = max(1.2, min(2.5, w * 0.30))
                 svg.append(
-                    f'<text x="{cx:.3f}" y="{cy+0.4:.3f}" '
+                    f'<text x="{cx:.3f}" y="{cy-hh-0.6:.3f}" '
                     f'font-size="{fs:.2f}" fill="white" text-anchor="middle" '
-                    f'dominant-baseline="middle" class="silkscreen">{cid}</text>'
+                    f'font-family="monospace" class="silkscreen">{cid}</text>'
                 )
 
-                # DRC error badge
+                # ── Component name on silkscreen ───────────────────────────────
+                comp_name = (comp.get("name","") or "")[:10]
+                if comp_name:
+                    fs2 = max(0.9, min(1.8, w * 0.22))
+                    svg.append(
+                        f'<text x="{cx:.3f}" y="{cy+0.5:.3f}" '
+                        f'font-size="{fs2:.2f}" fill="white" fill-opacity="0.7" '
+                        f'text-anchor="middle" dominant-baseline="middle" '
+                        f'font-family="monospace">{comp_name}</text>'
+                    )
+
+                # ── DRC error badge ───────────────────────────────────────────
                 if is_drc_error:
                     svg.append(
-                        f'<rect x="{cx+hw-3:.3f}" y="{cy-hh:.3f}" width="3" height="2" '
-                        f'fill="#ff3333" rx="0.3"/>'
+                        f'<rect x="{cx+hw-3:.3f}" y="{cy-hh:.3f}" width="3" height="2.2" '
+                        f'fill="#ff3333" rx="0.4"/>'
                     )
                     svg.append(
-                        f'<text x="{cx+hw-1.5:.3f}" y="{cy-hh+1.5:.3f}" '
-                        f'font-size="1.2" fill="white" text-anchor="middle">!</text>'
+                        f'<text x="{cx+hw-1.5:.3f}" y="{cy-hh+1.6:.3f}" '
+                        f'font-size="1.4" fill="white" text-anchor="middle" '
+                        f'font-weight="bold">!</text>'
                     )
 
             # ── Legend ───────────────────────────────────────────────────────

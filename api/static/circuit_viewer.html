@@ -789,103 +789,333 @@
         async function _buildThreeScene() {
             if (!threeScene) return;
 
-            // PCB base verde
-            const pcbW = 180, pcbD = 120;
-            const pcbGeo = new THREE.BoxGeometry(pcbW, 2, pcbD);
-            const pcbMat = new THREE.MeshPhongMaterial({ color: 0x1a6b3c, shininess: 50 });
+            // PCB base — green FR4 with copper edge
+            const pcbW = 200, pcbD = 140, pcbH = 1.6;
+            const pcbGeo = new THREE.BoxGeometry(pcbW, pcbH, pcbD);
+            const pcbMat = new THREE.MeshStandardMaterial({
+                color: 0x1a5c34, roughness: 0.85, metalness: 0.05
+            });
             const pcb = new THREE.Mesh(pcbGeo, pcbMat);
             pcb.receiveShadow = true;
-            pcb.position.set(0, -1, 0);
+            pcb.position.set(0, -pcbH / 2, 0);
             threeScene.add(pcb);
 
-            // Silkscreen border
-            const edges = new THREE.EdgesGeometry(pcbGeo);
-            threeScene.add(
-                new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xffd700, linewidth: 1 }))
-            );
+            // Copper edge traces (gold border)
+            const edgesGeo = new THREE.EdgesGeometry(pcbGeo);
+            threeScene.add(new THREE.LineSegments(
+                edgesGeo,
+                new THREE.LineBasicMaterial({ color: 0xc8a000 })
+            ));
+
+            // Silkscreen grid pattern on PCB (subtle)
+            const gridHelper = new THREE.GridHelper(Math.min(pcbW,pcbD)*0.9, 12, 0x224433, 0x1a3328);
+            gridHelper.position.set(0, 0.02, 0);
+            threeScene.add(gridHelper);
 
             if (!currentCircuit) return;
 
             const comps = currentCircuit.components || [];
-            const cols  = Math.max(1, Math.ceil(Math.sqrt(comps.length)));
-            const rows  = Math.ceil(comps.length / cols);
-            const spX   = pcbW / (cols + 1);
-            const spZ   = pcbD / (rows + 1);
-
-            // Estilos 3D por tipo
-            const typeStyle = {
-                resistor:        { color: 0xcc6600, w: 8,  h: 4,  d: 4  },
-                led:             { color: 0xff3300, w: 4,  h: 9,  d: 4  },
-                capacitor:       { color: 0x336699, w: 5,  h: 14, d: 5  },
-                esp32:           { color: 0x004455, w: 32, h: 4,  d: 22 },
-                esp8266:         { color: 0x004455, w: 26, h: 4,  d: 16 },
-                arduino_uno:     { color: 0x224466, w: 44, h: 4,  d: 32 },
-                arduino_nano:    { color: 0x334455, w: 20, h: 4,  d: 7  },
-                relay:           { color: 0x553300, w: 16, h: 14, d: 12 },
-                relay_module:    { color: 0x553300, w: 16, h: 14, d: 12 },
-                diode:           { color: 0x111111, w: 7,  h: 4,  d: 3  },
-                moisture_sensor: { color: 0x114433, w: 12, h: 6,  d: 5  },
-                sensor:          { color: 0x114433, w: 12, h: 6,  d: 5  },
-                button:          { color: 0x888888, w: 6,  h: 6,  d: 6  },
-                motor_driver:    { color: 0x222244, w: 20, h: 6,  d: 14 },
-                display:         { color: 0x000033, w: 28, h: 5,  d: 18 },
-                oled:            { color: 0x000033, w: 28, h: 5,  d: 18 },
-            };
+            // Functional layout: MCU center, others around
+            const mcuTypes = new Set(['arduino_uno','arduino_nano','arduino_mega','esp32','esp8266','pico','stm32','mcu']);
+            const mcus  = comps.filter(c => mcuTypes.has(c.resolved_type || c.type));
+            const rest  = comps.filter(c => !mcuTypes.has(c.resolved_type || c.type));
+            const ordered = [...mcus, ...rest];
+            const cols = Math.max(1, Math.ceil(Math.sqrt(ordered.length)));
+            const rows = Math.ceil(ordered.length / cols);
+            const spX  = (pcbW * 0.85) / (cols + 1);
+            const spZ  = (pcbD * 0.85) / (rows + 1);
 
             const compPos = {};
-            comps.forEach((comp, i) => {
+            ordered.forEach((comp, i) => {
                 const col = i % cols;
                 const row = Math.floor(i / cols);
-                const x   = -pcbW / 2 + spX * (col + 1);
-                const z   = -pcbD / 2 + spZ * (row + 1);
-
-                const t   = comp.resolved_type || comp.type || 'generic';
-                const sty = typeStyle[t] || { color: 0x777777, w: 10, h: 6, d: 8 };
-
-                const geo  = new THREE.BoxGeometry(sty.w, sty.h, sty.d);
-                const mat  = new THREE.MeshPhongMaterial({ color: sty.color, shininess: 70 });
-                const mesh = new THREE.Mesh(geo, mat);
-                mesh.castShadow    = true;
-                mesh.receiveShadow = true;
-                mesh.position.set(x, sty.h / 2, z);
-                threeScene.add(mesh);
-
-                // Borde highlight
-                const edgeGeo  = new THREE.EdgesGeometry(geo);
-                const edgeLine = new THREE.LineSegments(
-                    edgeGeo, new THREE.LineBasicMaterial({ color: 0x00d4ff, linewidth: 1 })
-                );
-                edgeLine.position.copy(mesh.position);
-                threeScene.add(edgeLine);
-
-                // Label sprite
-                _addSpriteLabel(comp.id, x, sty.h + 3, z);
-
-                compPos[comp.id] = { x, y: sty.h, z };
+                const x   = -pcbW * 0.425 + spX * (col + 1);
+                const z   = -pcbD * 0.425 + spZ * (row + 1);
+                const t   = (comp.resolved_type || comp.type || 'generic').toLowerCase();
+                const topY = _addComponent3D(comp, t, x, z);
+                compPos[comp.id] = { x, y: topY, z };
             });
 
-            // Cables entre nets
-            const netColors = [0xff4444, 0x44ff88, 0x4488ff, 0xffff44, 0xff44ff, 0x44ffff, 0xff8833];
+            // Wires between nets — colored arcs
+            const netColorMap = {
+                vcc: 0xff3333, gnd: 0x444444, i2c: 0x33aa66,
+                spi: 0xaa33aa, uart: 0xcc8800, pwm: 0xff6600,
+                data: 0x3366ff,
+            };
+            const defaultNetColors = [0xff4444, 0x44cc88, 0x4488ff, 0xffcc44, 0xff44cc, 0x44ffcc, 0xff8833];
             (currentCircuit.nets || []).forEach((net, ni) => {
-                const color = netColors[ni % netColors.length];
-                const mat   = new THREE.LineBasicMaterial({ color });
+                const nl = (net.name || '').toLowerCase();
+                let wireColor = defaultNetColors[ni % defaultNetColors.length];
+                for (const [key, col] of Object.entries(netColorMap)) {
+                    if (nl.includes(key)) { wireColor = col; break; }
+                }
+                const mat = new THREE.LineBasicMaterial({ color: wireColor });
                 const nodes = net.nodes || [];
                 for (let i = 0; i < nodes.length - 1; i++) {
                     const id1 = nodes[i].split('.')[0];
                     const id2 = nodes[i + 1].split('.')[0];
                     if (!compPos[id1] || !compPos[id2]) continue;
                     const p1 = compPos[id1], p2 = compPos[id2];
-                    const arcH = Math.max(p1.y, p2.y) + 6;
-                    const pts = [
-                        new THREE.Vector3(p1.x, p1.y, p1.z),
-                        new THREE.Vector3(p1.x, arcH,  p1.z),
-                        new THREE.Vector3(p2.x, arcH,  p2.z),
-                        new THREE.Vector3(p2.x, p2.y,  p2.z),
-                    ];
+                    const arcH = Math.max(p1.y, p2.y) + 8;
+                    // Smooth arc with 5 points
+                    const pts = [];
+                    for (let t = 0; t <= 1; t += 0.2) {
+                        const ix = p1.x + (p2.x - p1.x) * t;
+                        const iz = p1.z + (p2.z - p1.z) * t;
+                        const iy = p1.y + (arcH - p1.y) * Math.sin(t * Math.PI);
+                        pts.push(new THREE.Vector3(ix, iy, iz));
+                    }
+                    pts.push(new THREE.Vector3(p2.x, p2.y, p2.z));
                     const geo = new THREE.BufferGeometry().setFromPoints(pts);
                     threeScene.add(new THREE.Line(geo, mat));
                 }
             });
+        }
+
+        // Build a 3D component mesh, returns top Y for label/wire placement
+        function _addComponent3D(comp, t, x, z) {
+            let mesh, topY = 0;
+
+            if (t === 'resistor') {
+                // Axial resistor: horizontal cylinder with color bands
+                const bodyGeo = new THREE.CylinderGeometry(1.5, 1.5, 9, 12);
+                const bodyMat = new THREE.MeshStandardMaterial({ color: 0xd4a028, roughness: 0.6 });
+                mesh = new THREE.Mesh(bodyGeo, bodyMat);
+                mesh.rotation.z = Math.PI / 2;
+                mesh.position.set(x, 2, z);
+                threeScene.add(mesh);
+                // Lead wires
+                for (const dx of [-6, 6]) {
+                    const leadGeo = new THREE.CylinderGeometry(0.3, 0.3, 4, 6);
+                    const lead = new THREE.Mesh(leadGeo, new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8 }));
+                    lead.rotation.z = Math.PI / 2;
+                    lead.position.set(x + dx, 1.5, z);
+                    threeScene.add(lead);
+                }
+                // Color bands
+                for (const [bx, col] of [[-2.5, 0xcc4400], [0, 0x333333], [2.5, 0xcc8800]]) {
+                    const bandGeo = new THREE.CylinderGeometry(1.55, 1.55, 1.2, 12);
+                    const band = new THREE.Mesh(bandGeo, new THREE.MeshStandardMaterial({ color: col }));
+                    band.rotation.z = Math.PI / 2;
+                    band.position.set(x + bx, 2, z);
+                    threeScene.add(band);
+                }
+                topY = 4;
+
+            } else if (t === 'led' || t === 'led_rgb') {
+                // LED: cylinder body + dome
+                const ledColor = { red:0xee2222, green:0x22cc22, blue:0x2244ee, yellow:0xddcc00,
+                                   white:0xdddddd, orange:0xee7700, rgb:0xcc44cc }[comp.color || 'red'] || 0xee2222;
+                const bodyGeo = new THREE.CylinderGeometry(2.5, 2.5, 5, 12);
+                mesh = new THREE.Mesh(bodyGeo, new THREE.MeshStandardMaterial({ color: ledColor, roughness: 0.3, metalness: 0.1 }));
+                mesh.position.set(x, 3.5, z);
+                threeScene.add(mesh);
+                // Dome (hemisphere)
+                const domeGeo = new THREE.SphereGeometry(2.5, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+                const domeMat = new THREE.MeshStandardMaterial({ color: ledColor, transparent: true, opacity: 0.75, roughness: 0.1 });
+                const dome = new THREE.Mesh(domeGeo, domeMat);
+                dome.position.set(x, 6.1, z);
+                threeScene.add(dome);
+                // Leads
+                for (const [dz, len] of [[1.5, 8], [-1.5, 6]]) {
+                    const lg = new THREE.CylinderGeometry(0.25, 0.25, len, 6);
+                    const lm = new THREE.Mesh(lg, new THREE.MeshStandardMaterial({ color: 0xbbbbbb, metalness: 0.9 }));
+                    lm.position.set(x, -len/2 + 1, z + dz);
+                    threeScene.add(lm);
+                }
+                topY = 7;
+
+            } else if (t === 'capacitor' || t === 'capacitor_electrolytic') {
+                // Electrolytic cap: tall cylinder, silver/blue
+                const capGeo = new THREE.CylinderGeometry(3, 3, 14, 16);
+                const capMat = new THREE.MeshStandardMaterial({ color: 0x336699, roughness: 0.5, metalness: 0.3 });
+                mesh = new THREE.Mesh(capGeo, capMat);
+                mesh.position.set(x, 7, z);
+                threeScene.add(mesh);
+                // Top disc (silver)
+                const topGeo = new THREE.CylinderGeometry(3, 3, 0.5, 16);
+                const topMesh = new THREE.Mesh(topGeo, new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.7 }));
+                topMesh.position.set(x, 14.2, z);
+                threeScene.add(topMesh);
+                // K stripe
+                const stripeGeo = new THREE.CylinderGeometry(3.02, 3.02, 2, 16, 1, true, 0, Math.PI);
+                const stripeMat = new THREE.MeshStandardMaterial({ color: 0x111111, side: THREE.DoubleSide });
+                const stripe = new THREE.Mesh(stripeGeo, stripeMat);
+                stripe.position.set(x, 7, z);
+                threeScene.add(stripe);
+                topY = 15;
+
+            } else if (t === 'diode' || t === '1n4007' || t === '1n5819') {
+                // Axial diode: cylinder with cathode band
+                const dGeo = new THREE.CylinderGeometry(1.2, 1.2, 7, 10);
+                mesh = new THREE.Mesh(dGeo, new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.5 }));
+                mesh.rotation.z = Math.PI / 2;
+                mesh.position.set(x, 1.5, z);
+                threeScene.add(mesh);
+                // Cathode band (silver)
+                const bandGeo = new THREE.CylinderGeometry(1.22, 1.22, 1.2, 10);
+                const band = new THREE.Mesh(bandGeo, new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.7 }));
+                band.rotation.z = Math.PI / 2;
+                band.position.set(x + 2.5, 1.5, z);
+                threeScene.add(band);
+                topY = 3;
+
+            } else if (['arduino_uno','arduino_nano','arduino_mega'].includes(t)) {
+                const dims = { arduino_uno:{w:55,d:40,col:0x006699}, arduino_nano:{w:18,d:45,col:0x334455}, arduino_mega:{w:55,d:100,col:0x224466} }[t] || {w:55,d:40,col:0x006699};
+                // PCB body
+                const bGeo = new THREE.BoxGeometry(dims.w, 1.6, dims.d);
+                mesh = new THREE.Mesh(bGeo, new THREE.MeshStandardMaterial({ color: dims.col, roughness: 0.8 }));
+                mesh.position.set(x, 0.8, z);
+                threeScene.add(mesh);
+                // USB connector
+                const usbGeo = new THREE.BoxGeometry(8, 4, 6);
+                const usb = new THREE.Mesh(usbGeo, new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.9 }));
+                usb.position.set(x - dims.w/2 + 4, 3, z - dims.d/2 + 3);
+                threeScene.add(usb);
+                // Pin headers (two rows)
+                for (const dz of [-dims.d*0.3, dims.d*0.3]) {
+                    const phGeo = new THREE.BoxGeometry(dims.w * 0.8, 2.5, 2.5);
+                    const ph = new THREE.Mesh(phGeo, new THREE.MeshStandardMaterial({ color: 0x111111 }));
+                    ph.position.set(x, 2.5, z + dz);
+                    threeScene.add(ph);
+                }
+                // IC chip on board
+                const icGeo = new THREE.BoxGeometry(8, 2, 8);
+                const ic = new THREE.Mesh(icGeo, new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 }));
+                ic.position.set(x + dims.w*0.15, 2.6, z);
+                threeScene.add(ic);
+                _addEdgeHighlight(mesh, 0xffd700);
+                topY = 5;
+
+            } else if (t === 'esp32' || t === 'esp8266') {
+                const mw = t === 'esp32' ? 26 : 22, md = t === 'esp32' ? 18 : 15;
+                const bGeo = new THREE.BoxGeometry(mw, 1.6, md);
+                mesh = new THREE.Mesh(bGeo, new THREE.MeshStandardMaterial({ color: 0x003344, roughness: 0.8 }));
+                mesh.position.set(x, 0.8, z);
+                threeScene.add(mesh);
+                // Metal shield (antenna module)
+                const shGeo = new THREE.BoxGeometry(mw * 0.55, 2, md * 0.7);
+                const sh = new THREE.Mesh(shGeo, new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.9 }));
+                sh.position.set(x + mw * 0.1, 2.6, z);
+                threeScene.add(sh);
+                // Antenna trace
+                const antGeo = new THREE.BoxGeometry(1, 0.5, md * 0.6);
+                const ant = new THREE.Mesh(antGeo, new THREE.MeshStandardMaterial({ color: 0xccaa00, metalness: 0.8 }));
+                ant.position.set(x - mw/2 + 0.5, 1.8, z);
+                threeScene.add(ant);
+                _addEdgeHighlight(mesh, 0x00aaff);
+                topY = 5;
+
+            } else if (t === 'relay' || t === 'relay_module') {
+                // Relay: box body + coil bump
+                const bGeo = new THREE.BoxGeometry(19, 15, 16);
+                mesh = new THREE.Mesh(bGeo, new THREE.MeshStandardMaterial({ color: 0x223355, roughness: 0.8 }));
+                mesh.position.set(x, 7.5, z);
+                threeScene.add(mesh);
+                // Coil housing
+                const coilGeo = new THREE.BoxGeometry(10, 4, 12);
+                const coil = new THREE.Mesh(coilGeo, new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 }));
+                coil.position.set(x - 2, 16.5, z);
+                threeScene.add(coil);
+                _addEdgeHighlight(mesh, 0x5577aa);
+                topY = 17;
+
+            } else if (t === 'oled' || t === 'lcd' || t === 'display') {
+                const dw = t === 'lcd' ? 80 : 27, dd = t === 'lcd' ? 36 : 27;
+                const bGeo = new THREE.BoxGeometry(dw, 1.6, dd);
+                mesh = new THREE.Mesh(bGeo, new THREE.MeshStandardMaterial({ color: 0x111133, roughness: 0.9 }));
+                mesh.position.set(x, 0.8, z);
+                threeScene.add(mesh);
+                // Screen (dark with blue glow)
+                const scrGeo = new THREE.BoxGeometry(dw * 0.85, 0.4, dd * 0.8);
+                const scrMat = new THREE.MeshStandardMaterial({ color: 0x0011aa, emissive: 0x000055, roughness: 0.1 });
+                const scr = new THREE.Mesh(scrGeo, scrMat);
+                scr.position.set(x, 2.0, z);
+                threeScene.add(scr);
+                _addEdgeHighlight(mesh, 0x3344ff);
+                topY = 5;
+
+            } else if (t === 'motor_driver' || t === 'l298n') {
+                // L298N: large module with heatsink
+                const bGeo = new THREE.BoxGeometry(34, 2, 34);
+                mesh = new THREE.Mesh(bGeo, new THREE.MeshStandardMaterial({ color: 0x222244, roughness: 0.8 }));
+                mesh.position.set(x, 1, z);
+                threeScene.add(mesh);
+                // Heatsink fins
+                for (let fi = -2; fi <= 2; fi++) {
+                    const finGeo = new THREE.BoxGeometry(2, 18, 30);
+                    const fin = new THREE.Mesh(finGeo, new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.7 }));
+                    fin.position.set(x - 8 + fi * 4, 10, z);
+                    threeScene.add(fin);
+                }
+                // IC chip
+                const icGeo = new THREE.BoxGeometry(14, 3, 18);
+                const ic = new THREE.Mesh(icGeo, new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 }));
+                ic.position.set(x + 8, 3.5, z);
+                threeScene.add(ic);
+                topY = 20;
+
+            } else if (t === 'sensor' || t === 'moisture_sensor' || t === 'hc_sr04' || t === 'ultrasonic') {
+                // Sensor module: flat green board
+                const bGeo = new THREE.BoxGeometry(18, 1.6, 12);
+                mesh = new THREE.Mesh(bGeo, new THREE.MeshStandardMaterial({ color: 0x1a5c34, roughness: 0.8 }));
+                mesh.position.set(x, 0.8, z);
+                threeScene.add(mesh);
+                // Transducer circles for ultrasonic
+                if (t === 'hc_sr04' || t === 'ultrasonic') {
+                    for (const dx of [-5, 5]) {
+                        const tGeo = new THREE.CylinderGeometry(4, 4, 3, 16);
+                        const tm = new THREE.Mesh(tGeo, new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.4 }));
+                        tm.position.set(x + dx, 3.3, z);
+                        threeScene.add(tm);
+                    }
+                    topY = 7;
+                } else {
+                    topY = 4;
+                }
+
+            } else if (t === 'button') {
+                // Tactile button: square body + round actuator
+                const bGeo = new THREE.BoxGeometry(6, 3.5, 6);
+                mesh = new THREE.Mesh(bGeo, new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.7 }));
+                mesh.position.set(x, 1.75, z);
+                threeScene.add(mesh);
+                const actGeo = new THREE.CylinderGeometry(1.5, 1.5, 2, 12);
+                const act = new THREE.Mesh(actGeo, new THREE.MeshStandardMaterial({ color: 0xcc3333, roughness: 0.4 }));
+                act.position.set(x, 4.5, z);
+                threeScene.add(act);
+                topY = 6;
+
+            } else {
+                // Generic IC: flat box with pin stubs
+                const bw = 14, bh = 3, bd = 10;
+                const bGeo = new THREE.BoxGeometry(bw, bh, bd);
+                mesh = new THREE.Mesh(bGeo, new THREE.MeshStandardMaterial({ color: 0x222233, roughness: 0.9 }));
+                mesh.position.set(x, bh/2, z);
+                threeScene.add(mesh);
+                // Pin rows
+                for (const side of [-1, 1]) {
+                    for (let pi = 0; pi < 4; pi++) {
+                        const pinGeo = new THREE.BoxGeometry(3, 0.6, 0.8);
+                        const pin = new THREE.Mesh(pinGeo, new THREE.MeshStandardMaterial({ color: 0xccaa00, metalness: 0.9 }));
+                        pin.position.set(x + side * (bw/2 + 1.5), 0.3, z - bd/2 + 1.2 + pi * 2.8);
+                        threeScene.add(pin);
+                    }
+                }
+                _addEdgeHighlight(mesh, 0x5566aa);
+                topY = bh + 1;
+            }
+
+            // Label
+            _addSpriteLabel(comp.id, x, topY + 3, z);
+            return topY;
+        }
+
+        function _addEdgeHighlight(mesh, color) {
+            const eg = new THREE.EdgesGeometry(mesh.geometry);
+            const el = new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ color }));
+            el.position.copy(mesh.position);
+            threeScene.add(el);
         }
 
         function _addSpriteLabel(text, x, y, z) {
