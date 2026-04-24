@@ -24,6 +24,11 @@ def setup_logger():
         ))
         root.addHandler(handler)
 
+    # Silenciar bibliotecas terceras muy verbosas en DEBUG
+    for _noisy in ("pdfminer", "urllib3", "httpx", "httpcore", "sentence_transformers",
+                   "transformers", "torch", "PIL", "chardet"):
+        logging.getLogger(_noisy).setLevel(logging.WARNING)
+
     # Named logger kept for modules that import it directly
     named = logging.getLogger("ai_agent")
     named.setLevel(level)
