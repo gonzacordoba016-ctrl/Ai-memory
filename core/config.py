@@ -11,10 +11,6 @@ logger = logging.getLogger(__name__)
 
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
-# Modelo de visión para análisis de circuitos (LLaVA via Ollama)
-# Instalarlo con: ollama pull llava:7b
-VISION_MODEL = _env("VISION_MODEL", "llava:7b")
-
 # ==========================
 # PROVEEDOR LLM
 # ==========================
@@ -23,6 +19,10 @@ def _env(key: str, default: str = "") -> str:
     """Lee env var y elimina comillas que Railway/shells pueden inyectar."""
     val = os.getenv(key, default)
     return val.strip().strip('"').strip("'")
+
+# Modelo de visión para análisis de circuitos (LLaVA via Ollama)
+# Instalarlo con: ollama pull llava:7b
+VISION_MODEL = _env("VISION_MODEL", "llava:7b")
 
 def _get_provider() -> str:
     return _env("LLM_PROVIDER", "ollama")
