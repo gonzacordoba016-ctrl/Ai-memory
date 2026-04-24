@@ -1,3 +1,7 @@
+// ── PAGE-SESSION MESSAGES (export uses this, not full DB history) ─────────
+let _pageMessages = [];
+let _loadingHistory = false;
+
 // ── HELPERS ───────────────────────────────────────────────────────────────
 function _fmtElapsed(ms) {
   if (!ms || ms <= 0) return null;
@@ -105,12 +109,14 @@ async function loadSessionHistory(sid) {
     const area = document.getElementById('messages');
     if (area) area.innerHTML = '';
     document.getElementById('chat-empty')?.remove();
+    _loadingHistory = true;
     msgs.forEach(m => {
       if (m.role !== 'user' && m.role !== 'assistant') return;
       addMessage(m.role === 'user' ? 'user' : 'agent', m.content, m.agents_used || [], false, m.elapsed_ms);
     });
+    _loadingHistory = false;
     addLog(`Historial reanudado — ${msgs.length} mensajes`, 'info');
-  } catch(e) {}
+  } catch(e) { _loadingHistory = false; }
 }
 
 // ── RATE LIMIT COUNTDOWN ─────────────────────────────────────────────────
@@ -221,6 +227,11 @@ function addMessage(role, content, agents = [], streaming = false, elapsed_ms = 
   if (!msgs) return null;
   const ts = new Date().toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
   const wasAtBottom = _isNearBottom(msgs);
+
+  // Trackear mensajes de esta sesión de página (excluye historial cargado del servidor)
+  if (!streaming && !_loadingHistory && content) {
+    _pageMessages.push({ role: role === 'user' ? 'user' : 'assistant', content, timestamp: new Date().toISOString() });
+  }
 
   // Eliminar empty state al primer mensaje
   document.getElementById('chat-empty')?.remove();

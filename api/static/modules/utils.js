@@ -150,10 +150,12 @@ async function exportChat() {
   const sid = _session_id;
   if (!sid) { alert('[DEV] No hay sesión activa'); return; }
   try {
-    const res  = await authFetch(`${API}/history?session_id=${encodeURIComponent(sid)}&limit=2000`);
-    const data = await res.json();
-    const msgs = data.messages || [];
-    const out  = {
+    // Usar mensajes de la página actual (no toda la historia de la sesión DB)
+    const msgs = (typeof _pageMessages !== 'undefined' && _pageMessages.length)
+      ? _pageMessages
+      : [];
+    if (!msgs.length) { alert('No hay mensajes en el chat actual para exportar.'); return; }
+    const out = {
       exported_at: new Date().toISOString(),
       session_id:  sid,
       total:       msgs.length,

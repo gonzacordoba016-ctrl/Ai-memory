@@ -79,6 +79,13 @@ CIRCUIT_DESIGN_KEYWORDS = [
     "parse a circuit", "parse circuit",
     "generá el esquemático", "generá un circuito", "generá la netlist",
     "generar circuito", "generar esquemático", "generar netlist",
+    # Follow-up requests for schematics/PCB
+    "generame los esquemas", "generame el esquema", "genera los esquemas",
+    "dame el esquematico", "dame el esquemático", "dame el pcb", "dame la pcb",
+    "dame los esquemas", "dame el diseño", "dame los diseños",
+    "el esquematico y pcb", "esquematico y pcb", "esquemático y pcb",
+    "generate the schematic", "give me the schematic", "give me the pcb",
+    "generame el pcb", "generame la pcb", "generame el diseño",
 ]
 
 KEYWORD_ROUTES = {
