@@ -214,7 +214,7 @@ class Orchestrator:
             logger.error(f"[Orchestrator] Error en routing LLM: {e}")
             return ["direct"]
 
-    async def run(self, query: str, context: str = "") -> dict:
+    async def run(self, query: str, context: str = "", history: list = None) -> dict:
         """
         Ejecuta los agentes necesarios de forma async.
         Los agentes síncronos legacy (research, code, memory) se envuelven
@@ -246,17 +246,68 @@ class Orchestrator:
             try:
                 from agent.agents.circuit_agent import CircuitAgent
                 ca = CircuitAgent()
-                # Detect MCU from query
+
+                # Detect MCU from query first, then fallback to history
                 mcu = "Arduino Uno"
                 q_l = query.lower()
-                if "esp32" in q_l:   mcu = "ESP32"
+                if "esp32" in q_l:     mcu = "ESP32"
                 elif "esp8266" in q_l: mcu = "ESP8266"
-                elif "nano" in q_l:  mcu = "Arduino Nano"
-                elif "mega" in q_l:  mcu = "Arduino Mega"
-                elif "pico" in q_l:  mcu = "Raspberry Pi Pico"
-                elif "stm32" in q_l: mcu = "STM32"
+                elif "nano" in q_l:    mcu = "Arduino Nano"
+                elif "mega" in q_l:    mcu = "Arduino Mega"
+                elif "pico" in q_l:    mcu = "Raspberry Pi Pico"
+                elif "stm32" in q_l:   mcu = "STM32"
 
-                circuit = await asyncio.to_thread(ca.parse_circuit, query, mcu)
+                # Detect if this is a short follow-up that lacks actual circuit context
+                _circuit_content_words = [
+                    "circuito", "regulador", "sistema", "bomba", "motor", "fuente",
+                    "sensor", "voltaje", "corriente", "convertidor", "transformador",
+                    "circuit", "regulator", "power", "control", "driver", "pump",
+                    "220v", "48v", "12v", "5v", "relay", "arduino", "esp32",
+                    "pic", "stm32", "automatizar", "automatización", "control",
+                    "hidráulica", "hidraulica", "neumático", "plc", "variador",
+                ]
+                is_followup = (
+                    len(query.strip()) < 120
+                    and not any(kw in q_l for kw in _circuit_content_words)
+                )
+
+                description = query
+                if is_followup and history:
+                    # Enrich description with conversation history (last user messages)
+                    user_msgs = [
+                        m["content"] for m in history
+                        if m.get("role") == "user" and m.get("content", "").strip()
+                    ]
+                    # Exclude the current message (already is query)
+                    prev_msgs = [m for m in user_msgs if m.strip() != query.strip()]
+                    if prev_msgs:
+                        prev_text = "\n".join(f"- {m}" for m in prev_msgs[-5:])
+                        description = (
+                            f"Historial de conversación previa (mensajes del usuario):\n"
+                            f"{prev_text}\n\n"
+                            f"Petición actual del usuario: {query}\n\n"
+                            f"Genera el circuito completo y detallado basándote en la "
+                            f"descripción del historial. La petición actual es un seguimiento "
+                            f"de la conversación anterior."
+                        )
+                        logger.info(
+                            f"[Orchestrator] CircuitAgent — follow-up enriquecido con "
+                            f"{len(prev_msgs)} mensajes previos"
+                        )
+
+                # If MCU not found in query, also scan history
+                if mcu == "Arduino Uno" and history:
+                    hist_text = " ".join(
+                        m.get("content", "") for m in history if m.get("role") == "user"
+                    ).lower()
+                    if "esp32" in hist_text:     mcu = "ESP32"
+                    elif "esp8266" in hist_text: mcu = "ESP8266"
+                    elif "nano" in hist_text:    mcu = "Arduino Nano"
+                    elif "mega" in hist_text:    mcu = "Arduino Mega"
+                    elif "pico" in hist_text:    mcu = "Raspberry Pi Pico"
+                    elif "stm32" in hist_text:   mcu = "STM32"
+
+                circuit = await asyncio.to_thread(ca.parse_circuit, description, mcu)
                 if circuit:
                     results["circuit_design"] = circuit
                     # Build rich context for LLM explanation

@@ -73,6 +73,7 @@ class AgentController:
         orch_result = await self.orchestrator.run(
             query   = user_input,
             context = self._build_base_context(),
+            history = self.state.get_history(),
         )
         agents_used = orch_result["agents_used"]
         sub_context = orch_result["combined_context"]

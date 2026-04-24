@@ -71,26 +71,61 @@ def _layout_components(components: List[Dict], width: int, height: int,
     for comp_id, pos in saved.items():
         if isinstance(pos, dict) and "x" in pos and "y" in pos:
             positions[comp_id] = (int(pos["x"]), int(pos["y"]))
-    groups: Dict[str, List[Dict]] = {g: [] for g in ("mcu","input","output","power","comm","misc")}
+
+    groups: Dict[str, List[Dict]] = {g: [] for g in ("mcu", "input", "output", "power", "comm", "misc")}
     for comp in components:
         if comp["id"] not in positions:
             groups[_comp_group(comp)].append(comp)
+
     cx, cy = width // 2, height // 2
-    spacing_x, spacing_y = 130, 85
+
+    # Spacing scales with canvas size to prevent overlaps
+    h_unit = max(100, height // (max(len(components), 1) + 2))
+    spacing_y = max(90, min(130, h_unit))
+    spacing_x = max(140, min(200, width // 8))
+
+    # MCU(s) at center — support multiple MCUs side by side
+    n_mcu = len(groups["mcu"])
     for i, comp in enumerate(groups["mcu"]):
-        positions[comp["id"]] = (cx + i * spacing_x, cy)
-    start_y = cy - (len(groups["input"]) - 1) * spacing_y // 2
+        offset = (i - (n_mcu - 1) / 2) * spacing_x
+        positions[comp["id"]] = (int(cx + offset), cy)
+
+    # Input sensors: left column(s) of MCU
+    n_in = len(groups["input"])
+    col_height = n_in * spacing_y
+    start_y = cy - col_height // 2 + spacing_y // 2
+    left_base = max(100, cx - spacing_x * 2)
     for i, comp in enumerate(groups["input"]):
-        positions[comp["id"]] = (max(90, cx - 230 - (i % 2) * 60), start_y + i * spacing_y)
-    start_y = cy - (len(groups["output"]) - 1) * spacing_y // 2
+        col = i // max(1, (height // spacing_y))
+        row = i % max(1, (height // spacing_y))
+        positions[comp["id"]] = (left_base - col * 110, start_y + row * spacing_y)
+
+    # Output relays/loads: right column(s) of MCU
+    n_out = len(groups["output"])
+    col_height = n_out * spacing_y
+    start_y = cy - col_height // 2 + spacing_y // 2
+    right_base = min(width - 100, cx + spacing_x * 2)
     for i, comp in enumerate(groups["output"]):
-        positions[comp["id"]] = (min(width - 90, cx + 230 + (i % 2) * 60), start_y + i * spacing_y)
+        col = i // max(1, (height // spacing_y))
+        row = i % max(1, (height // spacing_y))
+        positions[comp["id"]] = (right_base + col * 110, start_y + row * spacing_y)
+
+    # Power components: top row
+    n_pwr = len(groups["power"])
+    pwr_step = max(110, min(160, (width - 220) // max(n_pwr, 1)))
     for i, comp in enumerate(groups["power"]):
-        positions[comp["id"]] = (110 + i * 95, 70)
+        positions[comp["id"]] = (120 + i * pwr_step, max(75, spacing_y // 2))
+
+    # Comm modules: top-right area
     for i, comp in enumerate(groups["comm"]):
-        positions[comp["id"]] = (width - 110 - i * 100, 70)
+        positions[comp["id"]] = (width - 120 - i * 115, max(75, spacing_y // 2))
+
+    # Misc: bottom row
+    n_misc = len(groups["misc"])
+    misc_step = max(110, min(160, (width - 220) // max(n_misc, 1)))
     for i, comp in enumerate(groups["misc"]):
-        positions[comp["id"]] = (110 + i * 95, height - 70)
+        positions[comp["id"]] = (120 + i * misc_step, height - max(75, spacing_y // 2))
+
     return positions
 
 
@@ -124,16 +159,24 @@ class SchematicRenderer:
     _FILL_DISP   = "#e8eeff"   # displays
 
     def render_schematic_svg(self, circuit_data: Dict[str, Any],
-                              width: int = 1000, height: int = 700) -> str:
+                              width: int = None, height: int = None) -> str:
         try:
+            components = circuit_data.get("components", [])
+            nets       = circuit_data.get("nets", [])
+
+            # Dynamic canvas: scale with component count so nothing overlaps
+            n = len(components)
+            if width is None:
+                width  = max(1100, n * 90 + 300)
+            if height is None:
+                height = max(750,  n * 60 + 200)
+
             dwg = svgwrite.Drawing(size=('100%', '100%'),
                                    viewBox=f"0 0 {width} {height}")
             self._draw_background(dwg, width, height)
             self._draw_title_block(dwg, circuit_data, width, height)
             saved      = circuit_data.get("positions", {})
-            components = circuit_data.get("components", [])
             positions  = _layout_components(components, width, height - 90, saved)
-            nets       = circuit_data.get("nets", [])
             self._draw_connections(dwg, nets, positions)
             # Power rail symbols
             self._draw_power_rails(dwg, nets, positions)

@@ -17,6 +17,13 @@ logger = get_logger(__name__)
 # ──────────────────────────────────────────────────────────────────────────────
 
 DOMAIN_KEYWORDS = {
+    "industrial": ["220v", "220 v", "110v", "380v", "ac ", "corriente alterna",
+                   "bomba hidráulica", "bomba hidraulica", "hydraulic pump",
+                   "motor industrial", "alta tensión", "alta tension",
+                   "transformador", "rectificador", "puente rectificador",
+                   "potencia industrial", "plc", "variador", "contactor",
+                   "neumático", "neumatico", "industrial", "trifásico",
+                   "hidráulica", "hidraulica", "válvula hidráulica"],
     "irrigation": ["riego", "irrigation", "bomba de agua", "water pump", "humedad", "moisture",
                    "solenoid", "solenoide", "válvula", "valve", "goteo", "drip"],
     "domotics":   ["domótica", "home automation", "domotics", "smart home", "casa inteligente",
@@ -28,7 +35,7 @@ DOMAIN_KEYWORDS = {
                      "lm317", "lm7805", "switching", "cargador", "charger", "solar"],
     "display":    ["display", "oled", "lcd", "pantalla", "screen", "i2c display",
                    "ssd1306", "st7735", "ili9341", "neopixel", "ws2812", "rgb strip"],
-    "sensor_hub": ["sensor", "temperatura", "temperatura", "temperatura", "humedad",
+    "sensor_hub": ["sensor", "temperatura", "humedad",
                    "presión", "pressure", "gas", "co2", "calidad del aire", "air quality",
                    "dht", "bmp280", "mpu6050", "hx711", "balanza", "scale"],
     "iot":        ["wifi", "mqtt", "http", "api", "cloud", "iot", "internet",
@@ -39,6 +46,7 @@ DOMAIN_KEYWORDS = {
 
 # MCU recommendation by domain
 DOMAIN_MCU = {
+    "industrial": "Arduino Mega",
     "irrigation": "ESP32",
     "domotics":   "ESP32",
     "motor":      "Arduino Uno",
@@ -115,6 +123,39 @@ DOMINIO: IoT / Conectividad WiFi-MQTT
 - Incluí LED heartbeat (parpado 1Hz) conectado a pin libre
 - Si usás deep sleep: botón de reset externo con RC (10kΩ + 100nF) en EN
 - MQTT broker local (Mosquitto) o cloud (HiveMQ, AWS IoT) — especificá en warnings
+""",
+    "industrial": """
+DOMINIO: Sistema Industrial / Alta Tensión / Control de Cargas de Potencia
+- SEGURIDAD ELÉCTRICA: separación galvánica OBLIGATORIA entre circuito de control (MCU 5V) y potencia (220VAC/48VDC)
+- Usar módulos relay con optoacoplamiento integrado (5V IN, hasta 10A 250VAC OUT)
+- Fusible en la entrada AC (según corriente total de las cargas)
+- Varistor MOV (ej: S20K275) en paralelo con la entrada AC para protección de sobretensión
+- Filtro EMI en la entrada: capacitor X2 (100nF/275VAC) + inductor de modo común
+
+ETAPA DE ALIMENTACIÓN (220VAC → DC de control):
+- Transformador 220VAC → 9-12VAC (o fuente SMPS 220VAC → 5V/12V)
+- Si transformador: puente rectificador (ej: GBU4J 4A/600V o 4× 1N5408)
+- Capacitor de filtro electrolítico (2200µF 25V mínimo)
+- Regulador 7805 (LM7805) para los 5V del MCU: cap entrada 100nF, cap salida 10µF
+
+ETAPA DE POTENCIA (conversión de voltaje principal, ej: 48VDC):
+- Si se requiere 48VDC desde 220VAC: fuente SMPS dedicada (ej: Mean Well 48V)
+- Incluir fusible en la salida DC (según corriente total de bombas)
+- LED indicador de presencia de tensión (con resistencia limitadora)
+
+CONTROL DE MÚLTIPLES CARGAS (cada bomba/motor):
+- Relay individual por carga (ej: SRD-05VDC-SL-C, 5V bobina, 10A 250VAC contacto)
+- Diodo flyback 1N4007 en paralelo con la bobina de cada relay
+- Pin de control separado del MCU por relay
+- Optoacoplador (PC817) entre MCU y relay si se requiere aislamiento adicional
+- LED de estado por relay (con resistencia 470Ω)
+
+ASIGNACIÓN DE PINES (Arduino Mega — hasta 8 relays):
+- RELAY1: U1.D22  RELAY2: U1.D24  RELAY3: U1.D26  RELAY4: U1.D28
+- RELAY5: U1.D30  RELAY6: U1.D32  RELAY7: U1.D34  RELAY8: U1.D36
+- I2C: SDA=U1.D20, SCL=U1.D21 (para LCD, RTC, expansores)
+- STATUS LED: U1.D13 (con resistencia 470Ω)
+- E-STOP (paro de emergencia): U1.D2 (interrupt INT0, pull-up 10kΩ)
 """,
     "default": "",
 }
@@ -217,25 +258,68 @@ def _mcu_pin_rules(mcu: str) -> str:
 # MAIN PROMPT
 # ──────────────────────────────────────────────────────────────────────────────
 
-CIRCUIT_PARSE_PROMPT = """Eres un ingeniero electrónico. Genera una netlist JSON para este circuito.
+CIRCUIT_PARSE_PROMPT = """Eres un ingeniero electrónico experto en diseño de circuitos. \
+Genera una netlist JSON COMPLETA y DETALLADA para el siguiente circuito.
 
-Descripción: "{description}"
-MCU: "{mcu}"
+DESCRIPCIÓN DEL CIRCUITO:
+{description}
+
+MCU / Controlador: {mcu}
 {domain_hint}
 {mcu_pin_rules}
 {pinout_context}
-Reglas obligatorias (aplica todas):
-- LEDs: resistencia limitadora en serie (220Ω típico)
-- Relay: diodo flyback 1N4007 en bobina
-- ESP32/WiFi: cap 100µF + 100nF en VCC
-- I2C: pull-ups 4.7kΩ en SDA y SCL
-- Nomenclatura: U1-U99, R1-R99, C1-C99, D1-D99, RL1+, MOD1+
-- Pines reales del MCU (ej: U1.GPIO34, U1.GND, U1.3V3)
-- Nets descriptivos (VCC_5V, GND, RELAY_CTRL, DATA_SENS, etc.)
-- CRÍTICO: cada nodo (ej: U1.GND) debe aparecer en UN SOLO net, nunca repetido
+═══════════════════════════════════════════════════════
+REGLAS OBLIGATORIAS — aplica TODAS sin excepción:
+═══════════════════════════════════════════════════════
+COMPONENTES DE PROTECCIÓN (siempre incluir):
+  • Cada LED → resistencia limitadora en serie (calcular: R=(Vcc-Vf)/If, típico 220Ω-1kΩ)
+  • Cada relay → diodo flyback 1N4007 en la bobina (cátodo al VCC del relay)
+  • Circuitos ESP32/WiFi → capacitor bulk 100µF + capacitor desacoplo 100nF en VCC
+  • Buses I2C → pull-ups 4.7kΩ en SDA y en SCL (obligatorio para comunicación confiable)
+  • Circuitos con 220VAC → fusible de entrada + varistor MOV + filtro EMI
 
-Responde ÚNICAMENTE con JSON válido, sin markdown:
-{{"name":"...","description":"...","components":[{{"id":"U1","name":"{mcu}","type":"esp32"}},{{"id":"RL1","name":"Relay 5V","type":"relay_module"}},{{"id":"D1","name":"Diodo flyback 1N4007","type":"diode","value":"1N4007"}}],"nets":[{{"name":"VCC_5V","nodes":["U1.VIN","RL1.VCC"]}},{{"name":"GND","nodes":["U1.GND","RL1.GND"]}}],"power":"5V USB","warnings":[]}}"""
+NOMENCLATURA (respetar siempre):
+  • MCUs e ICs: U1, U2, U3...
+  • Resistencias: R1, R2, R3...  (valor en Ω, ej: "value":"10000", "unit":"Ω")
+  • Capacitores: C1, C2, C3...   (valor en µF o nF, ej: "value":"100", "unit":"nF")
+  • Diodos: D1, D2, D3...
+  • Relays: RL1, RL2, RL3...
+  • Inductores: L1, L2...
+  • Conectores/terminales: J1, J2...
+  • Módulos: MOD1, MOD2...
+
+PINES DEL MCU:
+  • Usar pines REALES según el MCU (ej: U1.GPIO21, U1.GND, U1.3V3, U1.VIN, U1.D7, U1.A0)
+  • NO inventar nombres de pines
+
+NETS:
+  • Nombres descriptivos: VCC_5V, VCC_12V, VCC_48V, GND, AGND, RELAY1_CTRL, PUMP1_PWR...
+  • CRÍTICO: cada nodo (ej: "U1.GND") debe aparecer en UN SOLO net — NUNCA repetido
+  • Conectar TODOS los componentes en al menos un net
+  • GND compartido entre todas las secciones (separar AGND si hay señales analógicas)
+
+CIRCUITOS CON MÚLTIPLES CARGAS (>2 relays/bombas/motores):
+  • Un relay independiente (RLn) + diodo flyback (Dn) por cada carga
+  • Pin de control separado del MCU para cada relay
+  • Net de control nombrado: RELAY1_CTRL, RELAY2_CTRL, etc.
+  • Si las cargas son ≥10W: fusible individual por rama
+
+CIRCUITOS DE ALTA TENSIÓN (220VAC, 110VAC):
+  • Separación galvánica obligatoria entre control (MCU) y potencia (AC)
+  • Usar optoacopladores o módulos relay con optoacoplamiento
+  • Incluir transformador o fuente SMPS para generar VCC de control
+
+COMPLETITUD:
+  • Incluir TODOS los componentes necesarios para que el circuito funcione en producción
+  • No omitir capacitores de desacoplo, resistencias de pull-up, diodos de protección
+  • Incluir conectores/terminales de entrada y salida
+  • Si hay múltiples voltajes, incluir el regulador/conversor correspondiente
+
+═══════════════════════════════════════════════════════
+Responde ÚNICAMENTE con JSON válido. SIN markdown, SIN explicaciones, SIN texto adicional.
+Formato exacto requerido:
+═══════════════════════════════════════════════════════
+{{"name":"<nombre descriptivo del circuito>","description":"<descripción técnica>","components":[{{"id":"U1","name":"<nombre completo>","type":"<tipo>"}},{{"id":"R1","name":"<nombre>","type":"resistor","value":"<valor>","unit":"Ω"}}],"nets":[{{"name":"<NET_NAME>","nodes":["<U1.PIN>","<R1.1>"]}}],"power":"<descripción de alimentación>","warnings":[]}}"""
 
 
 class CircuitAgent:
