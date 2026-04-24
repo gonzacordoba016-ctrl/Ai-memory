@@ -348,6 +348,14 @@ function finishStreaming(data) {
         }
       }
       _postRender(currentAgentEl);
+      // Trackear mensaje completo del agente en _pageMessages
+      _pageMessages.push({
+        role: 'assistant',
+        content: rawText,
+        timestamp: new Date().toISOString(),
+        elapsed_ms: data?.elapsed_ms || null,
+        agents_used: data?.agents_used || [],
+      });
       // Circuit design card — inject after message body
       if (data?.circuit_design_id && article) {
         _appendCircuitCard(article, data.circuit_design_id, data.circuit_name || 'Circuito');

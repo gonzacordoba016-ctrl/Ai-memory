@@ -148,28 +148,63 @@ async function exportSessionZip() {
 // ── DEV EXPORT ───────────────────────────────────────────────────────────
 async function exportChat() {
   const sid = _session_id;
-  if (!sid) { alert('[DEV] No hay sesión activa'); return; }
+  if (!sid) { alert('No hay sesión activa'); return; }
   try {
-    // Usar mensajes de la página actual (no toda la historia de la sesión DB)
     const msgs = (typeof _pageMessages !== 'undefined' && _pageMessages.length)
-      ? _pageMessages
-      : [];
+      ? _pageMessages : [];
     if (!msgs.length) { alert('No hay mensajes en el chat actual para exportar.'); return; }
-    const out = {
-      exported_at: new Date().toISOString(),
-      session_id:  sid,
-      total:       msgs.length,
-      messages:    msgs,
+
+    const exportedAt = new Date().toISOString();
+    const fmtTime = iso => {
+      try { return new Date(iso).toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit', second:'2-digit'}); }
+      catch { return iso; }
     };
-    const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+    const fmtElapsed = ms => {
+      if (!ms) return null;
+      return ms < 1000 ? `${ms}ms` : `${(ms/1000).toFixed(1)}s`;
+    };
+
+    const lines = [
+      `# Stratum — Chat Export`,
+      ``,
+      `| Campo | Valor |`,
+      `|---|---|`,
+      `| **Sesión** | \`${sid.slice(0,8)}\` |`,
+      `| **Exportado** | ${exportedAt} |`,
+      `| **Mensajes** | ${msgs.length} |`,
+      ``,
+      `---`,
+      ``,
+    ];
+
+    for (const m of msgs) {
+      const time = fmtTime(m.timestamp);
+      if (m.role === 'user') {
+        lines.push(`### [${time}] Usuario`);
+        lines.push(``);
+        lines.push(m.content);
+      } else {
+        const agents = m.agents_used?.length ? ` · \`${m.agents_used.map(a=>a.toUpperCase()).join(', ')}\`` : '';
+        const elapsed = m.elapsed_ms ? ` · _${fmtElapsed(m.elapsed_ms)}_` : '';
+        lines.push(`### [${time}] Agente${agents}${elapsed}`);
+        lines.push(``);
+        lines.push(m.content);
+      }
+      lines.push(``);
+      lines.push(`---`);
+      lines.push(``);
+    }
+
+    const md = lines.join('\n');
+    const blob = new Blob([md], { type: 'text/markdown' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    a.download = `stratum_chat_${sid.slice(0,8)}_${Date.now()}.json`;
+    a.download = `stratum_chat_${sid.slice(0,8)}_${Date.now()}.md`;
     a.click();
     URL.revokeObjectURL(url);
   } catch (e) {
-    alert('[DEV] Error exportando: ' + e.message);
+    alert('Error exportando: ' + e.message);
   }
 }
 
