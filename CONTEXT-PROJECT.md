@@ -1,6 +1,6 @@
 # STRATUM — Contexto del Proyecto
 > Última actualización: 2026-04-24
-> Versión actual: **v4.11.0**
+> Versión actual: **v4.12.0**
 > Tagline: _"Tu memoria técnica siempre disponible"_
 > Estado: **Production-ready** (local + Railway)
 
@@ -932,6 +932,7 @@ Revisión sistemática folder-a-folder (core → llm → memory → database →
 | v4.8.0  | 2026-04-22  | EDA visualization rewrite: schematic light theme KiCad-style (fondo crema, grilla, 14 símbolos, title block, power rails VCC/GND); PCB THT annular pads + courtyard dashed + SMD pads; 3D viewer parametric completo (10 tipos de geometrías, MeshStandardMaterial, wire arcs suaves); routing fix "parsea un circuito" → circuit_design; migración modelo Claude Sonnet 4.6 (revertida por créditos). |
 | v4.9.0  | 2026-04-23  | 3D viewer: AmbientLight 2.5→0.55, cámara oblicua (0,55,170), PCFSoftShadowMap 2048, fill light, fondo #1a1a2e, sensor color fix, RTC mesh (CR2032+IC). Schematic: _sym_rtc nuevo, dispatch 14 tipos explícitos (1n4007/zener/bc547/irf520/etc), _sym_generic mejorado con pins. |
 | v4.10.0 | 2026-04-23  | KiCad Symbol Renderer (Opción B): parser S-expressions KiCad (kicad_sym_parser.py), renderer con auto-fit (kicad_sym_renderer.py), 13 símbolos reales descargados de gitlab.com/kicad/libraries (R,C,C_Polarized,L,D,LED,Battery,ESP32,ESP8266,DS3231,DS1307). Integrado en schematic_renderer.py con fallback transparente. Símbolos KiCad activos: resistor/capacitor/inductor/diodo/LED/batería/ESP32/ESP8266/RTC. |
+| v4.12.0 | 2026-04-24  | Fix context loss en circuit follow-ups: orchestrator.run() recibe `history`, detecta queries cortas sin contexto de circuito (<120 chars, sin keywords de dominio), enriquece description con últimos 5 msgs del usuario; MCU detection también escanea historial. CIRCUIT_PARSE_PROMPT reescrito: instrucciones explícitas para todos los componentes de protección, circuitos multi-carga y diseños 220VAC; eliminado ejemplo JSON que sesgaba al LLM hacia circuitos mínimos. Nuevo dominio "industrial" (220V AC, bombas hidráulicas, PLC, motores industriales) con domain_hint completo para etapa AC/DC, 5 relays numerados, Arduino Mega por defecto. Schematic renderer: canvas dinámico por número de componentes (n×90+300 × n×60+200), algoritmo de layout reescrito con spacing adaptivo y soporte multi-columna para grupos grandes. |
 | v4.11.0 | 2026-04-24  | Code quality pass completo (9 carpetas core→llm→memory→database→knowledge→tools→agent→api→cli): 6 archivos dead eliminados (memory_filter, session_summarizer, document_loader, document_chunker, debug_tools, memory_viewer); mutable defaults corregidos (6 sitios); datetime.utcnow() → datetime.now(timezone.utc) (7 sitios); asyncio NameError silencioso en _auto_fetch_datasheets; _call_llm renombrado a call_llm_sync; deque en ShortMemory y AgentState; O(1) exact-match dict en SemanticCache; SQL_DB_PATH desde core.config en intelligence.py; re-exports privados (_E24/_nearest_e24/etc) removidos; import asyncio/LLM_MODEL_FAST a módulo en orchestrator.py; cli/utils.py + cli/status.py: from pathlib import Path movido a módulo (lazy imports eliminados). |
 
 ---
