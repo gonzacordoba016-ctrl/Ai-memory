@@ -21,7 +21,10 @@ Comandos:
 
 import os
 import sys
+import warnings
 import argparse
+
+warnings.filterwarnings("ignore", category=Warning, module="requests")
 
 # ── Fix encoding Windows (cp1252 no soporta → ✓ ✗) ──────────────────────────
 if sys.platform == "win32":
