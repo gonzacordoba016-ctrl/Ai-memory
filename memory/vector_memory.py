@@ -4,6 +4,7 @@ import math
 import time
 from collections import OrderedDict
 from datetime import datetime, timezone
+from itertools import islice
 from infrastructure.vector_store import vector_store
 from core.config import MEMORY_DECAY_RATE
 from core.logger import logger
@@ -38,11 +39,27 @@ def invalidate_search_cache():
     _search_cache.clear()
 
 
-def store_memory(text: str, metadata: dict = {}) -> bool:
+def _apply_decay(item: dict, now: datetime) -> float:
+    """Returns sem_score * temporal decay. Falls back to sem_score on parse error."""
+    ts_str = item["metadata"].get("timestamp")
+    if not ts_str:
+        return item["score"]
+    try:
+        ts = datetime.fromisoformat(ts_str)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        days_old = max((now - ts).total_seconds() / 86400, 0)
+        return item["score"] * math.exp(-MEMORY_DECAY_RATE * days_old)
+    except Exception:
+        return item["score"]
+
+
+def store_memory(text: str, metadata: dict | None = None) -> bool:
     """
     Guarda una memoria aplicando consolidación primero.
     Retorna True si se guardó, False si fue descartada por redundante.
     """
+    metadata = metadata or {}
     skip_consolidation = {"knowledge", "hardware", "session_summary", "fact_update", "consolidated_summary"}
     mem_type = metadata.get("type", "")
 
@@ -85,30 +102,12 @@ def search_memory(query: str, top_k: int = 5) -> list[str]:
         return []
 
     now    = datetime.now(timezone.utc)
-    scored: list[tuple[float, str]] = []
-
-    for item in raw:
-        text      = item["text"]
-        sem_score = item["score"]
-        ts_str    = item["metadata"].get("timestamp")
-
-        if ts_str:
-            try:
-                ts       = datetime.fromisoformat(ts_str)
-                if ts.tzinfo is None:
-                    ts = ts.replace(tzinfo=timezone.utc)
-                days_old = max((now - ts).total_seconds() / 86400, 0)
-                decay    = math.exp(-MEMORY_DECAY_RATE * days_old)
-            except Exception:
-                decay = 1.0
-        else:
-            decay = 1.0
-
-        scored.append((sem_score * decay, text))
+    scored: list[tuple[float, str]] = [
+        (_apply_decay(item, now), item["text"]) for item in raw
+    ]
 
     scored.sort(key=lambda x: x[0], reverse=True)
 
-    from itertools import islice
     result = [text for _, text in islice(scored, top_k)]
     _cache_set(cache_key, result)
     return result
@@ -132,12 +131,7 @@ def search_in_sources(query: str, source_ids: list[str], top_k: int = 4) -> str:
     if not raw:
         return ""
 
-    filtered = [
-        r for r in raw
-        if r["metadata"].get("source_id") in source_ids
-        or r["metadata"].get("type") == "knowledge_source"
-        and r["metadata"].get("source_id") in source_ids
-    ]
+    filtered = [r for r in raw if r["metadata"].get("source_id") in source_ids]
 
     if not filtered:
         _cache_set(cache_key, "")
@@ -163,32 +157,13 @@ def search_memory_with_scores(query: str, top_k: int = 5) -> list[dict]:
         return []
 
     now    = datetime.now(timezone.utc)
-    scored: list[dict] = []
-
-    for item in raw:
-        ts_str = item["metadata"].get("timestamp")
-        if ts_str:
-            try:
-                ts       = datetime.fromisoformat(ts_str)
-                if ts.tzinfo is None:
-                    ts = ts.replace(tzinfo=timezone.utc)
-                days_old = max((now - ts).total_seconds() / 86400, 0)
-                decay    = math.exp(-MEMORY_DECAY_RATE * days_old)
-            except Exception:
-                decay = 1.0
-        else:
-            decay = 1.0
-
-        final_score = item["score"] * decay
-        scored.append({
-            "text":     item["text"],
-            "score":    final_score,
-            "metadata": item["metadata"],
-        })
+    scored: list[dict] = [
+        {"text": item["text"], "score": _apply_decay(item, now), "metadata": item["metadata"]}
+        for item in raw
+    ]
 
     scored.sort(key=lambda x: x["score"], reverse=True)
 
-    from itertools import islice
     result = list(islice(scored, top_k))
     _cache_set(cache_key, result)
     return result

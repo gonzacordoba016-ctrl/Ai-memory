@@ -1,5 +1,6 @@
 # database/circuit_design.py
 
+import secrets
 import sqlite3
 import json as _json
 import os
@@ -178,12 +179,6 @@ class CircuitDesignManager:
             logger.error(f"[CircuitDesign] Error listando diseños: {e}")
             return []
             
-    def save_render_data(self, design_id: int, render_data: Dict[str, Any]) -> bool:
-        """Guarda datos de renderizado asociados al diseño."""
-        # Esto podría guardarse en una tabla separada si se necesita
-        logger.info(f"[CircuitDesign] Datos de render guardados para diseño {design_id}")
-        return True
-        
     def update_layout(self, design_id: int, positions: dict) -> bool:
         """
         Guarda posiciones personalizadas de componentes en el metadata del diseño.
@@ -313,7 +308,6 @@ class CircuitDesignManager:
 
     def create_share(self, circuit_id: int) -> str:
         """Genera un token público para compartir el circuito. Idempotente."""
-        import secrets
         try:
             with self._get_conn() as conn:
                 existing = conn.execute(

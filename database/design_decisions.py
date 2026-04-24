@@ -4,7 +4,7 @@
 import os
 import sqlite3
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from core.config import SQL_DB_PATH
 
 DB_PATH = SQL_DB_PATH
@@ -42,7 +42,7 @@ class DesignDecisionsDB:
     def save(self, project: str, decision: str, reasoning: str,
              component: str = None, tags: list = None) -> int:
         tags = tags or []
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         with self._conn() as c:
             cur = c.execute("""
                 INSERT INTO design_decisions (project, component, decision, reasoning, tags, created_at)

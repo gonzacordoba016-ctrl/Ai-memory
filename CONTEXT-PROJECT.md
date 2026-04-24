@@ -1,6 +1,6 @@
 # STRATUM — Contexto del Proyecto
-> Última actualización: 2026-04-23
-> Versión actual: **v4.10.0**
+> Última actualización: 2026-04-24
+> Versión actual: **v4.11.0**
 > Tagline: _"Tu memoria técnica siempre disponible"_
 > Estado: **Production-ready** (local + Railway)
 
@@ -140,11 +140,9 @@ ai-memory-engine/
 │   ├── vector_memory.py            # Qdrant: store/search episodios, caché LRU 128/5min
 │   ├── graph_memory.py             # NetworkX: relaciones entre entidades
 │   ├── graph_extractor.py
-│   ├── fact_extractor.py
-│   ├── short_memory.py
+│   ├── fact_extractor.py           # Extracción de hechos (reemplaza memory_filter.py)
+│   ├── short_memory.py             # deque(maxlen=MAX_SHORT_MEMORY) — O(1) add/pop
 │   ├── memory_consolidator.py      # Fusión nocturna de memorias antiguas
-│   ├── memory_filter.py
-│   ├── session_summarizer.py
 │   └── pdf_memory.py
 │
 ├── llm/
@@ -153,7 +151,7 @@ ai-memory-engine/
 │   └── cache.py                    # Caché LLM
 │
 ├── tools/
-│   ├── electrical_formulas.py      # Re-export module (~79 líneas) + FORMULA_REGISTRY (25 fórmulas)
+│   ├── electrical_formulas.py      # Re-export module (~79 líneas) + FORMULA_REGISTRY (25 fórmulas) — helpers privados no re-exportados
 │   ├── formulas_basic.py           # helpers + ohms_law, resistor_* (~146 líneas)
 │   ├── formulas_rc.py              # capacitor_*, rc_time_constant, low/high_pass_rc, lc_filter (~83 líneas)
 │   ├── formulas_power.py           # power_dissipation, heat_sink, efficiency, fuse_rating (~67 líneas)
@@ -194,9 +192,7 @@ ai-memory-engine/
 │   └── utils.py
 │
 ├── knowledge/
-│   ├── knowledge_base.py
-│   ├── document_loader.py
-│   └── document_chunker.py
+│   └── knowledge_base.py           # Carga y chunking de documentos (consolidado)
 │
 ├── infrastructure/
 │   ├── vector_store.py             # Singleton Qdrant — server si QDRANT_URL, path local si no
@@ -251,7 +247,7 @@ ai-memory-engine/
 - `formulas_opamp`: inverting_amp, non_inverting_amp, voltage_follower
 - `formulas_drives`: battery_autonomy, charge_time, motor_power, vfd_frequency_for_rpm, motor_torque
 
-Helpers compartidos en `formulas_basic`: `_E24`, `_FUSE_STD`, `_nearest_e24()`, `_nearest_fuse()`, `_result()`
+Helpers internos en `formulas_basic` (privados, no re-exportados): `_E24`, `_FUSE_STD`, `_nearest_e24()`, `_nearest_fuse()`, `_result()`
 
 ### 4.4 Parser de Esquemáticos
 
@@ -858,7 +854,43 @@ ed31a91  perf: ronda 2 — conexión SQLite persistente + WAL
 
 ---
 
-## 12. PENDIENTE TÉCNICO
+## 12. CODE QUALITY PASS — v4.11.0 (2026-04-24)
+
+Revisión sistemática folder-a-folder (core → llm → memory → database → knowledge → tools → agent → api → cli). Sin cambios de funcionalidad.
+
+### Archivos eliminados (dead code confirmado por grep)
+| Archivo | Motivo |
+|---|---|
+| `memory/memory_filter.py` | Cero callers — check de 6 keywords reemplazado por `fact_extractor.py` |
+| `memory/session_summarizer.py` | Cero callers — además usaba `LLM_API`/`LLM_MODEL` frozen en importación, sin `get_llm_headers()` |
+| `knowledge/document_loader.py` | Cero callers — funcionalidad duplicada en `knowledge_base.py` |
+| `knowledge/document_chunker.py` | Cero callers — misma razón |
+| `tools/debug_tools.py` | Cero callers — print-based debug utilities |
+| `tools/memory_viewer.py` | Cero callers — print-based viewer |
+
+### Bugs corregidos
+| Bug | Archivo(s) | Impacto |
+|---|---|---|
+| `asyncio` NameError silencioso | `agent_controller.py` | `_auto_fetch_datasheets()` nunca indexaba datasheets — NameError capturado por `except Exception` |
+| Mutable default `dict` / `list` | `vector_memory.py`, `memory_consolidator.py`, `database/hardware_projects.py`, `database/hardware_memory.py` (×2) | Dicts/listas compartidos entre todas las llamadas |
+| `datetime.utcnow()` deprecado | `database/design_decisions.py`, `database/component_stock.py`, `api/server.py`, `api/routers/hardware_bridge.py`, `api/routers/memory.py` (×2) | Python 3.12 deprecation + naive datetimes sin timezone |
+| `_call_llm` (API privada expuesta) | `llm/openrouter_client.py`, `agent_controller.py`, `agent/agents/circuit_agent.py` | Función privada importada por 2 módulos externos — renombrada a `call_llm_sync` |
+| `search_in_sources` dead branch | `memory/vector_memory.py` | `A or (B and A)` → precedencia de operadores hace `B and A` inalcanzable |
+| `import asyncio` dentro de método | `agent/orchestrator.py`, `agent_controller.py` | Imports de función no añaden al namespace global — otros métodos del módulo no lo ven |
+| Re-exports privados | `tools/electrical_formulas.py` | `_E24`, `_FUSE_STD`, `_nearest_e24`, `_nearest_fuse`, `_result` son privados de `formulas_basic` — removidos del import público |
+| `os.getenv` en vez de `SQL_DB_PATH` | `database/intelligence.py` | Railway inyecta env vars con comillas — `_env()` / `SQL_DB_PATH` de `core.config` las strip |
+| `int()` redundante | `knowledge/knowledge_base.py` | `total_chunks` y `total_files` ya son `int` |
+| Inner `import uuid` | `database/sql_memory.py` | Import redundante dentro de función cuando ya existe `import uuid as _uuid` en el módulo |
+
+### Mejoras de performance/estructura
+| Mejora | Archivo(s) |
+|---|---|
+| `deque(maxlen=N)` reemplaza lista + `pop(0)` O(n) | `memory/short_memory.py`, `agent/agent_state.py` |
+| `self._exact: dict` fast-path O(1) por hash+model | `llm/cache.py` (complementa el fast-path MD5 existente con sync exacto post-pruning) |
+
+---
+
+## 13. PENDIENTE TÉCNICO
 
 - HardwareAgent: por defecto genera MicroPython en vez de C++/Arduino — system prompt de `_design_consult` debe preferir C++/Arduino salvo que el usuario pida explícitamente MicroPython
 - Parser KiCad v5: usar coordenadas de pines reales del `.lib` si está disponible (actualmente usa `P X Y` del componente como fallback)
@@ -867,7 +899,7 @@ ed31a91  perf: ronda 2 — conexión SQLite persistente + WAL
 
 ---
 
-## 12. HISTORIAL DE VERSIONES
+## 14. HISTORIAL DE VERSIONES
 
 | Versión | Fecha       | Cambios principales |
 |---------|-------------|---------------------|
@@ -889,14 +921,220 @@ ed31a91  perf: ronda 2 — conexión SQLite persistente + WAL
 | v3.9.0  | 2026-04-20  | Nuevo diseño UI CAD-instrument (design system completo); bottom nav eliminado → hamburger mobile; composer simplificado; empty state chat mobile; agent routing fix (escribí/código → design, no query); Ctrl+K unificado memoria+KB con {text,score}; 15 mensajes de sesión larga testeados; KB indexada con 10 documentos |
 | v4.0.0  | 2026-04-20  | Platform context persistente (C++ por default); firmware iterativo con diff coloreado (_DiffMixin, intent "modify"); datasheet auto-fetch + indexado KB en background; export ZIP sesión (chat.md + firmware.cpp + decisiones.md); error patterns en vector memory; Wokwi endpoint diagram.json; voice auto-send pipeline |
 | v4.1.0  | 2026-04-20  | CircuitAgent domain-aware (8 dominios, MCU auto-select, hints por dominio, flyback auto-add); SchematicRenderer refactor (14 símbolos, layout funcional, routing ortogonal, color-coding, title block); KiCad exporter nuevo (kicad_exporter.py, símbolos embebidos, net labels, power symbols, endpoint GET /schematic.kicad_sch); PCBRenderer mejorado (placement funcional, routing 2-capas, 14 footprints, Gerber RS-274X 8 archivos + README) |
-| v4.10.0 | 2026-04-23  | KiCad Symbol Renderer (Opción B): parser S-expressions KiCad (kicad_sym_parser.py), renderer con auto-fit (kicad_sym_renderer.py), 13 símbolos reales descargados de gitlab.com/kicad/libraries (R,C,C_Polarized,L,D,LED,Battery,ESP32,ESP8266,DS3231,DS1307). Integrado en schematic_renderer.py con fallback transparente. Símbolos KiCad activos: resistor/capacitor/inductor/diodo/LED/batería/ESP32/ESP8266/RTC. |
-| v4.9.0  | 2026-04-23  | 3D viewer: AmbientLight 2.5→0.55, cámara oblicua (0,55,170), PCFSoftShadowMap 2048, fill light, fondo #1a1a2e, sensor color fix, RTC mesh (CR2032+IC). Schematic: _sym_rtc nuevo, dispatch 14 tipos explícitos (1n4007/zener/bc547/irf520/etc), _sym_generic mejorado con pins. |
-| v4.8.0  | 2026-04-22  | EDA visualization rewrite: schematic light theme KiCad-style (fondo crema, grilla, 14 símbolos, title block, power rails VCC/GND); PCB THT annular pads + courtyard dashed + SMD pads; 3D viewer parametric completo (10 tipos de geometrías, MeshStandardMaterial, wire arcs suaves); routing fix "parsea un circuito" → circuit_design; migración modelo Claude Sonnet 4.6 (revertida por créditos). |
-| v4.7.0  | 2026-04-22  | Auditoría Semanas 1-3: MCU pin rules (6 plataformas), 15+ símbolos SVG nuevos, 3 DRC checks nuevos (5V→3V3/motor sin driver/ESP bulk cap), BOM agrupado+footprints KiCad, firmware retry 2x+error parsing inteligente, snippet library 18+ componentes, PCB renderer profesional (DRC highlight/copper pour/vias/pads/leyenda), export ZIP bundle (/export.zip). Tests: 56/56. |
-| v4.6.0  | 2026-04-22  | Performance: 11 fixes aplicados — SQLite persistente + WAL, dirty flag facts/graph, streaming en bloque, call_llm_async directo, SVG LRU cache, título en background, GZipMiddleware, fast-path hash SemanticCache, asyncio.get_event_loop() → get_running_loop(), requests → httpx (10 archivos). Tests: 56/56. |
-| v4.5.0  | 2026-04-21  | Fix domain_hint nunca pasado al prompt (circuito riego sin sensor humedad); regla anti-nodos-duplicados en CIRCUIT_PARSE_PROMPT; SVG responsivo 100%×100% (ya no se ve centrado en gris); Viewer 2D reescrito: fetch SVG servidor + pan/zoom (rueda, drag, doble-clic reset) + fallback client-side corregido (root cause: container.id vacío → SVG.js fallaba silenciosamente); Viewer 3D: OrbitControls r128, PCB verde con borde dorado, componentes tipados por tipo (14 estilos), cables con arco entre nets, sprite labels, iluminación 3 capas, _resetThreeJS(); Editor: click-to-select migrado al sidebar (compatible con server SVG) |
-| v4.4.1  | 2026-04-21  | Verificación total: fix CRÍTICO IndexError parser S-expression (circuit_importer.py — validación bounds + paréntesis sin cerrar); fix ADVERTENCIA component_library.json sin try/except (fallback a dicts vacíos); fix ADVERTENCIA PUT /{id} no chequeaba save_version() retorno; fix INFO guard renderSchematic en viewer; fix INFO MULTI_USER documentado en .env.example. 56/56 tests siguen pasando. |
-| v4.4.0  | 2026-04-21  | Multi-usuario real (user_id wired en parse/import, GET /circuits/ por usuario, update_owner); Editor visual de circuitos (+ Agregar componente modal, ✕ Eliminar con confirmación, 💾 Guardar → PUT /circuits/{id} con auto-versión, beforeunload dirty-check); Tests pytest 56/56 (test_circuit_importer, test_versioning_sharing, test_firmware_prompts, conftest con fixtures tmp_db) |
+| v4.0.1  | 2026-04-20  | Fix crítico intent "modify": (1) "modify" faltaba en tupla de intents válidos en `_classify_intent()` → LLM respondía "modify" pero caía al fallback; (2) MODIFY_KEYWORDS se chequeaba después de DESIGN_KEYWORDS en `_classify_by_keywords()` → "hacelo más rápido" matcheaba design. Ahora el firmware diff se dispara correctamente. |
 | v4.2.0  | 2026-04-21  | Chat→Circuit inline (orchestrator circuit_design intent + card embebida en chat con preview SVG + KiCad/BOM/Gerber/3D links); Live Hardware State visualizer (WebSocket /ws/hardware-state + serial STATE:{} + live_circuit.js overlay en SVG viewer) |
 | v4.3.0  | 2026-04-21  | Import Eagle/KiCad (POST /circuits/import, parser S-expr + Eagle XML); Versioning (save/list/restore versiones con diff); Share via link público (token URL-safe, router sin auth); Firmware production-ready (watchdog, OTA ESP32/8266, STATE serial, error handling en todos los platforms) |
-| v4.0.1  | 2026-04-20  | Fix crítico intent "modify": (1) "modify" faltaba en tupla de intents válidos en `_classify_intent()` → LLM respondía "modify" pero caía al fallback; (2) MODIFY_KEYWORDS se chequeaba después de DESIGN_KEYWORDS en `_classify_by_keywords()` → "hacelo más rápido" matcheaba design. Ahora el firmware diff se dispara correctamente. |
+| v4.4.0  | 2026-04-21  | Multi-usuario real (user_id wired en parse/import, GET /circuits/ por usuario, update_owner); Editor visual de circuitos (+ Agregar componente modal, ✕ Eliminar con confirmación, 💾 Guardar → PUT /circuits/{id} con auto-versión, beforeunload dirty-check); Tests pytest 56/56 (test_circuit_importer, test_versioning_sharing, test_firmware_prompts, conftest con fixtures tmp_db) |
+| v4.4.1  | 2026-04-21  | Verificación total: fix CRÍTICO IndexError parser S-expression (circuit_importer.py — validación bounds + paréntesis sin cerrar); fix ADVERTENCIA component_library.json sin try/except (fallback a dicts vacíos); fix ADVERTENCIA PUT /{id} no chequeaba save_version() retorno; fix INFO guard renderSchematic en viewer; fix INFO MULTI_USER documentado en .env.example. 56/56 tests siguen pasando. |
+| v4.5.0  | 2026-04-21  | Fix domain_hint nunca pasado al prompt (circuito riego sin sensor humedad); regla anti-nodos-duplicados en CIRCUIT_PARSE_PROMPT; SVG responsivo 100%×100% (ya no se ve centrado en gris); Viewer 2D reescrito: fetch SVG servidor + pan/zoom (rueda, drag, doble-clic reset) + fallback client-side corregido (root cause: container.id vacío → SVG.js fallaba silenciosamente); Viewer 3D: OrbitControls r128, PCB verde con borde dorado, componentes tipados por tipo (14 estilos), cables con arco entre nets, sprite labels, iluminación 3 capas, _resetThreeJS(); Editor: click-to-select migrado al sidebar (compatible con server SVG) |
+| v4.6.0  | 2026-04-22  | Performance: 11 fixes aplicados — SQLite persistente + WAL, dirty flag facts/graph, streaming en bloque, call_llm_async directo, SVG LRU cache, título en background, GZipMiddleware, fast-path hash SemanticCache, asyncio.get_event_loop() → get_running_loop(), requests → httpx (10 archivos). Tests: 56/56. |
+| v4.7.0  | 2026-04-22  | Auditoría Semanas 1-3: MCU pin rules (6 plataformas), 15+ símbolos SVG nuevos, 3 DRC checks nuevos (5V→3V3/motor sin driver/ESP bulk cap), BOM agrupado+footprints KiCad, firmware retry 2x+error parsing inteligente, snippet library 18+ componentes, PCB renderer profesional (DRC highlight/copper pour/vias/pads/leyenda), export ZIP bundle (/export.zip). Tests: 56/56. |
+| v4.8.0  | 2026-04-22  | EDA visualization rewrite: schematic light theme KiCad-style (fondo crema, grilla, 14 símbolos, title block, power rails VCC/GND); PCB THT annular pads + courtyard dashed + SMD pads; 3D viewer parametric completo (10 tipos de geometrías, MeshStandardMaterial, wire arcs suaves); routing fix "parsea un circuito" → circuit_design; migración modelo Claude Sonnet 4.6 (revertida por créditos). |
+| v4.9.0  | 2026-04-23  | 3D viewer: AmbientLight 2.5→0.55, cámara oblicua (0,55,170), PCFSoftShadowMap 2048, fill light, fondo #1a1a2e, sensor color fix, RTC mesh (CR2032+IC). Schematic: _sym_rtc nuevo, dispatch 14 tipos explícitos (1n4007/zener/bc547/irf520/etc), _sym_generic mejorado con pins. |
+| v4.10.0 | 2026-04-23  | KiCad Symbol Renderer (Opción B): parser S-expressions KiCad (kicad_sym_parser.py), renderer con auto-fit (kicad_sym_renderer.py), 13 símbolos reales descargados de gitlab.com/kicad/libraries (R,C,C_Polarized,L,D,LED,Battery,ESP32,ESP8266,DS3231,DS1307). Integrado en schematic_renderer.py con fallback transparente. Símbolos KiCad activos: resistor/capacitor/inductor/diodo/LED/batería/ESP32/ESP8266/RTC. |
+| v4.11.0 | 2026-04-24  | Code quality pass completo (9 carpetas core→llm→memory→database→knowledge→tools→agent→api→cli): 6 archivos dead eliminados (memory_filter, session_summarizer, document_loader, document_chunker, debug_tools, memory_viewer); mutable defaults corregidos (6 sitios); datetime.utcnow() → datetime.now(timezone.utc) (7 sitios); asyncio NameError silencioso en _auto_fetch_datasheets; _call_llm renombrado a call_llm_sync; deque en ShortMemory y AgentState; O(1) exact-match dict en SemanticCache; SQL_DB_PATH desde core.config en intelligence.py; re-exports privados (_E24/_nearest_e24/etc) removidos; import asyncio/LLM_MODEL_FAST a módulo en orchestrator.py; cli/utils.py + cli/status.py: from pathlib import Path movido a módulo (lazy imports eliminados). |
+
+---
+
+## 15. DECISIONES DE ARQUITECTURA
+
+Decisiones no-obvias ya tomadas. No reabrir sin un motivo concreto y medible.
+
+| Decisión | Alternativa descartada | Motivo |
+|---|---|---|
+| HardwareAgent como facade + 4 mixins | Clase monolítica (~950 líneas) | Archivos >250 líneas dificultan el contexto del agente; cada mixin tiene responsabilidad única (design/firmware/keywords/memory_ops); reduce conflictos de merge |
+| OpenRouter como único gateway LLM | Llamadas directas a OpenAI/Anthropic | Un solo cliente httpx soporta múltiples providers; cambio de modelo sin tocar código; `LLM_PROVIDER`, `LLM_MODEL_FAST`, `LLM_MODEL_SMART` como env vars en Railway |
+| NetworkX + JSON para grafo de memoria | Neo4j, memgraph | NetworkX es zero-dependency y corre in-process; persiste en un único JSON; Neo4j requeriría server adicional en Railway (costo + complejidad) |
+| SQLite + WAL + conexión persistente | PostgreSQL | Deploy con un solo archivo en volumen `/data`; WAL + RLock son suficientes para la carga esperada (<100 usuarios); sin proceso de DB separado |
+| Qdrant (local path o cloud) | Chroma (solo local), Pinecone (cloud-only) | Mismo cliente para dev (path local) y prod (QDRANT_URL cloud); sin vendor lock-in; `QDRANT_URL` vacío → path local automático |
+| Plain JS modules con `<script>` y scope global | React, Vue, Svelte | Los `onclick=` en HTML requieren scope global; un bundler añadiría build step sin beneficio real para el tamaño del proyecto; 14 módulos JS son mantenibles sin framework |
+| `deque(maxlen=N)` para ShortMemory y AgentState | `list` + `list.pop(0)` | `list.pop(0)` es O(n) — desplaza todo el array; `deque` es O(1) en ambos extremos con bound automático |
+| `_env()` en `core/config.py` para todas las env vars críticas | `os.getenv()` directo | Railway (y algunos shells CI) inyectan valores con comillas circundantes (`"value"`) — `_env()` las strippea; `os.getenv` directo las deja |
+| Orquestador keyword-first, LLM como fallback | Solo LLM para routing | Keywords O(1) sin latencia; el LLM introduce 200–500ms; el fallback LLM captura solo los casos ambiguos que los keywords no cubren |
+| Lazy initialization de VectorStore y EmbeddingModel | Eager init en startup | `sentence-transformers` carga torch (~60–120s); QdrantClient inicia storage embebido; lazy garantiza que uvicorn bindee el puerto en <1s y Railway no falla el healthcheck |
+| SemanticCache con `_exact: dict` O(1) + cosine similarity como fallback | Solo cosine similarity | El dict O(1) evita llamar MiniLM para hits exactos (mismo texto + modelo + TTL vigente); la cosine similarity captura paráfrasis — ambos se complementan |
+| Hardware Agent bypassa el LLM principal cuando `agents_used == ["hardware"]` | Siempre pasar por LLM principal | El LLM principal reescribía o contradecía la respuesta del HardwareAgent (que incluye código C++ ya validado); el bypass preserva el firmware generado intacto |
+| Título de sesión con fallback inmediato + LLM en background | Bloquear `done` hasta tener título LLM | La generación LLM del título tomaba 2–4s extra en el `done`; con `asyncio.create_task` el `done` llega inmediato y el título actualiza el sidebar vía evento `session_title` separado |
+
+---
+
+## 16. CONTRATOS DE API INTERNA
+
+Funciones públicas críticas que varios módulos consumen. Cambiar la firma o el contrato requiere grep de todos los callers.
+
+### `llm/async_client.py`
+
+| Función | Firma | Contrato |
+|---|---|---|
+| `call_llm_async` | `(messages, temperature=0.7, timeout=120.0, agent_id, agent_name, tools=None, model=None) → dict` | Retorna response JSON completo (`choices[0].message.content`). **Raise** `httpx.HTTPError` en fallo HTTP. Usar cuando se necesita el dict completo (tool calling, finish_reason, etc.) |
+| `call_llm_text` | `(messages, temperature=0.0, timeout=30.0, agent_id, agent_name, model=None, use_cache=True) → str` | Retorna solo el texto de la respuesta. **Nunca raise** — retorna `""` en error. Activa SemanticCache cuando `temperature==0.0 and use_cache==True`. El modelo default es `get_llm_model()` (runtime, no frozen). |
+| `stream_llm_async` | `(messages, on_token, temperature=0.7, agent_id, agent_name, model=None) → str` | Llama `on_token(str)` por cada token recibido. Retorna texto completo al terminar. Nunca raise. `on_token` puede ser sync o async — el caller normaliza. |
+| `close` | `() → None` | Cierra el `httpx.AsyncClient` compartido. Llamar solo en shutdown (una vez). |
+
+### `llm/openrouter_client.py`
+
+| Función | Firma | Contrato |
+|---|---|---|
+| `call_llm_sync` | `(messages, tools=None, model=None, response_format=None, timeout=120) → dict` | Versión **síncrona** bloqueante. Usada por `Orchestrator` (pasada como `client_fn`) y por cualquier código que corra fuera del event loop. Retorna el response dict completo o `{}` en error. |
+
+### `core/prompt_builder.py`
+
+| Función | Firma | Contrato |
+|---|---|---|
+| `build_prompt` | `(user_input, history, memories, facts, graph_context="", user_profile_context="", system_prompt=None, source_context="") → str` | Ensambla el prompt final para el LLM principal. Secciones vacías se omiten (no aparece el label "Memorias relevantes:" si `memories` está vacío). Agrega `"Hoy es {fecha}"` al base prompt. Orden de secciones: base → source_context → user_profile → facts → graph → memories → history → input. |
+
+### `memory/vector_memory.py`
+
+| Función | Firma | Contrato |
+|---|---|---|
+| `store_memory` | `(text, metadata=None) → bool` | Guarda episodio en Qdrant con consolidación previa. **Retorna `False`** si la memoria fue descartada por redundante (no guardar de nuevo). Tipos en `metadata["type"]` que saltean consolidación: `"knowledge"`, `"hardware"`, `"session_summary"`, `"fact_update"`, `"consolidated_summary"`. |
+| `search_memory` | `(query, top_k=5) → list[str]` | Retorna lista de textos relevantes. Retorna `[]` si Qdrant no está disponible. LRU cache de 128 entradas / 5min. |
+| `search_memory_with_scores` | `(query, top_k=5) → list[dict]` | Retorna `[{text, score, metadata}]`. Score es semántico × decay temporal (`MEMORY_DECAY_RATE`). |
+| `search_in_sources` | `(query, source_ids, top_k=5) → str` | Filtra resultados por `metadata["source_id"] in source_ids`. Retorna string concatenado de los textos relevantes, o `""` si no hay resultados. |
+| `invalidate_search_cache` | `() → None` | Invalida el LRU cache completo. Llamar tras guardar memorias relevantes que deben aparecer en búsquedas inmediatas. |
+
+### `memory/fact_extractor.py`
+
+| Función | Firma | Contrato |
+|---|---|---|
+| `extract_facts` | `async (text) → dict` | Extrae hechos del texto del usuario. **Early return `{}`** si `len(text) < 15` o ningún keyword coincide. Guarda automáticamente en DB via `store_fact`. Llama `memory_consolidator.process_new_fact` antes de guardar. Usa `call_llm_text` con `temperature=0`. |
+
+### `database/sql_memory.py` — singleton `_default`
+
+| Método | Firma | Contrato |
+|---|---|---|
+| `store_fact` | `(key, value, user_id="default")` | Upsert en tabla `facts`. Incrementa `_facts_seq` (dirty flag). |
+| `get_all_facts` | `(user_id="default") → dict` | Retorna `{key: value}`. O(n) sobre la tabla. |
+| `store_message` | `(role, content, session_id, user_id, elapsed_ms=None)` | Inserta en `conversations`. No actualiza `last_msg_at` de la sesión — llamar `touch_session` por separado. |
+| `touch_session` | `(session_id, user_id="default")` | Upsert en `chat_sessions`. Crea la sesión si no existe. Llamar tras cada mensaje del usuario. |
+| `get_conversation_by_session` | `(session_id, limit=20) → list[dict]` | Retorna `[{role, content, timestamp, elapsed_ms}]` ordenados cronológicamente. |
+| `_facts_seq` | `int` (attr) | Incrementa en cada `store_fact`/`delete_fact`. El WS handler lo compara antes de incluir `facts` en el payload `done`. |
+
+### `database/intelligence.py` — singleton `intelligence_db`
+
+| Método | Firma | Contrato |
+|---|---|---|
+| `get_active_profile` | `() → dict \| None` | Retorna el perfil AI activo con campos: `system_prompt` (str), `active_sources` (list de source_ids). Si no hay perfil activo, retorna `None` y el AgentController usa el `DEFAULT_SYSTEM_PROMPT` de `prompt_builder.py`. |
+
+---
+
+## 17. COBERTURA DE TESTS
+
+Tests actuales: **56 en `tests/`** (pytest, sin servidor, sin red). Más 3 en `eval/` (requieren servidor o son integración).
+
+| Módulo | Tests | Cobertura | Notas |
+|---|---|---|---|
+| `tools/circuit_importer.py` | ✅ 18 | Alta | KiCad S-expr (v5/v6), Eagle XML, bounds validation, extensión |
+| `database/circuit_design.py` | ✅ 22 | Media-alta | Versioning, sharing, update_circuit, user isolation |
+| `tools/firmware_generator.py` | ✅ 16 | Media | Watchdog/OTA/STATE por plataforma, `_clean_code()` |
+| `tools/circuit_importer.py` (eval) | ✅ 3 | Básica | `eval/test_full_integration.py` — KiCad + CircuitDesignManager básico |
+| `agent/orchestrator.py` | ⚠️ 0 | Ninguna | Routing crítico — keywords y fallback LLM sin tests |
+| `agent/agent_controller.py` | ⚠️ 0 | Ninguna | Pipeline principal — process_input sin tests |
+| `memory/vector_memory.py` | ⚠️ 0 | Ninguna | store/search Qdrant — requiere mock de QdrantClient |
+| `memory/fact_extractor.py` | ⚠️ 0 | Ninguna | LLM call interna — requiere mock de call_llm_text |
+| `database/sql_memory.py` | ⚠️ 0 | Ninguna | CRUD principal — el conftest.py tiene `tmp_db` fixture disponible para usarlo |
+| `llm/cache.py` | ⚠️ 0 | Ninguna | SemanticCache — lógica O(1) + cosine sin tests |
+| `llm/async_client.py` | ⚠️ 0 | Ninguna | Client httpx — requiere mock de httpx |
+| `tools/schematic_renderer.py` | 0 | — | Visual; difícil de testear sin comparación de SVG |
+| `tools/electrical_formulas.py` + módulos | ⚠️ 0 | Ninguna | 25 fórmulas Python puras — ideales para unit tests sin dependencias |
+| `tools/electrical_drc.py` | ⚠️ 0 | Ninguna | 15 DRC checks — lógica determinística, fácil de testear |
+| `api/routers/*` | 0 | — | Solo via `eval/test_e2e_api.py` (requiere servidor en :8000) |
+| `memory/memory_consolidator.py` | 0 | — | |
+| `memory/graph_memory.py` | 0 | — | |
+| `tools/firmware_flasher.py` | 0 | — | Requiere hardware físico |
+| `tools/kicad_exporter.py` | 0 | — | |
+
+> **Prioridad para agregar tests** (retorno más alto): `tools/electrical_formulas.py` (puras, 0 deps, cubrirían 25 fórmulas con ~30 tests), `tools/electrical_drc.py` (determinístico), `database/sql_memory.py` (conftest.py ya tiene `tmp_db`), `llm/cache.py` (O(1) dict + TTL lógica).
+
+---
+
+## 18. MAPA DE DEPENDENCIAS
+
+Capas de dependencia de infraestructura hacia arriba. Una capa solo debe importar capas iguales o inferiores.
+
+```
+Capa 0 — Núcleo puro (solo stdlib, sin imports internos)
+  core/config.py          ← os, logging
+  core/logger.py          ← logging
+  core/prompt_builder.py  ← datetime (stdlib)
+
+Capa 1 — Infraestructura y clientes externos
+  infrastructure/embeddings.py    ← core/config, core/logger + sentence-transformers (lazy)
+  infrastructure/vector_store.py  ← infrastructure/embeddings, core/config + qdrant-client (lazy)
+  llm/cache.py                    ← core/logger + hashlib, MiniLM (lazy via embeddings)
+  llm/openrouter_client.py        ← core/config + httpx
+  llm/async_client.py             ← core/config, core/logger + httpx
+  database/sql_memory.py          ← core/config + sqlite3
+  database/hardware_memory.py     ← database/hardware_{devices,firmware,circuits,projects}
+  database/hardware_devices.py    ← core/config + sqlite3
+  database/hardware_firmware.py   ← core/config + sqlite3
+  database/hardware_circuits.py   ← core/config + sqlite3
+  database/hardware_projects.py   ← core/config + sqlite3
+  database/circuit_design.py      ← core/config + sqlite3
+  database/design_decisions.py    ← core/config + sqlite3
+  database/component_stock.py     ← core/config + sqlite3
+  database/intelligence.py        ← core/config + sqlite3
+  memory/graph_memory.py          ← core/config, core/logger + networkx
+  memory/short_memory.py          ← core/config (MAX_SHORT_MEMORY) + collections
+
+Capa 2 — Dominio de memoria (usa Capa 1)
+  memory/vector_memory.py         ← infrastructure/vector_store, core/config, core/logger
+                                    + memory/memory_consolidator (lazy, dentro de store_memory)
+  memory/memory_consolidator.py   ← memory/vector_memory (⚠️ potencial circular — verificar),
+                                    core/logger
+  memory/graph_extractor.py       ← memory/graph_memory, llm/async_client
+  memory/fact_extractor.py        ← database/sql_memory, llm/async_client, core/logger
+                                    + memory/memory_consolidator (lazy)
+  memory/pdf_memory.py            ← memory/vector_memory, core/logger
+
+Capa 3 — Herramientas y knowledge (usa Capas 0-2)
+  knowledge/knowledge_base.py     ← memory/vector_memory, core/logger
+  tools/formulas_*.py             ← solo stdlib (math) — Capa 0 en la práctica
+  tools/electrical_formulas.py    ← tools/formulas_* (re-export)
+  tools/electrical_drc.py         ← stdlib
+  tools/firmware_generator.py     ← llm/async_client, core/config, core/logger
+  tools/firmware_flasher.py       ← core/config, core/logger + subprocess
+  tools/schematic_renderer.py     ← core/logger + svgwrite
+  tools/kicad_exporter.py         ← stdlib
+  tools/circuit_importer.py       ← stdlib
+  tools/bom_generator.py          ← stdlib
+  tools/web_search.py             ← httpx
+  tools/code_executor.py          ← stdlib (subprocess/exec)
+  tools/tool_registry.py          ← memory/pdf_memory (⚠️ tools importa memory — cross-capa aceptado)
+  tools/plugin_loader.py          ← core/logger
+  tools/datasheet_fetcher.py      ← llm/async_client, knowledge/knowledge_base
+
+Capa 4 — Agentes (usa Capas 0-3)
+  agent/agents/base_agent.py      ← core/logger
+  agent/agents/research_agent.py  ← tools/web_search, core/logger
+  agent/agents/code_agent.py      ← tools/code_executor, core/logger
+  agent/agents/memory_agent.py    ← memory/*, database/sql_memory, core/logger
+  agent/agents/hardware_agent.py  ← database/hardware_memory, llm/*, tools/firmware_*,
+                                    tools/schematic_renderer, agent/agents/hardware_*.py
+  agent/agents/circuit_agent.py   ← database/circuit_design, tools/*, llm/openrouter_client
+  agent/agents/electrical_calc_agent.py ← tools/electrical_formulas, llm/async_client
+  agent/orchestrator.py           ← agent/agents/*, llm/async_client
+  agent/agent_controller.py       ← agent/orchestrator, memory/*, database/sql_memory,
+                                    core/prompt_builder, llm/*, agent/user_profiler
+  agent/user_profiler.py          ← database/sql_memory, core/logger
+  agent/proactive_*.py            ← agent/agents/*, memory/*, database/*, llm/*
+
+Capa 5 — API (usa Capas 0-4)
+  api/auth.py                     ← core/config, database/sql_memory
+  api/routers/*.py                ← agent/*, database/*, memory/*, tools/*
+  api/server.py                   ← api/routers/*, core/config
+  api/job_worker.py               ← api/app_state
+
+Capa 6 — Entrada (usa Capas 0-5)
+  cli/*.py                        ← database/*, memory/*, core/*
+  run.py                          ← cli/*, api/server (via uvicorn)
+```
+
+### Violaciones / anomalías conocidas
+
+| Archivo | Problema | Riesgo |
+|---|---|---|
+| `memory/vector_memory.py` ↔ `memory/memory_consolidator.py` | Posible circular: `vector_memory` importa `memory_consolidator` dentro de `store_memory()`; verificar si `memory_consolidator` importa `vector_memory` a nivel módulo | ⚠️ verificar — si ambos importan en top-level → `ImportError` |
+| `tools/tool_registry.py` | Capa 3 importa `memory/pdf_memory` (Capa 2) | Aceptado — dependency ascendente controlada |
+| `api/routers/websockets.py` | Importa `api.app_state` dentro de la función WS (lazy) para evitar circular con `api/server.py` | Intencional — no romper |
+| `agent/agent_controller.py` | `import asyncio` debe estar a nivel módulo (corregido en v4.11.0) — cualquier nuevo método que use `asyncio.*` lo requiere | Monitorear en nuevos métodos |

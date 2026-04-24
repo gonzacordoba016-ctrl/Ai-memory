@@ -59,6 +59,10 @@ function connectWS() {
       loadSessions();
       return;
     }
+    if (data.type === 'session_context') {
+      _renderMemoryCard(data);
+      return;
+    }
     if (data.type === 'thinking') {
       return; // heartbeat del servidor — ignorar silenciosamente
     }
@@ -398,4 +402,63 @@ function updateStatusText(text, ok) {
   const span = document.getElementById('status-text');
   if (dot)  dot.className  = `w-1 h-1 ${ok ? 'bg-primary' : 'bg-[#494847]'}`;
   if (span) span.textContent = text;
+}
+
+// ── SESSION CONTEXT CARD ─────────────────────────────────────────────────
+function _renderMemoryCard(ctx) {
+  const msgs = document.getElementById('messages');
+  if (!msgs) return;
+
+  // Remove empty state if present
+  document.getElementById('chat-empty')?.remove();
+
+  // Don't show if no meaningful info
+  if (!ctx.session_title && !ctx.topic_hints) return;
+
+  const card = document.createElement('div');
+  card.id = 'memory-context-card';
+  card.style.cssText = [
+    'margin:0 0 12px 0',
+    'border:1px solid #00d4ff33',
+    'border-radius:6px',
+    'background:linear-gradient(135deg,#0d1a2a 0%,#091520 100%)',
+    'padding:10px 12px',
+    'position:relative',
+    'font-family:monospace',
+  ].join(';');
+
+  const titleLine = ctx.session_title
+    ? `<span style="color:#00d4ff;font-size:11px;font-weight:600">${escHtml(ctx.session_title)}</span>`
+    : '';
+  const dateLine = ctx.last_date
+    ? `<span style="color:#8b949e;font-size:10px;margin-left:8px">${escHtml(ctx.last_date)}</span>`
+    : '';
+  const platformBadge = ctx.platform
+    ? `<span style="color:#3fb950;font-size:9px;border:1px solid #3fb95044;border-radius:3px;padding:1px 5px;margin-left:6px">${escHtml(ctx.platform.toUpperCase())}</span>`
+    : '';
+  const topicLine = ctx.topic_hints
+    ? `<div style="color:#8b949e;font-size:10px;margin-top:4px">
+         <span style="color:#494847">temas:</span>
+         ${ctx.topic_hints.split(',').map(t =>
+           `<span style="color:#58a6ff;margin-left:4px">${escHtml(t.trim())}</span>`
+         ).join('')}
+       </div>`
+    : '';
+  const msgCount = ctx.message_count
+    ? `<span style="color:#494847;font-size:9px;margin-left:6px">${ctx.message_count} mensajes</span>`
+    : '';
+
+  card.innerHTML = `
+    <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+      <span style="color:#494847;font-size:9px;letter-spacing:0.08em">MEMORIA</span>
+      <span style="color:#00d4ff44;font-size:9px">▶</span>
+      ${titleLine}${dateLine}${platformBadge}${msgCount}
+    </div>
+    ${topicLine}
+    <button onclick="document.getElementById('memory-context-card')?.remove()"
+      style="position:absolute;top:6px;right:8px;background:none;border:none;color:#494847;cursor:pointer;font-size:12px;padding:0;line-height:1"
+      title="Cerrar">×</button>
+  `;
+
+  msgs.insertBefore(card, msgs.firstChild);
 }

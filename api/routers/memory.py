@@ -1,9 +1,13 @@
 # api/routers/memory.py
 # Endpoints de memoria: facts, historial, búsqueda semántica, grafo, perfil, plugins, stats
 
+import io
+import re
+import uuid
+import zipfile
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse, StreamingResponse
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import BaseModel
 
 from api.auth import get_current_user
@@ -223,7 +227,6 @@ async def list_sessions():
 
 @router.post("/api/sessions", status_code=201)
 async def create_session(body: SessionCreateRequest = None):
-    import uuid
     sid = str(uuid.uuid4())
     title = body.title if body else "Nueva conversación"
     result = sql_db.create_session(session_id=sid, title=title)
@@ -245,8 +248,6 @@ async def delete_session(session_id: str):
 @router.get("/api/sessions/{session_id}/export")
 async def export_session(session_id: str):
     """Exporta la sesión como ZIP con: chat.md, firmware.cpp (si hay), decisiones.md"""
-    import io
-    import zipfile
     from database.sql_memory import SQLMemory
     db = SQLMemory()
     msgs = db.get_conversation_by_session(session_id, limit=500)
@@ -256,7 +257,7 @@ async def export_session(session_id: str):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         # chat.md
-        chat_lines = [f"# Stratum — Sesión {session_id[:8]}\n", f"Exportado: {datetime.utcnow().isoformat()}\n\n"]
+        chat_lines = [f"# Stratum — Sesión {session_id[:8]}\n", f"Exportado: {datetime.now(timezone.utc).isoformat()}\n\n"]
         firmware_blocks = []
         for m in msgs:
             role = "**Usuario**" if m["role"] == "user" else "**Agente**"
@@ -268,7 +269,6 @@ async def export_session(session_id: str):
             chat_lines.append(f"---\n{role}{ts_str}{elapsed}\n\n{m['content']}\n\n")
             # Extraer bloques de firmware C++
             if m["role"] == "assistant" and ("void setup()" in m["content"] or "```cpp" in m["content"]):
-                import re
                 blocks = re.findall(r'```(?:cpp|c|arduino)?\n(.*?)```', m["content"], re.DOTALL)
                 firmware_blocks.extend(blocks)
         zf.writestr("chat.md", "".join(chat_lines))
@@ -292,7 +292,7 @@ async def export_session(session_id: str):
             pass
 
     buf.seek(0)
-    filename = f"stratum_{session_id[:8]}_{datetime.utcnow().strftime('%Y%m%d')}.zip"
+    filename = f"stratum_{session_id[:8]}_{datetime.now(timezone.utc).strftime('%Y%m%d')}.zip"
     return StreamingResponse(
         buf,
         media_type="application/zip",

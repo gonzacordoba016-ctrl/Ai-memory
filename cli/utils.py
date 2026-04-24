@@ -2,6 +2,7 @@
 
 import os
 import sys
+from pathlib import Path
 
 _WIN = sys.platform == "win32"
 
@@ -18,7 +19,6 @@ def step(msg): print(f"\n{_c(msg, 1)}")
 
 
 def _get_paths() -> dict:
-    from pathlib import Path
     return {
         "sql_db":    Path(os.getenv("MEMORY_DB_PATH", "./database/memory.db")),
         "vector_db": Path(os.getenv("VECTOR_DB_PATH", "./memory_db")),
@@ -58,7 +58,6 @@ def _safe_hostname() -> str:
 
 
 def _fmt_size(path) -> str:
-    from pathlib import Path
     p = Path(path)
     size = p.stat().st_size if p.is_file() else sum(
         f.stat().st_size for f in p.rglob("*") if f.is_file()

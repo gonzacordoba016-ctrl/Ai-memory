@@ -4,7 +4,7 @@
 import os
 import sqlite3
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from core.config import SQL_DB_PATH
 
 DB_PATH = SQL_DB_PATH
@@ -58,7 +58,7 @@ class ComponentStockDB:
             value: str = None, package: str = None, supplier: str = None,
             supplier_ref: str = None, datasheet: str = None,
             notes: str = None, tags: list = None, unit_cost: float = 0.0) -> int:
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         with self._conn() as c:
             cur = c.execute("""
                 INSERT INTO component_stock
@@ -73,7 +73,7 @@ class ComponentStockDB:
     def update_cost(self, component_id: int, unit_cost: float) -> bool:
         with self._conn() as c:
             c.execute("UPDATE component_stock SET unit_cost = ?, updated_at = ? WHERE id = ?",
-                      (unit_cost, datetime.utcnow().isoformat(), component_id))
+                      (unit_cost, datetime.now(timezone.utc).isoformat(), component_id))
         return True
 
     def update(self, component_id: int, **kwargs) -> bool:
@@ -84,7 +84,7 @@ class ComponentStockDB:
             return False
         if "tags" in fields:
             fields["tags"] = json.dumps(fields["tags"])
-        fields["updated_at"] = datetime.utcnow().isoformat()
+        fields["updated_at"] = datetime.now(timezone.utc).isoformat()
         set_clause = ", ".join(f"{k} = ?" for k in fields)
         values = list(fields.values()) + [component_id]
         with self._conn() as c:
@@ -97,7 +97,7 @@ class ComponentStockDB:
                 UPDATE component_stock
                 SET quantity = MAX(0, quantity + ?), updated_at = ?
                 WHERE id = ?
-            """, (delta, datetime.utcnow().isoformat(), component_id))
+            """, (delta, datetime.now(timezone.utc).isoformat(), component_id))
             row = c.execute("SELECT quantity FROM component_stock WHERE id = ?",
                             (component_id,)).fetchone()
         return row[0] if row else 0

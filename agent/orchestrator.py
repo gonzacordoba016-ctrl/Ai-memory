@@ -1,7 +1,9 @@
 # agent/orchestrator.py
 
 import json
+import asyncio
 from core.logger import logger
+from core.config import LLM_MODEL_FAST
 from llm.async_client import call_llm_text
 
 from agent.agents.research_agent import ResearchAgent
@@ -179,7 +181,6 @@ class Orchestrator:
 
         # Paso 2: LLM async para casos ambiguos
         try:
-            from core.config import LLM_MODEL_FAST
             content = await call_llm_text(
                 messages=[{
                     "role":    "user",
@@ -212,8 +213,6 @@ class Orchestrator:
         Los agentes síncronos legacy (research, code, memory) se envuelven
         en asyncio.to_thread() para no bloquear el event loop.
         """
-        import asyncio
-
         agents_to_run = await self.route(query)
         results       = {}
         context_parts = []

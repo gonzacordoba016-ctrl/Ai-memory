@@ -8,6 +8,7 @@ import httpx
 from pathlib import Path
 from core.config import LLM_API, LLM_MODEL_SMART as LLM_MODEL, get_llm_headers
 from core.logger import logger
+from tools.firmware_validator import validate_firmware
 
 FIRMWARE_DIR = os.path.abspath("./agent_files/firmware")
 
@@ -481,6 +482,14 @@ def generate_firmware(
 
         # Limpiar markdown si el modelo lo incluye igual
         code = _clean_code(code)
+
+        # Pre-compilation static analysis — fix includes and known API mistakes
+        validation = validate_firmware(code, platform)
+        if validation.was_modified:
+            code = validation.fixed_code
+            logger.info(f"[FirmwareValidator] {len(validation.auto_fixed)} fixes aplicados: {validation.auto_fixed}")
+        if validation.issues:
+            logger.info(f"[FirmwareValidator] Issues detectados: {validation.issues}")
 
         # Determinar extensión
         ext      = "ino" if "arduino" in platform or "esp" in platform else "py"

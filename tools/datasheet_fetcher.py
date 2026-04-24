@@ -68,16 +68,16 @@ def fetch_datasheet_text(ic_name: str) -> str | None:
 
     # Fallback: búsqueda DuckDuckGo para encontrar el datasheet
     try:
-        from tools.web_search import web_search
-        results = web_search(f"{ic} datasheet filetype:pdf site:ti.com OR site:st.com OR site:microchip.com", max_results=3)
-        for r in results:
-            url = r.get("url", "")
-            if url.endswith(".pdf") or "datasheet" in url.lower():
-                text = _fetch_pdf_text(url)
-                if text:
-                    cache_path.write_text(text, encoding="utf-8")
-                    logger.info(f"[Datasheet] Descargado via búsqueda: {ic} — {url}")
-                    return text
+        from duckduckgo_search import DDGS
+        with DDGS() as ddgs:
+            for r in ddgs.text(f"{ic} datasheet filetype:pdf site:ti.com OR site:st.com OR site:microchip.com", max_results=3):
+                url = r.get("href", "")
+                if url.endswith(".pdf") or "datasheet" in url.lower():
+                    text = _fetch_pdf_text(url)
+                    if text:
+                        cache_path.write_text(text, encoding="utf-8")
+                        logger.info(f"[Datasheet] Descargado via búsqueda: {ic} — {url}")
+                        return text
     except Exception as e:
         logger.warning(f"[Datasheet] Búsqueda fallida para {ic}: {e}")
 
@@ -158,8 +158,6 @@ def auto_fetch_and_index(text: str) -> list[str]:
         if content:
             try:
                 from knowledge.knowledge_base import index_knowledge_base
-                # Escribir a knowledge dir para que se indexe
-                from pathlib import Path
                 kb_path = Path("./agent_files/knowledge") / f"datasheet_{ic}.txt"
                 kb_path.write_text(f"# Datasheet: {ic.upper()}\n\n{content}", encoding="utf-8")
                 index_knowledge_base(force=False)

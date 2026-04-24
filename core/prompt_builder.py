@@ -3,31 +3,25 @@
 from datetime import datetime
 
 
-def format_history(history):
-    text = ""
-    for msg in history:
-        role    = msg["role"]
-        content = msg["content"]
-        text   += f"{'Usuario' if role == 'user' else 'Asistente'}: {content}\n"
-    return text
+def _format_history(history: list[dict]) -> str:
+    return "".join(
+        f"{'Usuario' if m['role'] == 'user' else 'Asistente'}: {m['content']}\n"
+        for m in history
+    )
 
 
-def format_memories(memories):
+def _format_memories(memories: list) -> str:
     if not memories:
         return ""
-    text = "Memorias relevantes:\n"
-    for m in memories:
-        text += f"- {m}\n"
-    return text
+    return "Memorias relevantes:\n" + "".join(f"- {m}\n" for m in memories)
 
 
-def format_facts(facts):
+def _format_facts(facts: dict) -> str:
     if not facts:
         return ""
-    text = "Datos conocidos del usuario:\n"
-    for key, value in facts.items():
-        text += f"- {key}: {value}\n"
-    return text
+    return "Datos conocidos del usuario:\n" + "".join(
+        f"- {k}: {v}\n" for k, v in facts.items()
+    )
 
 
 DEFAULT_SYSTEM_PROMPT = """Eres Stratum, un asistente técnico de ingeniería electrónica con memoria persistente.
@@ -59,19 +53,17 @@ def build_prompt(user_input, history, memories, facts, graph_context="",
                  user_profile_context="", system_prompt: str = None,
                  source_context: str = ""):
 
-    now   = datetime.now()
-    fecha = now.strftime("%A %d de %B de %Y, %H:%M hs")
-
+    fecha = datetime.now().strftime("%A %d de %B de %Y, %H:%M hs")
     base_prompt = (system_prompt or DEFAULT_SYSTEM_PROMPT) + f"\n\nHoy es {fecha}."
 
     sections = [
         base_prompt,
-        source_context,              # ← contexto de fuentes del perfil activo
-        user_profile_context,          # ← perfil del usuario (adaptación dinámica)
-        format_facts(facts),
+        source_context,
+        user_profile_context,
+        _format_facts(facts),
         graph_context,
-        format_memories(memories),
-        f"Historial:\n{format_history(history)}",
+        _format_memories(memories),
+        f"Historial:\n{_format_history(history)}",
         f"Usuario: {user_input}\n\nAsistente:",
     ]
 

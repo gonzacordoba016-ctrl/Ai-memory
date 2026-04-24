@@ -1,6 +1,7 @@
 # api/routers/calc.py
 # Endpoint REST para el motor de cálculo de ingeniería eléctrica/electrónica.
 
+import re
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Any
@@ -51,7 +52,6 @@ def compute(req: CalcRequest):
     std_val = result.get("std_value")
     if std_val:
         try:
-            import re
             cat_map = {
                 "resistor_for_led":          "resistencia",
                 "resistor_voltage_divider":  "resistencia",

@@ -10,15 +10,15 @@ import json as _json
 import os
 import httpx
 from core.logger import logger
-from core.config import get_llm_headers
+from core.config import get_llm_headers, _env
 from database.hardware_memory import hardware_memory
 
 # Modelo de visión para Ollama
-VISION_MODEL_OLLAMA  = os.getenv("VISION_MODEL", "llava:7b")
-OLLAMA_BASE          = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+VISION_MODEL_OLLAMA  = _env("VISION_MODEL", "llava:7b")
+OLLAMA_BASE          = _env("OLLAMA_BASE_URL", "http://localhost:11434")
 
 # Modelo de visión para OpenRouter (gpt-4o-mini soporta imágenes)
-VISION_MODEL_OPENROUTER = os.getenv("VISION_MODEL_OPENROUTER", "openai/gpt-4o-mini")
+VISION_MODEL_OPENROUTER = _env("VISION_MODEL_OPENROUTER", "openai/gpt-4o-mini")
 OPENROUTER_URL          = "https://openrouter.ai/api/v1/chat/completions"
 
 VISION_PROMPT = """Sos un experto en electrónica y circuitos. Analizá esta imagen de un circuito electrónico/eléctrico.
@@ -69,7 +69,7 @@ class VisionAgent:
                 "raw_response": str,
             }
         """
-        provider = os.getenv("LLM_PROVIDER", "ollama")
+        provider = _env("LLM_PROVIDER", "ollama")
         logger.info(f"[VisionAgent] Analizando imagen | provider={provider} | device={device_name or 'sin asignar'}")
 
         if provider == "openrouter":
@@ -112,8 +112,7 @@ class VisionAgent:
         vision_agent._last_circuit = circuit
         try:
             from database.sql_memory import _default as _sql
-            import json as _j
-            _sql.store_fact("__last_vision_circuit", _j.dumps(circuit, ensure_ascii=False))
+            _sql.store_fact("__last_vision_circuit", _json.dumps(circuit, ensure_ascii=False))
         except Exception:
             pass
 
@@ -167,7 +166,7 @@ class VisionAgent:
             logger.info(f"[VisionAgent] OpenRouter respondió | model={VISION_MODEL_OPENROUTER}")
             return content.strip()
 
-        except requests.Timeout:
+        except httpx.TimeoutException:
             logger.error("[VisionAgent] Timeout llamando a OpenRouter vision")
             return ""
         except Exception as e:
@@ -207,7 +206,7 @@ class VisionAgent:
             response.raise_for_status()
             return response.json().get("response", "").strip()
 
-        except requests.Timeout:
+        except httpx.TimeoutException:
             logger.error("[VisionAgent] Timeout llamando a LLaVA")
             return ""
         except Exception as e:

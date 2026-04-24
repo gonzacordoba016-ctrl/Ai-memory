@@ -8,6 +8,7 @@ from tools.serial_monitor import read_serial, send_serial
 from tools.plugin_loader import plugin_loader
 from memory.pdf_memory import ingest_pdf
 from datetime import datetime
+from core.logger import logger
 
 
 def get_datetime() -> str:
@@ -159,6 +160,5 @@ def execute_tool(name: str, args: dict) -> str:
     try:
         return str(fn(**args))
     except Exception as e:
-        from core.logger import logger
         logger.error(f"[ToolRegistry] Error ejecutando '{name}': {e}")
         return f"Error ejecutando {name}: {e}"

@@ -2,6 +2,9 @@
 # Endpoints de hardware: dispositivos, firmware, circuitos, biblioteca, visión, señal
 
 import asyncio
+import difflib
+import json
+import os
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
 from core.logger import logger
@@ -47,7 +50,6 @@ async def get_firmware_diff(device_name: str):
     history = hardware_memory.get_device_history(device_name, limit=2)
     if len(history) < 2:
         return {"device": device_name, "diff": None, "message": "Menos de 2 versiones"}
-    import difflib
     old_code = (history[1].get("code") or "").splitlines(keepends=True)
     new_code = (history[0].get("code") or "").splitlines(keepends=True)
     diff = list(difflib.unified_diff(
@@ -138,7 +140,6 @@ async def analyze_circuit_image(request: Request):
 
 @router.get("/vision/status")
 async def vision_status():
-    import os
     provider = os.getenv("LLM_PROVIDER", "ollama")
     if provider == "openrouter":
         from agent.agents.vision_agent import VISION_MODEL_OPENROUTER
@@ -224,7 +225,6 @@ async def get_wokwi_url(device_name: str):
             return {"url": "https://wokwi.com/projects/new", "diagram_json": None, "has_circuit": False}
 
         from tools.wokwi_simulator import generate_wokwi_diagram
-        import json
         diagram = generate_wokwi_diagram(circuit)
         diagram_json = json.dumps(diagram, indent=2)
 

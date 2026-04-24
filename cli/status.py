@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+from pathlib import Path
 
 from cli.utils import _c, ok, warn, info, step, _get_paths, _fmt_size
 
@@ -73,7 +74,6 @@ def cmd_status() -> int:
         warn("Vector DB no encontrada")
 
     # Backups
-    from pathlib import Path
     backups = sorted(Path(".").glob("stratum_backup_*.zip"), reverse=True)
     if backups:
         step("Backups disponibles")

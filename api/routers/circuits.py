@@ -2,8 +2,12 @@
 # Circuit Router: parseo de circuitos, esquemáticos SVG, breadboard 3D, PCB, Gerber, firmware
 
 import asyncio
+import io
+import json as _json
+import os
 import time
 import uuid as uuid_lib
+import zipfile
 from collections import OrderedDict
 from datetime import datetime, timezone
 
@@ -339,7 +343,6 @@ async def update_circuit_layout(circuit_id: int, body: dict):
 async def wokwi_status():
     """Estado del entorno Wokwi CLI: disponibilidad del binario y token configurado."""
     from tools.wokwi_simulator import _is_wokwi_cli_available
-    import os
     cli_available = await asyncio.to_thread(_is_wokwi_cli_available)
     token_set = bool(os.getenv("WOKWI_CLI_TOKEN", "").strip())
     return {
@@ -355,7 +358,6 @@ async def wokwi_status():
 async def download_wokwi_diagram(circuit_id: int):
     """Descarga el diagram.json Wokwi listo para importar en wokwi.com."""
     from tools.wokwi_simulator import generate_wokwi_diagram
-    import json as _json
 
     agent        = _get_circuit_agent()
     circuit_data = agent.get_circuit_by_id(circuit_id)
@@ -512,9 +514,6 @@ async def export_circuit_zip(circuit_id: int):
     schematic.svg, <name>.kicad_sch, bom.csv, netlist.json, pcb_layout.svg,
     gerber/<layer>.gbr, README.txt
     """
-    import zipfile
-    import io
-    import json as _json
     from tools.kicad_exporter import export_kicad_schematic
     from tools.bom_generator import generate_bom, bom_to_csv
     from database.component_stock import get_stock_db

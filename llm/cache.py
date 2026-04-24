@@ -27,8 +27,9 @@ class SemanticCache:
     """
 
     def __init__(self):
-        # Lista de (embedding: np.ndarray, response: str, model: str, ts: float)
         self._entries: list[dict] = []
+        # O(1) fast-path: "{hash}\x00{model}" → entry dict
+        self._exact: dict[str, dict] = {}
 
     def _cosine(self, a: np.ndarray, b: np.ndarray) -> float:
         na, nb = np.linalg.norm(a), np.linalg.norm(b)
@@ -54,18 +55,12 @@ class SemanticCache:
         """Retorna respuesta cacheada si hay un hit, o None."""
         key_text = self._prompt_key(messages)
         now = time.time()
-
-        # ── Fast-path: match exacto por hash MD5 del key_text ─────────
         text_hash = hashlib.md5(key_text.encode()).hexdigest()
-        for entry in self._entries:
-            if entry.get("hash") != text_hash:
-                continue
-            if entry["model"] != model:
-                continue
-            if now - entry["ts"] > CACHE_TTL_SECONDS:
-                continue
-            age = int(now - entry["ts"])
-            logger.info(f"[LLMCache] HIT exact hash age={age}s model={model}")
+
+        # ── Fast-path: O(1) dict lookup por hash exacto ───────────────
+        entry = self._exact.get(f"{text_hash}\x00{model}")
+        if entry is not None and now - entry["ts"] <= CACHE_TTL_SECONDS:
+            logger.info(f"[LLMCache] HIT exact hash age={int(now - entry['ts'])}s model={model}")
             return entry["response"]
 
         # ── Slow-path: similaridad cosine sobre embeddings ────────────
@@ -114,6 +109,8 @@ class SemanticCache:
             "ts":       now,
             "hash":     text_hash,
         })
+        # Rebuild exact dict to stay in sync after pruning
+        self._exact = {f"{e['hash']}\x00{e['model']}": e for e in self._entries}
 
     def stats(self) -> dict:
         now = time.time()
@@ -122,6 +119,7 @@ class SemanticCache:
 
     def clear(self) -> None:
         self._entries = []
+        self._exact = {}
         logger.info("[LLMCache] Cache limpiado manualmente.")
 
 

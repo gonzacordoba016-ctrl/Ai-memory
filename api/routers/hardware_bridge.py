@@ -11,18 +11,18 @@
 
 import asyncio
 import json
-import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from api.auth import get_current_user
+from core.config import _env
 from core.logger import logger
 
 router = APIRouter(tags=["hardware-bridge"])
 
 # Token de autenticación (opcional — si no está configurado, no se verifica)
-BRIDGE_TOKEN = os.getenv("BRIDGE_TOKEN", "")
+BRIDGE_TOKEN = _env("BRIDGE_TOKEN", "")
 
 # Estado global del bridge
 _bridge_ws: WebSocket | None = None
@@ -117,7 +117,7 @@ async def ws_hardware_bridge(websocket: WebSocket, token: str = ""):
 
     await websocket.accept()
     _bridge_ws = websocket
-    _bridge_connected_at = datetime.utcnow().isoformat()
+    _bridge_connected_at = datetime.now(timezone.utc).isoformat()
     logger.info("[HardwareBridge] Bridge client conectado")
 
     try:

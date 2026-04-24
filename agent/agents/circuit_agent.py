@@ -7,7 +7,8 @@ from core.logger import get_logger
 from core.config import LLM_MODEL_SMART, LLM_MODEL_FAST
 from database.circuit_design import CircuitDesignManager
 from tools.hardware_detector import resolve_component_type
-from llm.openrouter_client import _call_llm
+from tools.component_pinouts import get_pinout_context_for_prompt
+from llm.openrouter_client import call_llm_sync
 
 logger = get_logger(__name__)
 
@@ -222,6 +223,7 @@ Descripción: "{description}"
 MCU: "{mcu}"
 {domain_hint}
 {mcu_pin_rules}
+{pinout_context}
 Reglas obligatorias (aplica todas):
 - LEDs: resistencia limitadora en serie (220Ω típico)
 - Relay: diodo flyback 1N4007 en bobina
@@ -248,11 +250,17 @@ class CircuitAgent:
             best_mcu = _select_mcu(description, domain, mcu)
             domain_hint = DOMAIN_HINTS.get(domain, "")
 
+            # Inject verified component pinouts BEFORE the LLM generates the netlist
+            pinout_context = get_pinout_context_for_prompt([description])
+            if pinout_context:
+                logger.info(f"[CircuitAgent] Pinout context inyectado ({len(pinout_context)} chars)")
+
             prompt = CIRCUIT_PARSE_PROMPT.format(
                 description=description,
                 mcu=best_mcu,
                 domain_hint=domain_hint,
                 mcu_pin_rules=_mcu_pin_rules(best_mcu),
+                pinout_context=pinout_context,
             )
 
             logger.info(f"[CircuitAgent] parse_circuit START — domain={domain} mcu={best_mcu} model={LLM_MODEL_SMART!r} prompt_len={len(prompt)}")
@@ -262,7 +270,7 @@ class CircuitAgent:
             raw_content = None
             for attempt in range(2):
                 try:
-                    response = _call_llm(
+                    response = call_llm_sync(
                         messages,
                         model=LLM_MODEL_SMART,
                         response_format={"type": "json_object"} if attempt == 0 else None,

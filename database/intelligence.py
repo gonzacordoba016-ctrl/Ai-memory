@@ -2,14 +2,14 @@
 # Gestión de perfiles de IA y fuentes de conocimiento.
 
 import json
-import os
 import sqlite3
 import uuid
 from datetime import datetime, timezone
 
 from core.logger import logger
+from core.config import SQL_DB_PATH
 
-DB_PATH = os.getenv("MEMORY_DB_PATH", "./database/memory.db")
+DB_PATH = SQL_DB_PATH
 
 DEFAULT_PROFILES = [
     {

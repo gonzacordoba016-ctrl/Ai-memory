@@ -14,7 +14,6 @@ from tools.formulas_basic import (
     resistor_for_led,
     resistor_voltage_divider,
     resistor_power,
-    _E24, _FUSE_STD, _nearest_e24, _nearest_fuse, _result,
 )
 from tools.formulas_rc import (
     capacitor_filter,

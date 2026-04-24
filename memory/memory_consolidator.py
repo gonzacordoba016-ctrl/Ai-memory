@@ -47,11 +47,12 @@ class MemoryConsolidator:
     # PUNTO DE ENTRADA
     # ======================
 
-    def process_new_memory(self, new_text: str, metadata: dict = {}) -> dict:
+    def process_new_memory(self, new_text: str, metadata: dict | None = None) -> dict:
         """
         Antes de guardar una memoria nueva, verificar si contradice
         o es redundante con memorias existentes.
         """
+        metadata = metadata or {}
         similar = search_memory_with_scores(new_text, top_k=5)
 
         if not similar:
@@ -285,8 +286,6 @@ def _run_async(coro):
     """
     try:
         loop = asyncio.get_running_loop()
-        # Hay un loop corriendo (FastAPI) — usar run_coroutine_threadsafe
-        import concurrent.futures
         future = asyncio.run_coroutine_threadsafe(coro, loop)
         return future.result(timeout=180)
     except RuntimeError:

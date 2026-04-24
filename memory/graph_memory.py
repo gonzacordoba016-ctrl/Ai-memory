@@ -1,16 +1,15 @@
 # memory/graph_memory.py
 
 import json
-import os
 import re
 from datetime import datetime, timezone
+from itertools import islice
 from pathlib import Path
 
 import networkx as nx
 
+from core.config import GRAPH_DB_PATH
 from core.logger import logger
-
-GRAPH_PATH = os.getenv("GRAPH_DB_PATH", "./database/graph_memory.json")
 
 
 class GraphMemory:
@@ -32,7 +31,7 @@ class GraphMemory:
         self._initialized = True
 
     def _load(self):
-        path = Path(GRAPH_PATH)
+        path = Path(GRAPH_DB_PATH)
         if path.exists():
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
@@ -56,7 +55,7 @@ class GraphMemory:
                 self.graph = nx.DiGraph()
 
     def save(self):
-        path = Path(GRAPH_PATH)
+        path = Path(GRAPH_DB_PATH)
         path.parent.mkdir(parents=True, exist_ok=True)
         data = nx.node_link_data(self.graph)
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -128,7 +127,6 @@ class GraphMemory:
         if not all_relations:
             return ""
 
-        from itertools import islice
         deduped = list(dict.fromkeys(all_relations))
         unique  = list(islice(deduped, 10))
         lines   = "\n".join(f"- {r}" for r in unique)

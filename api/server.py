@@ -35,7 +35,7 @@ except Exception as e:
     _startup_errors.append(msg)
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 import httpx
 import sqlite3
 
@@ -272,7 +272,7 @@ async def health():
             "startup_errors": _startup_errors,
             "routers_ok":     _routers_loaded,
             "routers_failed": _routers_failed,
-            "timestamp":      datetime.utcnow().isoformat(),
+            "timestamp":      datetime.now(timezone.utc).isoformat(),
         },
     )
 

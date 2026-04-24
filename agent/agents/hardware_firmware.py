@@ -8,6 +8,7 @@ from core.logger import logger
 from tools.hardware_detector import detect_devices
 from tools.firmware_generator import generate_firmware
 from tools.firmware_flasher import flash_firmware, compile_firmware, install_missing_libraries
+from tools.firmware_validator import validate_firmware
 from tools.serial_monitor import read_serial
 from database.hardware_memory import hardware_memory
 
@@ -135,6 +136,14 @@ class _FirmwareMixin:
 
         if "error" in firmware:
             return f"Error generando el firmware: {firmware['error']}"
+
+        # Pre-compilation validation pass — fix includes and API mistakes before arduino-cli
+        pre_val = validate_firmware(firmware["code"], device["platform"])
+        if pre_val.was_modified:
+            firmware["code"] = pre_val.fixed_code
+            with open(firmware["path"], "w") as _f:
+                _f.write(firmware["code"])
+            logger.info(f"[FirmwareValidator] Pre-compile fixes: {pre_val.auto_fixed}")
 
         compile_result = compile_firmware(firmware["dir"], device["fqbn"])
         lib_result = {"any_installed": False, "installed": [], "failed": []}

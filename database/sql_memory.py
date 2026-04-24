@@ -338,8 +338,7 @@ class SQLMemory:
         return [{"id":r[0],"name":r[1],"description":r[2],"mcu":r[3],"components":r[4],"active":bool(r[5]),"created_at":r[6],"updated_at":r[7]} for r in rows]
 
     def create_project(self, name: str, description: str = "", mcu: str = "", components: str = "", user_id: str = "default") -> dict:
-        import uuid as _u
-        pid = str(_u.uuid4())
+        pid = str(_uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
         with self._get_connection() as conn:
             conn.execute(

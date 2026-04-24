@@ -42,8 +42,8 @@ class HardwareProjectsDB:
             conn.commit()
 
     def save_to_library(self, name: str, description: str, code: str,
-                        platform: str, tags: list[str] = []) -> int:
-        tags_str = ",".join(tags)
+                        platform: str, tags: list[str] | None = None) -> int:
+        tags_str = ",".join(tags or [])
         with self._get_conn() as conn:
             existing = conn.execute(
                 "SELECT id FROM project_library WHERE name = ?", (name,)

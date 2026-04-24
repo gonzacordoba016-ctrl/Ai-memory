@@ -1,41 +1,19 @@
 # llm/async_client.py
 #
 # Cliente HTTP async centralizado para todas las llamadas al LLM.
-# Reemplaza requests.post() síncrono en agentes y extractores.
-#
 # Ventajas:
 #   - No bloquea workers de Uvicorn bajo carga concurrente
 #   - Reutiliza una única sesión httpx (connection pooling)
-#   - Timeout y retry centralizados — un solo lugar para cambiar
-#   - Compatible con asyncio.to_thread() para código legacy síncrono
+#   - Timeout y retry centralizados
 
-import os
 import json
 import httpx
 from typing import Callable, Awaitable, Any
-from core.config import get_llm_headers
+from core.config import get_llm_headers, get_llm_api, get_llm_model
 from core.logger import logger
 
-def _get_llm_api() -> str:
-    """Lee la URL del LLM en runtime para evitar valores cacheados del import."""
-    provider = os.getenv("LLM_PROVIDER", "ollama")
-    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    urls = {
-        "ollama":     ollama_url + "/v1/chat/completions",
-        "lmstudio":   os.getenv("LMSTUDIO_BASE_URL", "http://localhost:1234") + "/v1/chat/completions",
-        "openrouter": "https://openrouter.ai/api/v1/chat/completions",
-    }
-    return urls.get(provider, urls["ollama"])
-
-def _get_llm_model() -> str:
-    """Lee el modelo LLM en runtime."""
-    provider = os.getenv("LLM_PROVIDER", "ollama")
-    if provider in ("ollama", "lmstudio"):
-        return os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
-    return os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
-
-# Cliente compartido con connection pooling — se instancia una vez al importar
-# timeout: 120s para generación de firmware (puede ser lento), 30s para clasificadores
+# Shared client with connection pooling — instantiated once at import.
+# 120s for firmware generation, connect timeout 10s.
 _client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0))
 
 
@@ -45,15 +23,15 @@ async def call_llm_async(
     timeout:     float = 120.0,
     agent_id:    str   = "stratum",
     agent_name:  str   = "Stratum",
-    tools:       list[dict[str, Any]] = [],
+    tools:       list[dict[str, Any]] | None = None,
     model:       str   = None,
 ) -> dict[str, Any]:
     """
-    Llamada async al LLM. Retorna el dict completo de la respuesta.
-    Lanza httpx.HTTPError en caso de fallo HTTP.
+    Async LLM call. Returns the full response dict.
+    Raises httpx.HTTPError on HTTP failure.
     """
-    payload = {
-        "model":       model or _get_llm_model(),
+    payload: dict[str, Any] = {
+        "model":       model or get_llm_model(),
         "messages":    messages,
         "temperature": temperature,
     }
@@ -62,7 +40,7 @@ async def call_llm_async(
         payload["tool_choice"] = "auto"
 
     response = await _client.post(
-        _get_llm_api(),
+        get_llm_api(),
         headers=get_llm_headers(agent_id, agent_name),
         json=payload,
         timeout=timeout,
@@ -81,15 +59,12 @@ async def call_llm_text(
     use_cache:   bool  = True,
 ) -> str:
     """
-    Wrapper conveniente que retorna directamente el texto de la respuesta.
-    Ideal para clasificadores y extractores que solo necesitan el string.
-    Retorna "" en caso de error (nunca lanza excepción).
-
-    Semantic cache activo cuando temperature == 0.0 y use_cache == True.
+    Convenience wrapper that returns the response text directly.
+    Returns "" on error (never raises).
+    Semantic cache active when temperature == 0.0 and use_cache == True.
     """
-    resolved_model = model or _get_llm_model()
+    resolved_model = model or get_llm_model()
 
-    # ── Semantic cache (solo para llamadas deterministas) ─────────────────
     if use_cache and temperature == 0.0:
         try:
             from llm.cache import llm_cache
@@ -97,7 +72,7 @@ async def call_llm_text(
             if cached is not None:
                 return cached
         except Exception:
-            pass  # cache fallo → continuar normalmente
+            pass
 
     try:
         data = await call_llm_async(
@@ -110,7 +85,6 @@ async def call_llm_text(
         )
         text = data["choices"][0]["message"].get("content", "").strip()
 
-        # Guardar en cache si la respuesta es válida
         if use_cache and temperature == 0.0 and text:
             try:
                 from llm.cache import llm_cache
@@ -133,23 +107,22 @@ async def stream_llm_async(
     model:       str   = None,
 ) -> str:
     """
-    Streaming async token por token.
-    Llama a on_token(str) por cada token recibido.
-    Retorna el texto completo al finalizar.
+    Async token-by-token streaming.
+    Calls on_token(str) for each received token.
+    Returns the full text when done.
     """
     full_text = ""
     try:
         async with _client.stream(
             "POST",
-            _get_llm_api(),
+            get_llm_api(),
             headers=get_llm_headers(agent_id, agent_name),
             json={
-                "model":       model or _get_llm_model(),
+                "model":       model or get_llm_model(),
                 "messages":    messages,
                 "temperature": temperature,
                 "stream":      True,
             },
-            timeout=httpx.Timeout(120.0, connect=10.0),
         ) as response:
             response.raise_for_status()
             async for line in response.aiter_lines():
@@ -173,5 +146,5 @@ async def stream_llm_async(
 
 
 async def close() -> None:
-    """Cerrar el cliente al apagar el servidor."""
+    """Close the shared client on server shutdown."""
     await _client.aclose()

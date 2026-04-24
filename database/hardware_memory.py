@@ -102,7 +102,7 @@ class HardwareMemory:
     # ======================
 
     def save_to_library(self, name: str, description: str, code: str,
-                        platform: str, tags: list[str] = []) -> int:
+                        platform: str, tags: list[str] | None = None) -> int:
         return self._projects.save_to_library(name, description, code, platform, tags)
 
     def search_library(self, query: str, platform: str = None) -> list[dict]:

@@ -1,5 +1,6 @@
 # agent/agent_controller.py
 
+import asyncio
 from agent.agent_state import AgentState
 from memory.vector_memory import store_memory, search_memory
 from memory.short_memory import ShortMemory
@@ -11,7 +12,7 @@ from core.prompt_builder import build_prompt
 from agent.user_profiler import UserProfiler
 from core.logger import logger
 from agent.orchestrator import Orchestrator
-from llm.openrouter_client import _call_llm
+from llm.openrouter_client import call_llm_sync
 from llm.async_client import call_llm_async, stream_llm_async
 
 
@@ -21,7 +22,7 @@ class AgentController:
         self.state        = AgentState()
         self.short_memory = ShortMemory()
         self.sql_memory   = SQLMemory()
-        self.orchestrator = Orchestrator(_call_llm)
+        self.orchestrator = Orchestrator(call_llm_sync)
         self.profiler     = UserProfiler(self.sql_memory)
         self._load_persisted_facts()
         self._init_knowledge_base()
@@ -56,7 +57,6 @@ class AgentController:
         self._detect_and_set_platform(user_input)
 
         # 2. Extraer hechos y relaciones en paralelo (async, no bloquean)
-        import asyncio
         new_facts, _ = await asyncio.gather(
             extract_facts(user_input),
             extract_relations(user_input),

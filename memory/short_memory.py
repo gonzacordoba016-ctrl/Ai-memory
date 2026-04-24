@@ -1,31 +1,19 @@
 # memory/short_memory.py
 
+from collections import deque
 from core.config import MAX_SHORT_MEMORY
 
 
 class ShortMemory:
 
     def __init__(self):
-        self.messages = []
+        self.messages: deque[str] = deque(maxlen=MAX_SHORT_MEMORY)
 
     def add(self, text: str):
-        """
-        Guarda un mensaje en la memoria corta
-        """
-
         self.messages.append(text)
 
-        if len(self.messages) > MAX_SHORT_MEMORY:
-            self.messages.pop(0)
-
-    def get(self):
-        """
-        Devuelve memoria reciente
-        """
-        return self.messages
+    def get(self) -> list[str]:
+        return list(self.messages)
 
     def clear(self):
-        """
-        Limpia la memoria corta
-        """
-        self.messages = []
+        self.messages.clear()

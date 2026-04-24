@@ -150,8 +150,8 @@ def index_knowledge_base(force: bool = False) -> dict:
                 }
             )
 
-        total_chunks = int(total_chunks) + len(chunks)
-        total_files  = int(total_files) + 1
+        total_chunks += len(chunks)
+        total_files  += 1
         logger.info(f"[Knowledge] {source}: {len(chunks)} chunks")
 
     logger.info(f"[Knowledge] Indexación completa: {total_files} archivos, {total_chunks} chunks")

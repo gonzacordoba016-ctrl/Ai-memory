@@ -69,6 +69,23 @@ async def _generate_title_async(websocket: WebSocket, session_id: str, user_inpu
         logger.warning(f"[TitleGen] falló en background: {e}")
 
 
+async def _send_session_context(websocket: WebSocket, session_id: str, sql_db):
+    """Sends a session_context event with recent work summary for new sessions."""
+    try:
+        from agent.session_continuity import generate_session_context
+        ctx = await asyncio.wait_for(
+            generate_session_context(session_id, sql_db),
+            timeout=5.0,
+        )
+        if ctx:
+            await websocket.send_text(json.dumps({
+                "type": "session_context",
+                **ctx,
+            }))
+    except Exception as e:
+        logger.debug(f"[SessionContinuity] No se pudo enviar context card: {e}")
+
+
 @router.websocket("/ws/chat")
 async def ws_chat(websocket: WebSocket, session: str = None, token: str = ""):
     if not await _ws_require_auth(websocket, token):
@@ -107,6 +124,10 @@ async def ws_chat(websocket: WebSocket, session: str = None, token: str = ""):
     if resumed and hasattr(agent, 'state'):
         for msg in history[-20:]:
             agent.state.add_message(msg["role"], msg["content"])
+
+    # Sesión nueva → enviar context card con trabajo reciente en background
+    if not resumed:
+        asyncio.create_task(_send_session_context(websocket, session_id, sql_db))
 
     last_message_time = 0.0
     processing = False
