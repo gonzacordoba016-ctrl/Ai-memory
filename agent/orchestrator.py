@@ -186,10 +186,45 @@ class Orchestrator:
         self.code_agent     = CodeAgent(client_fn)
         self.memory_agent   = MemoryAgent(client_fn)
 
+    # Regex laxo para circuit_design — fix v4.14.1 bug #2:
+    # "Diseñá un circuito controlador para 7 electroválvulas..." no matcheaba
+    # ningún literal exacto y caía a 'hardware' (que tiene "circuito" en su lista)
+    # → terminaba en LLM general que solo explicaba sin generar el circuito.
+    _CIRCUIT_REGEX = None  # se compila lazy en _keyword_route
+
     def _keyword_route(self, query: str) -> list[str] | None:
-        """Heurística estática — sin overhead LLM. Siempre se intenta primero."""
+        """Heurística estática — sin overhead LLM. Siempre se intenta primero.
+        Prioridades:
+          1) Literal en CIRCUIT_DESIGN_KEYWORDS → circuit_design
+          2) Regex laxo verbo-de-creación + sustantivo-de-circuito → circuit_design
+          3) Cualquier otro KEYWORD_ROUTES en orden (hardware, research, …)
+        """
         q = query.lower()
+
+        # 1) Literal de circuit_design tiene prioridad absoluta
+        if any(kw in q for kw in KEYWORD_ROUTES["circuit_design"]):
+            return ["circuit_design"]
+
+        # 2) Regex laxo de circuit_design ANTES que hardware/research
+        if self._CIRCUIT_REGEX is None:
+            import re as _re
+            type(self)._CIRCUIT_REGEX = _re.compile(
+                r"\b(diseñ[aá]|crea|cre[aá]me|gener[aá]|gener[aá]me|"
+                r"arm[aá]|arm[aá]me|hac[eé]|hac[eé]me|necesito|quiero|"
+                r"construy[eé]|construime|"
+                r"design|create|generate|build|make)\b"
+                r"[\w\s,.;:¿?¡!()-]{0,80}?"
+                r"\b(circuito|esquem[aá]tico|pcb|netlist|schematic|board|"
+                r"controlador|driver|fuente|amplificador|regulador|"
+                r"sistema\s+de)\b"
+            )
+        if self._CIRCUIT_REGEX.search(q):
+            return ["circuit_design"]
+
+        # 3) Resto de routes en orden
         for agent, keywords in KEYWORD_ROUTES.items():
+            if agent == "circuit_design":
+                continue  # ya evaluado arriba
             if any(kw in q for kw in keywords):
                 return [agent]
         return None

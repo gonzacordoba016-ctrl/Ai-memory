@@ -69,6 +69,19 @@ class AgentController:
         self.short_memory.add(user_input)
         self._detect_and_set_platform(user_input)
 
+        # ── FAST PATH: saludos / queries triviales sin LLM ──
+        # Bug #1 v4.14.0: "hola" tardaba 180s porque arrastraba todo el
+        # historial (incluso circuitos previos en MD) al LLM principal.
+        # Para saludos triviales: respuesta directa sin pipeline LLM.
+        _trivial = self._maybe_trivial_response(user_input)
+        if _trivial is not None:
+            await _phase("responding")
+            self.state.add_message("assistant", _trivial)
+            self._store_episode(user_input, _trivial)
+            if on_token:
+                await on_token(_trivial)
+            return {"text": _trivial, "agents_used": ["greeting"]}
+
         # 2. Extraer hechos y relaciones en paralelo (async, no bloquean)
         new_facts, _ = await asyncio.gather(
             extract_facts(user_input),
@@ -271,6 +284,38 @@ class AgentController:
                     self.state.set_platform(platform)
                     logger.info(f"[AgentController] Plataforma detectada: {platform}")
                 return
+
+    # Saludos triviales — respuesta directa sin pipeline LLM (fix bug #1 v4.14.0)
+    _GREETING_RESPONSES = {
+        ("hola", "holi", "holis", "hey", "ey", "hi", "hello"):
+            "¡Hola! Decime qué circuito o cálculo querés que arme.",
+        ("buen día", "buen dia", "buenos días", "buenos dias"):
+            "¡Buen día! ¿En qué te ayudo hoy?",
+        ("buenas tardes",):
+            "¡Buenas tardes! ¿Qué necesitás?",
+        ("buenas noches",):
+            "¡Buenas noches! ¿En qué te ayudo?",
+        ("buenas",):
+            "¡Buenas! Decime qué necesitás.",
+        ("gracias", "thanks", "ty"):
+            "¡De nada!",
+        ("ok", "ok!", "okey", "dale", "listo"):
+            "👍 Decime cuando quieras seguir.",
+        ("chau", "adiós", "adios", "bye"):
+            "¡Hasta luego!",
+    }
+
+    def _maybe_trivial_response(self, user_input: str) -> str | None:
+        """Si user_input es un saludo trivial, devuelve respuesta hardcoded.
+        En otro caso, None y el agente sigue pipeline normal."""
+        q = user_input.lower().strip().rstrip("!.?¡¿,")
+        if len(q) > 25:
+            return None
+        for triggers, response in self._GREETING_RESPONSES.items():
+            if q in triggers:
+                logger.info(f"[FastPath] Greeting → respuesta directa ({len(response)}c)")
+                return response
+        return None
 
     def _build_base_context(self) -> str:
         parts = []
