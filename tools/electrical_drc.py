@@ -45,6 +45,12 @@ _HIGH_CURRENT_TYPES = {
 
 _FUSE_TYPES = {"fuse", "fusible", "polyfuse", "resettable_fuse"}
 
+_RELAY_TYPES = {"relay", "relay_module", "ssr", "rele", "relé"}
+
+_DIODE_TYPES = {"diode", "1n4007", "1n4148", "1n5819", "schottky_diode", "flyback_diode"}
+
+_CONNECTOR_TYPES = {"connector", "terminal_block", "screw_terminal", "header"}
+
 # ── Nombres de net de poder ───────────────────────────────────────────────────
 
 _VCC_NAMES = {"vcc", "5v", "3v3", "3.3v", "vin", "vdd", "power", "+5v", "+3.3v", "12v", "+12v"}
@@ -422,6 +428,105 @@ def run_drc(circuit: dict) -> dict:
                 f"El transmisor WiFi genera picos de 350mA que causan brownout/reset. "
                 f"Agregá 100µF electrolítico + 100nF cerámico entre VCC y GND.",
                 component=list(wifi_mcu_ids)[0]))
+
+    # ── Check 16: MCU_MISSING_POWER ──────────────────────────────────────────
+    # Cada MCU debe tener al menos un net VCC y un net GND
+    for mcu_id in mcu_ids:
+        mcu_nets = comp_nets.get(mcu_id, set())
+        has_vcc = any(_is_vcc_net(n) for n in mcu_nets)
+        has_gnd = any(_is_gnd_net(n) for n in mcu_nets)
+        if not has_vcc:
+            issues.append(_issue("MCU_MISSING_VCC", "error",
+                                 f"{mcu_id}: MCU sin conexión a VCC. "
+                                 f"Conectá un pin VCC/3V3/5V/VIN.",
+                                 component=mcu_id))
+        if not has_gnd:
+            issues.append(_issue("MCU_MISSING_GND", "error",
+                                 f"{mcu_id}: MCU sin conexión a GND.",
+                                 component=mcu_id))
+
+    # ── Check 17: RELAY_FLYBACK_POLARITY ─────────────────────────────────────
+    # Cada relay debe tener un diodo flyback con cátodo en el net de control
+    # del coil y ánodo en GND. Polaridad invertida = relay quema el MCU al apagar.
+    relay_ids = {c.get("id") for c in components if _comp_type(c) in _RELAY_TYPES}
+    diode_ids = {c.get("id") for c in components if _comp_type(c) in _DIODE_TYPES}
+
+    for relay_id in relay_ids:
+        relay_nets = comp_nets.get(relay_id, set())
+        # Buscar diodo conectado a algún net del relay
+        flyback_diodes = set()
+        for net_name in relay_nets:
+            flyback_diodes |= (net_comps.get(net_name, set()) & diode_ids)
+
+        if not flyback_diodes:
+            issues.append(_issue("RELAY_NO_FLYBACK", "error",
+                                 f"{relay_id}: relay sin diodo flyback. "
+                                 f"Al apagar, el coil genera spike inductivo que "
+                                 f"daña el MCU. Agregá 1N4007 en paralelo al coil.",
+                                 component=relay_id))
+            continue
+
+        # Verificar polaridad: para cada diodo flyback, su .cathode debe estar en
+        # un net del relay (control/coil), su .anode debe estar en GND.
+        for d_id in flyback_diodes:
+            cathode_in_ctrl = False
+            anode_in_gnd = False
+            anode_in_ctrl = False
+            cathode_in_gnd = False
+            for net in nets:
+                nname = net.get("name", "")
+                nodes = _nodes_of(net)
+                if f"{d_id}.cathode" in nodes:
+                    if nname in relay_nets and not _is_gnd_net(nname):
+                        cathode_in_ctrl = True
+                    if _is_gnd_net(nname):
+                        cathode_in_gnd = True
+                if f"{d_id}.anode" in nodes:
+                    if nname in relay_nets and not _is_gnd_net(nname):
+                        anode_in_ctrl = True
+                    if _is_gnd_net(nname):
+                        anode_in_gnd = True
+            if cathode_in_gnd and anode_in_ctrl:
+                issues.append(_issue("RELAY_FLYBACK_BAD_POLARITY", "error",
+                                     f"{relay_id} / {d_id}: flyback con polaridad "
+                                     f"invertida (ánodo en control, cátodo a GND). "
+                                     f"Correcto: cátodo al control del coil, ánodo a GND.",
+                                     component=d_id))
+
+    # ── Check 18: AC_CONNECTOR_NO_FUSE ───────────────────────────────────────
+    # Si hay conector AC (220V/110V), debe haber un fusible en algún net del
+    # conector. Sin fusible un corto en la red puede incendiar el equipo.
+    ac_keywords = ("220", "110", "230", "240", "ac", "mains", "red ", "vac")
+    ac_connectors = set()
+    for c in components:
+        if _comp_type(c) not in _CONNECTOR_TYPES:
+            continue
+        cname = (c.get("name") or "").lower()
+        if any(kw in cname for kw in ac_keywords):
+            ac_connectors.add(c.get("id"))
+
+    if ac_connectors and not fuses:
+        names = [comp_by_id.get(cid, {}).get("name", cid) for cid in list(ac_connectors)[:2]]
+        issues.append(_issue("AC_CONNECTOR_NO_FUSE", "error",
+                             f"Conector AC ({', '.join(names)}) sin fusible aguas arriba. "
+                             f"Riesgo de incendio ante cortocircuito en red. "
+                             f"Agregá fusible 5×20mm 1-10A en serie con la línea L."))
+    elif ac_connectors and fuses:
+        # Hay fusible pero verificar que esté conectado al conector AC
+        ac_fused = False
+        for ac_id in ac_connectors:
+            ac_nets = comp_nets.get(ac_id, set())
+            for net_name in ac_nets:
+                if net_comps.get(net_name, set()) & fuses:
+                    ac_fused = True
+                    break
+            if ac_fused:
+                break
+        if not ac_fused:
+            issues.append(_issue("AC_CONNECTOR_FUSE_NOT_INLINE", "warning",
+                                 f"Conector AC presente y hay fusible, pero el fusible "
+                                 f"no comparte net con el conector AC. Verificá que esté "
+                                 f"realmente aguas arriba en la línea L."))
 
     # ── Clasificar y construir respuesta ─────────────────────────────────────
     errors   = [i for i in issues if i["severity"] == "error"]

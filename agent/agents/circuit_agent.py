@@ -535,17 +535,39 @@ class CircuitAgent:
                 circuit_data.setdefault("warnings", []).extend(warnings)
 
             # DRC eléctrico
+            from tools.electrical_drc import run_drc
+            from tools.mcu_pinout_validator import validate_pinout
             try:
-                from tools.electrical_drc import run_drc
                 drc_result = run_drc(circuit_data)
-                circuit_data["drc"] = drc_result
-                if not drc_result["passed"]:
-                    for err in drc_result["errors"]:
-                        circuit_data.setdefault("warnings", []).append(
-                            f"[DRC] {err['code']}: {err['message']}"
-                        )
+                pinout_warnings = validate_pinout(circuit_data)
             except Exception as drc_err:
-                logger.warning(f"DRC falló: {drc_err}")
+                logger.warning(f"DRC/pinout falló: {drc_err}")
+                drc_result = {"errors": [], "warnings": [], "passed": True}
+                pinout_warnings = []
+
+            # F1.1 — Review pass LLM si hay errors críticos o pinouts inválidos
+            if drc_result["errors"] or pinout_warnings:
+                reviewed = self._review_pass(
+                    circuit_data, drc_result, pinout_warnings, best_mcu
+                )
+                if reviewed is not None:
+                    circuit_data = reviewed
+                    # Re-correr DRC + pinout sobre la versión revisada
+                    try:
+                        drc_result = run_drc(circuit_data)
+                        pinout_warnings = validate_pinout(circuit_data)
+                    except Exception as drc_err:
+                        logger.warning(f"DRC/pinout post-review falló: {drc_err}")
+
+            # Persist DRC + pinout
+            circuit_data["drc"] = drc_result
+            if not drc_result["passed"]:
+                for err in drc_result["errors"]:
+                    circuit_data.setdefault("warnings", []).append(
+                        f"[DRC] {err['code']}: {err['message']}"
+                    )
+            for pw in pinout_warnings:
+                circuit_data.setdefault("warnings", []).append(pw)
 
             # Annotate with detected domain and MCU
             circuit_data["detected_domain"] = domain
@@ -934,6 +956,140 @@ class CircuitAgent:
                 )
 
         return warnings
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # F1.1 — Review pass LLM
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def _review_pass(
+        self,
+        circuit_data: Dict[str, Any],
+        drc_result: Dict[str, Any],
+        pinout_warnings: List[str],
+        best_mcu: str,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Segundo pase LLM: audita el circuito generado y lo corrige.
+        Acepta la versión revisada solo si:
+          • Mantiene el MCU original (no lo borra ni lo cambia de tipo).
+          • Reduce el número de errores DRC.
+        Si no cumple, devuelve None y mantenemos la versión original.
+        """
+        from tools.electrical_drc import run_drc
+        from tools.mcu_pinout_validator import validate_pinout
+
+        original_errors = len(drc_result.get("errors", [])) + len(pinout_warnings)
+        issues_summary = []
+        for err in drc_result.get("errors", [])[:20]:
+            issues_summary.append(f"- [DRC/{err['code']}] {err['message']}")
+        for pw in pinout_warnings[:10]:
+            issues_summary.append(f"- {pw}")
+
+        if not issues_summary:
+            return None
+
+        # Identificar el MCU original (debe sobrevivir a la revisión)
+        original_mcu_id = None
+        for c in circuit_data.get("components", []):
+            ctype = (c.get("resolved_type") or c.get("type") or "").lower()
+            if any(m in ctype for m in ("arduino", "esp32", "esp8266", "stm32", "pico", "rp2040")):
+                original_mcu_id = c.get("id")
+                break
+
+        circuit_json = json.dumps(circuit_data, ensure_ascii=False)
+        # Limitar tamaño del prompt si el circuito es grande
+        if len(circuit_json) > 12000:
+            logger.info(f"[CircuitAgent.review] Circuito grande ({len(circuit_json)} chars), saltando review pass")
+            return None
+
+        prompt = f"""Sos un ingeniero electrónico senior auditando este diseño. Otro modelo \
+generó el siguiente JSON pero tiene problemas detectados por validadores automáticos.
+
+CIRCUITO GENERADO:
+{circuit_json}
+
+PROBLEMAS DETECTADOS:
+{chr(10).join(issues_summary)}
+
+MCU OBJETIVO: {best_mcu}
+
+INSTRUCCIONES:
+1. Resolvé TODOS los problemas listados manteniendo la intención original del circuito.
+2. NO elimines el MCU principal ({original_mcu_id or 'el MCU declarado'}).
+3. Si un pin es inválido (ej: D14 en Nano), reasignalo a un pin válido del MCU.
+4. Si falta un componente de protección (flyback, fusible, pull-up), agregalo con valor estándar.
+5. Si la polaridad de un diodo está invertida, corregila (cátodo en señal, ánodo a GND).
+6. Mantené la nomenclatura existente (U1, R1, RL1, etc.) excepto cuando agregues componentes.
+
+Respondé ÚNICAMENTE con el JSON corregido completo (mismo formato que el original).
+SIN markdown, SIN explicaciones."""
+
+        try:
+            response = call_llm_sync(
+                [{"role": "user", "content": prompt}],
+                model=LLM_MODEL_SMART,
+                response_format={"type": "json_object"},
+                timeout=45,
+            )
+            raw = response["choices"][0]["message"]["content"]
+        except Exception as e:
+            logger.warning(f"[CircuitAgent.review] LLM falló: {e}")
+            return None
+
+        try:
+            content = self._clean_json_content(raw)
+            reviewed = json.loads(content)
+        except json.JSONDecodeError as e:
+            logger.warning(f"[CircuitAgent.review] JSON inválido: {e}")
+            return None
+
+        # Validar shape básico
+        if not all(k in reviewed for k in ("components", "nets")):
+            logger.warning("[CircuitAgent.review] Falta components o nets")
+            return None
+
+        # Re-resolver tipos de componentes
+        for comp in reviewed["components"]:
+            if "resolved_type" not in comp:
+                comp["resolved_type"] = resolve_component_type(comp.get("type")) or comp.get("type")
+
+        # Verificar que el MCU original sobreviva
+        if original_mcu_id:
+            survivor = next(
+                (c for c in reviewed["components"] if c.get("id") == original_mcu_id),
+                None,
+            )
+            if not survivor:
+                logger.warning(f"[CircuitAgent.review] El auditor eliminó el MCU {original_mcu_id} — descartando")
+                return None
+
+        # Re-correr DRC sobre la versión revisada
+        try:
+            new_drc = run_drc(reviewed)
+        except Exception as e:
+            logger.warning(f"[CircuitAgent.review] DRC sobre revisión falló: {e}")
+            return None
+
+        new_pinout = validate_pinout(reviewed)
+        new_errors = len(new_drc.get("errors", [])) + len(new_pinout)
+        if new_errors >= original_errors:
+            logger.info(
+                f"[CircuitAgent.review] Revisión no mejora ({original_errors}→{new_errors} errors) — descartando"
+            )
+            return None
+
+        logger.info(
+            f"[CircuitAgent.review] Revisión aplicada: errors {original_errors}→{new_errors}"
+        )
+        # Preservar campos del original que el auditor no devuelve
+        for k in ("name", "description", "power", "design_id"):
+            if k not in reviewed and k in circuit_data:
+                reviewed[k] = circuit_data[k]
+        reviewed.setdefault("warnings", [])
+        reviewed["warnings"].append(
+            f"[Auto-review] Revisión LLM aplicada — errors DRC {original_errors}→{new_errors}"
+        )
+        return reviewed
 
     # ──────────────────────────────────────────────────────────────────────────
     # Public API
