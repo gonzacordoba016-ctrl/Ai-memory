@@ -235,12 +235,22 @@ class Orchestrator:
             logger.error(f"[Orchestrator] Error en routing LLM: {e}")
             return ["direct"]
 
-    async def run(self, query: str, context: str = "", history: list = None) -> dict:
+    async def run(self, query: str, context: str = "", history: list = None,
+                  on_phase=None) -> dict:
         """
         Ejecuta los agentes necesarios de forma async.
         Los agentes síncronos legacy (research, code, memory) se envuelven
         en asyncio.to_thread() para no bloquear el event loop.
+
+        on_phase: callback opcional async(phase_name) para emitir progreso.
         """
+        async def _phase(name: str):
+            if on_phase:
+                try:
+                    await on_phase(name)
+                except Exception:
+                    pass
+
         agents_to_run = await self.route(query)
         results       = {}
         context_parts = []
@@ -265,6 +275,7 @@ class Orchestrator:
 
         if "circuit_design" in agents_to_run:
             try:
+                await _phase("generating_circuit")
                 from agent.agents.circuit_agent import CircuitAgent
                 ca = CircuitAgent()
 
@@ -330,6 +341,7 @@ class Orchestrator:
 
                 circuit = await asyncio.to_thread(ca.parse_circuit, description, mcu)
                 if circuit:
+                    await _phase("validating")
                     results["circuit_design"] = circuit
                     # Build rich context for LLM explanation
                     comp_list = ", ".join(
@@ -351,6 +363,7 @@ class Orchestrator:
                         f"Advertencias: {len(circuit.get('warnings',[]))} — {'; '.join(circuit.get('warnings',[])[:2])}"
                     )
                     logger.info(f"[Orchestrator] CircuitAgent → ID {circuit['design_id']}")
+                    await _phase("rendering")
                 else:
                     context_parts.append("[Circuito] No se pudo generar el circuito — verificá la descripción")
             except Exception as e:

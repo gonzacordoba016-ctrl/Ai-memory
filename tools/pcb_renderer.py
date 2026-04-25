@@ -3,7 +3,7 @@
 # Placement algorithm: group components by function, route traces with simple
 # Manhattan segments. Not a full autorouter — gives a meaningful starting point.
 
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 from core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -163,13 +163,18 @@ def _build_pcb_relay_groups(components: List[Dict]) -> Dict[str, List[Dict]]:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _place_components(components: List[Dict],
-                      board_w: float, board_h: float) -> Dict[str, Tuple[float, float]]:
+                      board_w: float, board_h: float,
+                      nets: Optional[List[Dict]] = None) -> Dict[str, Tuple[float, float]]:
     """
     F3.1 — 4-zone placement (signal flow left → right):
       Zone HV     (x: 0-30%):   AC input, transformer, rectifier, varistor, SMPS
       Zone MCU    (x: 30-50%):  voltage regulator, MCU, decoupling caps
       Zone Relay  (x: 50-80%):  RL1..RLN in vertical column with Dn + Rn cells
       Zone Output (x: 80-100%): output connectors J2..JN
+
+    Si se pasa `nets`, después del primer pass se ejecuta barycentric Y-reorder
+    por zona (3 iteraciones) para minimizar HPWL — i.e. los componentes
+    interconectados terminan a alturas similares y los cables cruzan menos.
     """
     positions: Dict[str, Tuple[float, float]] = {}
 
@@ -182,13 +187,58 @@ def _place_components(components: List[Dict],
             continue
         zones[_pcb_zone(comp)].append(comp)
 
-    # X bands (centers)
+    # X bands (centers) — packed: cada zona usa el ancho que necesita + gap fijo,
+    # NO fracciones fijas del board (eso dejaba grandes huecos horizontales).
     margin = 5.0
-    body_w = board_w - 2 * margin
-    x_hv     = margin + body_w * 0.15
-    x_mcu    = margin + body_w * 0.40
-    x_relay  = margin + body_w * 0.68
-    x_output = margin + body_w * 0.92
+    gap = 12.0  # mm de separación entre zonas
+    relay_cell_extra = 22.0  # espacio para el sub-cluster de diodo+resistor a la izq del relay
+
+    def _zone_max_w(zone_comps: List[Dict]) -> float:
+        if not zone_comps:
+            return 0.0
+        return max(_fp(c.get("resolved_type", c.get("type", "")))[0] for c in zone_comps)
+
+    # Anchos REALES de cada columna
+    w_hv     = _zone_max_w(zones["hv"])
+    w_mcu    = _zone_max_w(zones["mcu"])
+    w_other  = _zone_max_w(zones["other"])
+    relay_max_w = _zone_max_w([cell[0] for cell in relay_groups.values()]) if relay_groups else 0.0
+    w_relay  = (relay_max_w + relay_cell_extra) if relay_max_w else 0.0
+    w_output = _zone_max_w(zones["output"])
+
+    # X centers acumulando desde la izquierda
+    cur_x = margin + (w_hv / 2 if w_hv else 0)
+    x_hv = cur_x
+    if w_hv:
+        cur_x += w_hv / 2 + gap
+
+    if w_mcu:
+        cur_x += w_mcu / 2
+        x_mcu = cur_x
+        cur_x += w_mcu / 2 + gap
+    else:
+        x_mcu = cur_x
+
+    if w_other:
+        cur_x += w_other / 2
+        x_other_zone = cur_x
+        cur_x += w_other / 2 + gap
+    else:
+        x_other_zone = cur_x
+
+    if w_relay:
+        cur_x += w_relay / 2
+        x_relay = cur_x
+        cur_x += w_relay / 2 + gap
+    else:
+        x_relay = cur_x
+
+    if w_output:
+        cur_x += w_output / 2
+        x_output = cur_x
+        cur_x += w_output / 2
+    else:
+        x_output = cur_x
 
     top = margin + 8.0
     bot = board_h - margin - 8.0
@@ -264,12 +314,85 @@ def _place_components(components: List[Dict],
     for comp, ypos in zip(out_comps, _per_comp_stack(out_comps, pad=6.0)):
         positions[comp["id"]] = (x_output, ypos)
 
-    # ── 'other' / misc — between MCU and relay zones ──
+    # ── 'other' / misc — entre MCU y relay zones (X calculado arriba) ──
     other_comps = [c for c in zones["other"] if c["id"] not in positions]
     if other_comps:
-        x_other = margin + body_w * 0.55
         for comp, ypos in zip(other_comps, _per_comp_stack(other_comps, pad=4.0)):
-            positions[comp["id"]] = (x_other, ypos)
+            positions[comp["id"]] = (x_other_zone, ypos)
+
+    # ── HPWL barycentric Y-reorder (3 iters) ──
+    # Para cada zona, recalcular el orden Y de los componentes según el promedio
+    # de Y de los componentes con los que comparten net (excluyendo los de la
+    # misma zona — sólo cuentan conexiones inter-zona porque son las que generan
+    # cables largos visibles). La zona más poblada queda como ANCLA y no se
+    # reordena: las demás se acomodan a ella.
+    if nets:
+        # Precomputar adyacencia: id → set de ids con los que comparte alguna net
+        adj: Dict[str, set] = {c["id"]: set() for c in components}
+        for net in nets:
+            ids_in_net = [str(node).split(".")[0] for node in net.get("nodes", [])]
+            ids_in_net = [i for i in ids_in_net if i in adj]
+            for i in ids_in_net:
+                for j in ids_in_net:
+                    if i != j:
+                        adj[i].add(j)
+        # Mapa id → zona (incluye relay-cell members con su zona "relay")
+        comp_zone: Dict[str, str] = {}
+        for z, lst in zones.items():
+            for c in lst:
+                comp_zone[c["id"]] = z
+        for cell in relay_groups.values():
+            for c in cell:
+                comp_zone[c["id"]] = "relay"
+
+        # Zona ancla = la más poblada (en componentes ya posicionados)
+        zone_pop = {z: len(lst) for z, lst in zones.items()}
+        zone_pop["relay"] = max(zone_pop["relay"], len(relay_groups))
+        anchor = max(zone_pop, key=lambda z: zone_pop[z])
+
+        # Reorder por barycenter: per-zone, calcular Y target y reasignar Ys de la zona
+        def _reorder_zone(zone_name: str, zone_comps: List[Dict], x_center: float,
+                           pad: float) -> None:
+            if zone_name == anchor or len(zone_comps) < 2:
+                return
+            targets: List[Tuple[float, Dict]] = []
+            for c in zone_comps:
+                ys = [positions[nb][1] for nb in adj.get(c["id"], ())
+                       if nb in positions and comp_zone.get(nb) != zone_name]
+                if ys:
+                    targets.append((sum(ys) / len(ys), c))
+                else:
+                    # Sin conexiones inter-zona: mantener Y actual (orden estable)
+                    targets.append((positions[c["id"]][1], c))
+            targets.sort(key=lambda t: t[0])
+            reordered = [t[1] for t in targets]
+            for c, y in zip(reordered, _per_comp_stack(reordered, pad=pad)):
+                positions[c["id"]] = (x_center, y)
+
+        for _ in range(3):
+            _reorder_zone("hv",     zones["hv"],     x_hv,         6.0)
+            _reorder_zone("mcu",    mcu_sorted,      x_mcu,        6.0)
+            _reorder_zone("other",  other_comps,     x_other_zone, 4.0)
+            _reorder_zone("output", out_comps,       x_output,     6.0)
+            # Reorder de RELAY cells (si no es ancla): mover el cluster diodo+R con su relay
+            if anchor != "relay" and len(relay_groups) >= 2:
+                relay_targets: List[Tuple[float, List[Dict]]] = []
+                for cell in relay_cells:
+                    relay = cell[0]
+                    ys = [positions[nb][1] for nb in adj.get(relay["id"], ())
+                           if nb in positions and comp_zone.get(nb) != "relay"]
+                    relay_targets.append((sum(ys) / len(ys) if ys else positions[relay["id"]][1], cell))
+                relay_targets.sort(key=lambda t: t[0])
+                reordered_cells = [t[1] for t in relay_targets]
+                cell_slots = [{"resolved_type": "relay_module"}] * len(reordered_cells)
+                new_cell_y = _per_comp_stack(cell_slots, pad=8.0)
+                for cell, cy in zip(reordered_cells, new_cell_y):
+                    relay = cell[0]
+                    positions[relay["id"]] = (x_relay, cy)
+                    if len(cell) > 1:
+                        positions[cell[1]["id"]] = (x_relay - 18.0, cy - 5.0)
+                    if len(cell) > 2:
+                        positions[cell[2]["id"]] = (x_relay - 18.0, cy + 5.0)
 
     return positions
 
@@ -296,18 +419,19 @@ def _board_size(components: List[Dict]) -> Tuple[float, float]:
         zone_widths[z] = max(zone_widths[z], w)
         zone_count[z] += 1
 
-    # Sum widths plus inter-zone gaps for board width
-    gap = 8.0  # mm between zones (clearance + trace area)
+    # Sum widths plus inter-zone gaps — solo cuenta zonas con contenido
+    gap = 12.0  # mm entre zonas con contenido
     margin = 8.0
-    total_w = (margin * 2
-               + zone_widths["hv"] + gap
-               + zone_widths["mcu"] + gap
-               + zone_widths["other"] + gap
-               + zone_widths["relay"] + 22.0  # extra room for the diode+resistor cell
-               + gap
-               + zone_widths["output"])
-    # Override: at minimum match the components present (relay-only board still has MCU column placeholders)
-    total_w = max(total_w, 110.0)
+    relay_cell_extra = 22.0  # diodo+resistor a la izq del relay
+    parts: List[float] = []
+    if zone_count["hv"]:     parts.append(zone_widths["hv"])
+    if zone_count["mcu"]:    parts.append(zone_widths["mcu"])
+    if zone_count["other"]:  parts.append(zone_widths["other"])
+    if zone_count["relay"]:  parts.append(zone_widths["relay"] + relay_cell_extra)
+    if zone_count["output"]: parts.append(zone_widths["output"])
+
+    total_w = margin * 2 + sum(parts) + gap * max(0, len(parts) - 1)
+    total_w = max(total_w, 80.0)  # mínimo razonable
 
     # Height: driven by the longest zone stack. Mirrors _per_comp_stack pad logic
     # in _place_components so the column fits without negative-Y overflow.
@@ -389,7 +513,7 @@ class PCBRenderer:
             components = circuit_data.get("components", [])
             nets       = circuit_data.get("nets", [])
             board_w, board_h = _board_size(components)
-            positions  = _place_components(components, board_w, board_h)
+            positions  = _place_components(components, board_w, board_h, nets)
             traces     = _route_traces(nets, positions)
 
             # DRC error component IDs for highlighting
@@ -680,7 +804,7 @@ class PCBRenderer:
             components = circuit_data.get("components", [])
             nets       = circuit_data.get("nets", [])
             board_w, board_h = _board_size(components)
-            positions  = _place_components(components, board_w, board_h)
+            positions  = _place_components(components, board_w, board_h, nets)
             traces     = _route_traces(nets, positions)
 
             top_traces = [t for t in traces if t["layer"] == "top"]

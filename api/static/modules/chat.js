@@ -70,9 +70,18 @@ function connectWS() {
     if (data.type === 'thinking') {
       return; // heartbeat del servidor — ignorar silenciosamente
     }
+    if (data.type === 'estimate') {
+      _showQualityEstimate(data);
+      return;
+    }
+    if (data.type === 'phase') {
+      _updateQualityPhase(data.name);
+      return;
+    }
     if (data.type === 'token') {
       appendToken(data.content);
     } else if (data.type === 'done') {
+      _hideQualityEstimate();
       finishStreaming(data);
       if (data.facts) updateFacts(data.facts);
       if (data.session_title) {
@@ -88,6 +97,7 @@ function connectWS() {
       if (el) el.textContent = data.title;
       loadSessions();
     } else if (data.type === 'error') {
+      _hideQualityEstimate();
       finishStreaming(null);
       // Detectar rate limit y mostrar countdown en lugar de burbuja de error
       const rlMatch = data.content && data.content.match(/Esperá (\d+)s/);
@@ -100,6 +110,84 @@ function connectWS() {
   };
 }
 
+// ─── Quality-mode progress UI ────────────────────────────────────────────────
+let _qualityState = null;
+let _qualityTickHandle = null;
+
+function _showQualityEstimate(data) {
+  // data = {seconds, phases: [{name, label, estimated_seconds}], reasoning, complexity}
+  _hideQualityEstimate(); // clean previous if any
+
+  const area = document.getElementById('messages');
+  if (!area) return;
+
+  const card = document.createElement('div');
+  card.id = 'quality-progress-card';
+  card.className = 'mx-3 my-2 p-3 rounded-lg border border-blue-500/40 bg-blue-500/5 text-xs';
+  card.innerHTML = `
+    <div class="flex items-center justify-between mb-1">
+      <span class="font-medium text-blue-300">⏱ Estimo ~<span id="qp-total">${data.seconds}</span>s para entregar bien hecho</span>
+      <span class="text-[10px] text-gray-400 uppercase">${data.complexity}</span>
+    </div>
+    <div class="text-[11px] text-gray-300 mb-2 italic">${data.reasoning || ''}</div>
+    <div class="w-full h-1.5 bg-gray-700 rounded overflow-hidden mb-1">
+      <div id="qp-bar" class="h-full bg-blue-400 transition-all duration-500" style="width:0%"></div>
+    </div>
+    <div class="flex justify-between text-[11px]">
+      <span id="qp-phase" class="text-gray-200">▶ Iniciando…</span>
+      <span id="qp-time" class="text-gray-400 tabular-nums">0s / ${data.seconds}s</span>
+    </div>
+  `;
+  area.appendChild(card);
+  area.scrollTop = area.scrollHeight;
+
+  _qualityState = {
+    startedAt: Date.now(),
+    estimateSeconds: data.seconds,
+    phases: data.phases || [],
+    currentPhaseIdx: -1,
+  };
+  // Tick every second to update countdown + bar
+  _qualityTickHandle = setInterval(_qualityTick, 500);
+}
+
+function _qualityTick() {
+  if (!_qualityState) return;
+  const elapsed = (Date.now() - _qualityState.startedAt) / 1000;
+  const total = _qualityState.estimateSeconds;
+  const pct = Math.min(100, (elapsed / total) * 100);
+  const bar = document.getElementById('qp-bar');
+  const tm  = document.getElementById('qp-time');
+  if (bar) bar.style.width = pct.toFixed(0) + '%';
+  if (tm)  tm.textContent  = `${elapsed.toFixed(0)}s / ${total}s`;
+  // Si nos pasamos del estimado: poner barra en amarillo
+  if (elapsed > total && bar) {
+    bar.classList.remove('bg-blue-400');
+    bar.classList.add('bg-yellow-400');
+  }
+}
+
+function _updateQualityPhase(name) {
+  if (!_qualityState) return;
+  const phase = _qualityState.phases.find(p => p.name === name);
+  const label = phase ? phase.label : name;
+  const el = document.getElementById('qp-phase');
+  if (el) el.textContent = `▶ ${label}`;
+  // marcar índice para mostrar pasos
+  const idx = _qualityState.phases.findIndex(p => p.name === name);
+  if (idx >= 0) _qualityState.currentPhaseIdx = idx;
+}
+
+function _hideQualityEstimate() {
+  if (_qualityTickHandle) {
+    clearInterval(_qualityTickHandle);
+    _qualityTickHandle = null;
+  }
+  _qualityState = null;
+  const card = document.getElementById('quality-progress-card');
+  if (card) card.remove();
+}
+
 async function loadSessionHistory(sid) {
   try {
     const d = await authFetch(`${API}/history?session_id=${encodeURIComponent(sid)}&limit=20`).then(r => r.json());
@@ -110,9 +198,18 @@ async function loadSessionHistory(sid) {
     if (area) area.innerHTML = '';
     document.getElementById('chat-empty')?.remove();
     _loadingHistory = true;
+    _pageMessages = []; // reset and repopulate from history
     msgs.forEach(m => {
       if (m.role !== 'user' && m.role !== 'assistant') return;
       addMessage(m.role === 'user' ? 'user' : 'agent', m.content, m.agents_used || [], false, m.elapsed_ms);
+      // Track in export buffer (addMessage skips this when _loadingHistory=true)
+      _pageMessages.push({
+        role: m.role === 'user' ? 'user' : 'assistant',
+        content: m.content,
+        timestamp: m.timestamp || new Date().toISOString(),
+        elapsed_ms: m.elapsed_ms || null,
+        agents_used: m.agents_used || [],
+      });
     });
     _loadingHistory = false;
     addLog(`Historial reanudado — ${msgs.length} mensajes`, 'info');

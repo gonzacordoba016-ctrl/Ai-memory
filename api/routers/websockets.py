@@ -167,15 +167,37 @@ async def ws_chat(websocket: WebSocket, session: str = None, token: str = ""):
             _msgs_so_far = sql_db.get_conversation_by_session(session_id, limit=2)
             _is_first_msg = len(_msgs_so_far) <= 1
 
+            # ── MODO CALIDAD: estimar tiempo + emitir evento upfront ──
+            try:
+                from agent.quality_estimator import estimate_quality_time
+                _estimate = estimate_quality_time(user_input)
+                await websocket.send_text(json.dumps({
+                    "type":       "estimate",
+                    "seconds":    _estimate["seconds"],
+                    "phases":     _estimate["phases"],
+                    "complexity": _estimate["complexity"],
+                    "reasoning":  _estimate["reasoning"],
+                }))
+            except Exception as _est_err:
+                logger.warning(f"[Estimate] falló: {_est_err}")
+
             async def on_token(token: str):
                 await websocket.send_text(json.dumps({"type": "token", "content": token}))
 
+            async def on_phase(name: str):
+                try:
+                    await websocket.send_text(json.dumps({
+                        "type": "phase", "name": name,
+                    }))
+                except Exception:
+                    pass
+
             try:
                 _task = asyncio.create_task(
-                    agent.process_input(user_input, on_token=on_token)
+                    agent.process_input(user_input, on_token=on_token, on_phase=on_phase)
                 )
                 _elapsed = 0
-                _timeout  = 180
+                _timeout  = 240  # +60s — modo calidad permite circuitos complejos
                 response  = None
                 while not _task.done():
                     try:
@@ -193,7 +215,9 @@ async def ws_chat(websocket: WebSocket, session: str = None, token: str = ""):
                             }))
                             response = None
                             break
-                        # Heartbeat — mantiene Railway nginx vivo
+                        # Heartbeat — mantiene Railway nginx vivo (sigue sin
+                        # depender de phases para que aunque éstas se atrasen
+                        # la conexión no caiga)
                         await websocket.send_text(json.dumps({
                             "type": "thinking", "content": "…"
                         }))

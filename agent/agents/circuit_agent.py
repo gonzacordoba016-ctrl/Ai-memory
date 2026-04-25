@@ -384,13 +384,42 @@ Si la descripción menciona N unidades (ej: "5 bombas", "3 motores", "4 relays",
   • PROHIBIDO: omitir el flyback, la resistencia de control o el conector de cualquiera de las N cargas
   • PROHIBIDO: reusar el mismo net RELAY1_CTRL para varias cargas
 
-CIRCUITOS DE ALTA TENSIÓN (220VAC, 110VAC):
-  • Separación galvánica obligatoria entre control (MCU) y potencia (AC)
-  • Usar optoacopladores (PC817) o módulos relay con optoacoplamiento integrado
-  • Incluir transformador + puente rectificador + cap filtro + LM7805 para generar 5V del MCU
-    (o fuente SMPS dedicada 220VAC→5V)
-  • Si hay un voltaje de potencia distinto (ej: 50V para los motores): fuente SMPS adicional
-  • Fusible (F1) en la entrada AC, varistor MOV (D6 o equivalente) en paralelo con la entrada
+═══════════════════════════════════════════════════════
+CIRCUITOS DE ALTA TENSIÓN (220VAC, 110VAC) — OBLIGATORIO:
+═══════════════════════════════════════════════════════
+Si la descripción menciona red eléctrica (220VAC, 110VAC, 220V, "red", "alimentado desde"):
+DEBES generar la etapa de conversión COMPLETA. NO asumas que viene de afuera.
+Componentes OBLIGATORIOS (todos en el JSON):
+
+  1. Conector de entrada AC: J1 (terminal_block 220VAC, pines L+N)
+  2. Fusible: F1 (type:"fuse", típico 5×20mm 1-10A según carga)
+  3. Varistor MOV: D6 (type:"varistor", S20K275 o S14K275 para 220VAC)
+  4. UNO de estos dos paths para generar VCC del MCU:
+
+     PATH A (con transformador):
+       • T1 (type:"transformer", 220VAC→9-12VAC 50VA)
+       • BR1 (type:"bridge_rectifier", GBU4J o KBP307 4A)
+       • C1 (type:"capacitor_electrolytic", value:"2200", unit:"µF" — filtro)
+       • U2 (type:"voltage_regulator", LM7805 — genera 5V del MCU)
+       • C2 (type:"capacitor", value:"100", unit:"nF" — desacoplo)
+
+     PATH B (con SMPS):
+       • SMPS1 (type:"smps", entrada 220VAC, salida 5V o 12V)
+       • C2 (type:"capacitor", value:"100", unit:"nF" — desacoplo MCU)
+
+  5. Si la carga requiere otro voltaje (ej: 24V o 50V para válvulas/motores):
+     • Una fuente DEDICADA: SMPS2 (type:"smps") o un segundo transformador
+     • NO suponer que el voltaje de carga "ya está" — generarlo
+
+PROHIBIDO en circuitos AC:
+  • Omitir transformer/SMPS — el MCU no puede recibir 220VAC directo
+  • Omitir el fusible o el varistor MOV
+  • Generar nets como "VCC_5V" sin que ningún componente lo produzca
+  • Conectar el MCU directamente a J1 (entrada 220VAC)
+
+Separación galvánica obligatoria entre control (MCU) y potencia (AC):
+  • Módulos relay con optoacoplamiento integrado, o PC817 explícito
+  • Layout: zona AC física separada de zona MCU
 
 COMPLETITUD:
   • Incluir TODOS los componentes necesarios para que el circuito funcione en producción
@@ -494,6 +523,9 @@ class CircuitAgent:
             # Auto-complete missing values (resistors for LEDs, flyback diodes, etc.)
             self._calculate_missing_values(circuit_data)
 
+            # Auto-complete AC→DC power stage if 220VAC mentioned but missing
+            self._ensure_ac_dc_stage(circuit_data, description)
+
             # Domain-specific post-validation
             self._apply_domain_rules(circuit_data, domain)
 
@@ -579,35 +611,34 @@ class CircuitAgent:
                     comp_ids.add(new_id)
                     warnings.append(f"[Auto] Resistencia {new_id} (220Ω) agregada para {led_id} — verificá valor según Vcc y color del LED")
 
-        # 2. Relays sin diodo flyback
+        # 2. Relays sin diodo flyback — UN flyback DEDICADO por relay (no reusar)
         relay_ids = [c["id"] for c in components
-                     if c.get("resolved_type", c.get("type", "")) in ("relay", "relay_module")]
-        diode_ids = {c["id"] for c in components
-                     if c.get("resolved_type", c.get("type", "")) in ("diode", "1n4007")}
+                     if c.get("resolved_type", c.get("type", "")) in ("relay", "relay_module", "ssr")
+                     or c["id"].lower().startswith("rl")]
+        # diode_ids se recalcula dentro del loop porque agregamos diodos nuevos
+        used_diode_ids: set = set()  # diodos ya asignados a un relay en esta corrida
 
         for relay_id in relay_ids:
+            diode_ids = {c["id"] for c in components
+                         if c.get("resolved_type", c.get("type", "")) in ("diode", "1n4007")}
             relay_nets = [n for n in nets if any(relay_id in node for node in n.get("nodes", []))]
             has_flyback = any(
                 any(d_id in node for node in net.get("nodes", []))
                 for net in relay_nets for d_id in diode_ids
             )
             if not has_flyback:
-                # Reusar diodo existente sin nets si lo hay, o crear uno nuevo
-                connected_comps = {node.split(".")[0] for n in nets for node in n.get("nodes", [])}
-                unconnected_diodes = [d for d in diode_ids if d not in connected_comps]
-                if unconnected_diodes:
-                    new_id = unconnected_diodes[0]
-                else:
-                    new_id = f"D_fly_{relay_id}"
-                    if new_id not in comp_ids:
-                        components.append({
-                            "id": new_id,
-                            "name": f"Diodo flyback 1N4007 {relay_id}",
-                            "type": "diode", "resolved_type": "diode",
-                            "value": "1N4007", "auto_added": True,
-                        })
-                        comp_ids.add(new_id)
-                warnings.append(f"[Auto] Diodo flyback {new_id} (1N4007) conectado para relay {relay_id}")
+                # Crear un diodo NUEVO por cada relay (no reusar otros — un relay = un flyback)
+                new_id = f"D_fly_{relay_id}"
+                if new_id not in comp_ids:
+                    components.append({
+                        "id": new_id,
+                        "name": f"Diodo flyback 1N4007 {relay_id}",
+                        "type": "diode", "resolved_type": "diode",
+                        "value": "1N4007", "auto_added": True,
+                    })
+                    comp_ids.add(new_id)
+                used_diode_ids.add(new_id)
+                warnings.append(f"[Auto] Diodo flyback {new_id} (1N4007) agregado para relay {relay_id}")
 
                 # Conectar diodo: cátodo al net de control del relay, ánodo a GND
                 ctrl_net = next(
@@ -623,6 +654,170 @@ class CircuitAgent:
                     ctrl_net["nodes"].append(f"{new_id}.cathode")
                 if gnd_net and f"{new_id}.anode" not in gnd_net["nodes"]:
                     gnd_net["nodes"].append(f"{new_id}.anode")
+
+    def _ensure_ac_dc_stage(self, circuit_data: Dict[str, Any], description: str) -> None:
+        """
+        Si la descripción menciona 220VAC/110VAC y el JSON no incluye una etapa
+        de conversión AC→DC, agrega los componentes mínimos: F1, D6 (MOV), T1,
+        BR1, C1, U2 (LM7805), C2 — junto con sus nets correspondientes.
+        Solo se ejecuta cuando hay un MCU presente.
+        """
+        desc_l = (description or "").lower()
+        ac_keywords = ("220vac", "220 vac", "220v", "110vac", "110 vac", "110v",
+                       "red eléctrica", "red electrica", "alimentado desde red",
+                       "corriente alterna", "230vac", "240vac")
+        if not any(kw in desc_l for kw in ac_keywords):
+            return
+
+        components = circuit_data["components"]
+        nets = circuit_data.setdefault("nets", [])
+        warnings = circuit_data.setdefault("warnings", [])
+        comp_ids = {c["id"] for c in components}
+        types_present = {(c.get("resolved_type") or c.get("type") or "").lower() for c in components}
+
+        # Si ya hay etapa de conversión, no hacer nada
+        has_converter = any(t in types_present for t in
+                            ("transformer", "smps", "bridge_rectifier"))
+        if has_converter:
+            return
+
+        # No tiene sentido autocompletar si no hay MCU al cual alimentar
+        has_mcu = any(t in types_present for t in
+                      ("arduino_uno", "arduino_nano", "arduino_mega", "esp32",
+                       "esp8266", "stm32", "pico", "rp2040", "mcu"))
+        if not has_mcu:
+            return
+
+        # Construir IDs únicos sin pisar existentes
+        def _new(prefix: str) -> str:
+            i = 1
+            while f"{prefix}{i}" in comp_ids:
+                i += 1
+            cid = f"{prefix}{i}"
+            comp_ids.add(cid)
+            return cid
+
+        # Componentes a agregar (PATH A: transformer + bridge + 7805)
+        added: List[Dict[str, Any]] = []
+        if "fuse" not in types_present:
+            fid = _new("F")
+            added.append({"id": fid, "name": "Fusible AC 5A", "type": "fuse",
+                          "resolved_type": "fuse", "value": "5", "unit": "A",
+                          "auto_added": True})
+        else:
+            fid = next(c["id"] for c in components if (c.get("resolved_type") or c.get("type") or "").lower() == "fuse")
+
+        if "varistor" not in types_present and "mov" not in types_present:
+            mov_id = _new("D")
+            added.append({"id": mov_id, "name": "Varistor MOV S20K275",
+                          "type": "varistor", "resolved_type": "varistor",
+                          "value": "S20K275", "auto_added": True})
+        else:
+            mov_id = None
+
+        t_id = _new("T")
+        added.append({"id": t_id, "name": "Transformador 220VAC/12VAC 50VA",
+                      "type": "transformer", "resolved_type": "transformer",
+                      "auto_added": True})
+
+        br_id = _new("BR")
+        added.append({"id": br_id, "name": "Puente rectificador GBU4J",
+                      "type": "bridge_rectifier", "resolved_type": "bridge_rectifier",
+                      "auto_added": True})
+
+        cap_filter_id = _new("C")
+        added.append({"id": cap_filter_id, "name": "Cap filtro 2200µF",
+                      "type": "capacitor_electrolytic",
+                      "resolved_type": "capacitor_electrolytic",
+                      "value": "2200", "unit": "µF", "auto_added": True})
+
+        reg_id = _new("U")
+        added.append({"id": reg_id, "name": "LM7805 +5V",
+                      "type": "voltage_regulator",
+                      "resolved_type": "voltage_regulator",
+                      "value": "LM7805", "auto_added": True})
+
+        cap_dec_id = _new("C")
+        added.append({"id": cap_dec_id, "name": "Cap desacoplo 100nF",
+                      "type": "capacitor", "resolved_type": "capacitor",
+                      "value": "100", "unit": "nF", "auto_added": True})
+
+        # Conector de entrada AC si falta uno explícito de 220V
+        ac_connector_id = None
+        for c in components:
+            n = (c.get("name", "") or "").lower()
+            if (c.get("resolved_type") or c.get("type") or "").lower() == "connector" and (
+                "220" in n or "110" in n or "ac" in n or "entrada" in n
+            ):
+                ac_connector_id = c["id"]
+                break
+        if not ac_connector_id:
+            ac_connector_id = _new("J")
+            added.append({"id": ac_connector_id, "name": "Entrada 220VAC",
+                          "type": "connector", "resolved_type": "connector",
+                          "auto_added": True})
+
+        components.extend(added)
+
+        # Nets nuevos / extender existentes
+        def _get_or_create_net(name: str) -> Dict[str, Any]:
+            for n in nets:
+                if n["name"].upper() == name.upper():
+                    return n
+            new = {"name": name, "nodes": []}
+            nets.append(new)
+            return new
+
+        # 220VAC L: J1.L → F1.1 → MOV.1
+        n_l = _get_or_create_net("VCC_220VAC_L")
+        for node in (f"{ac_connector_id}.L", f"{fid}.1", f"{mov_id}.1" if mov_id else None):
+            if node and node not in n_l["nodes"]:
+                n_l["nodes"].append(node)
+        # 220VAC N: J1.N → T1.PRI_N
+        n_n = _get_or_create_net("VCC_220VAC_N")
+        for node in (f"{ac_connector_id}.N", f"{t_id}.PRI_N", f"{mov_id}.2" if mov_id else None):
+            if node and node not in n_n["nodes"]:
+                n_n["nodes"].append(node)
+        # F1.2 → T1.PRI_L
+        n_f = _get_or_create_net("VCC_220VAC_F")
+        for node in (f"{fid}.2", f"{t_id}.PRI_L"):
+            if node not in n_f["nodes"]:
+                n_f["nodes"].append(node)
+        # 12VAC sec: T1.SEC_A → BR1.AC1, T1.SEC_B → BR1.AC2
+        for sec, ac_in in [("SEC_A", "AC1"), ("SEC_B", "AC2")]:
+            n_sec = _get_or_create_net(f"VCC_12VAC_{sec[-1]}")
+            for node in (f"{t_id}.{sec}", f"{br_id}.{ac_in}"):
+                if node not in n_sec["nodes"]:
+                    n_sec["nodes"].append(node)
+        # Rectified: BR1.+ → C1.+ → U2.IN
+        n_rec = _get_or_create_net("RECTIFIED_VCC")
+        for node in (f"{br_id}.PLUS", f"{cap_filter_id}.PLUS", f"{reg_id}.IN"):
+            if node not in n_rec["nodes"]:
+                n_rec["nodes"].append(node)
+        # GND
+        n_gnd = next((n for n in nets if "gnd" in n["name"].lower() or "ground" in n["name"].lower()), None)
+        if n_gnd is None:
+            n_gnd = {"name": "GND", "nodes": []}
+            nets.append(n_gnd)
+        for node in (f"{br_id}.MINUS", f"{cap_filter_id}.MINUS",
+                     f"{reg_id}.GND", f"{cap_dec_id}.2"):
+            if node not in n_gnd["nodes"]:
+                n_gnd["nodes"].append(node)
+        # VCC_5V output (extender net existente si lo hay, o crear)
+        n_5v = next((n for n in nets if any(v in n["name"].lower()
+                                            for v in ("vcc_5v", "5v", "vcc"))), None)
+        if n_5v is None:
+            n_5v = {"name": "VCC_5V", "nodes": []}
+            nets.append(n_5v)
+        for node in (f"{reg_id}.OUT", f"{cap_dec_id}.1"):
+            if node not in n_5v["nodes"]:
+                n_5v["nodes"].append(node)
+
+        warnings.append(
+            f"[Auto-AC/DC] Etapa de conversión 220VAC→5VDC agregada automáticamente "
+            f"(componentes: {fid}, {mov_id or 'sin MOV'}, {t_id}, {br_id}, "
+            f"{cap_filter_id}, {reg_id}, {cap_dec_id}). El LLM la había omitido."
+        )
 
     def _apply_domain_rules(self, circuit_data: Dict[str, Any], domain: str) -> None:
         """Validaciones extra por dominio."""

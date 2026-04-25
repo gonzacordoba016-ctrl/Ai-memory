@@ -49,7 +49,20 @@ class AgentController:
         except Exception as e:
             logger.error(f"Error inicializando knowledge base: {e}")
 
-    async def process_input(self, user_input: str, on_token=None) -> dict:
+    async def process_input(self, user_input: str, on_token=None,
+                            on_phase=None) -> dict:
+        """
+        on_phase: opcional, callback async(phase_name: str) que se invoca al
+        entrar en cada fase. Útil para emitir progreso al frontend.
+        """
+        async def _phase(name: str):
+            if on_phase:
+                try:
+                    await on_phase(name)
+                except Exception as e:
+                    logger.warning(f"[on_phase] callback falló: {e}")
+
+        await _phase("understanding")
 
         # 1. Guardar input + detectar plataforma
         self.state.add_message("user", user_input)
@@ -70,10 +83,12 @@ class AgentController:
                 logger.info(f"Nuevos hechos: {new_facts}")
 
         # 3. Orquestador async
+        await _phase("routing")
         orch_result = await self.orchestrator.run(
-            query   = user_input,
-            context = self._build_base_context(),
-            history = self.state.get_history(),
+            query    = user_input,
+            context  = self._build_base_context(),
+            history  = self.state.get_history(),
+            on_phase = _phase,
         )
         agents_used = orch_result["agents_used"]
         sub_context = orch_result["combined_context"]
@@ -174,6 +189,7 @@ class AgentController:
         )
 
         # 7. Generar respuesta — streaming async o llamada directa
+        await _phase("responding")
         messages = [{"role": "user", "content": prompt}]
 
         if on_token:

@@ -162,10 +162,15 @@ def _build_relay_groups(components: List[Dict]) -> Dict[str, List[Dict]]:
 
 
 def _layout_components(components: List[Dict], width: int, height: int,
-                       saved: Dict[str, Dict]) -> Dict[str, Tuple[int, int]]:
+                       saved: Dict[str, Dict],
+                       nets: Optional[List[Dict]] = None) -> Dict[str, Tuple[int, int]]:
     """
     Zone-based layout with signal flow left → right:
       [AC | barrera galvánica | Power+MCU | Relay cells | Output]
+
+    Si se pasa `nets`, después del primer pass se hacen 3 iteraciones de
+    barycentric Y-reorder por zona — los componentes terminan a alturas similares
+    a los que están conectados por net, minimizando cruces de cables.
     """
     positions: Dict[str, Tuple[int, int]] = {}
 
@@ -194,14 +199,51 @@ def _layout_components(components: List[Dict], width: int, height: int,
         # The relay is already classified as 'relay'; keep zones["relay"] as authoritative
         pass
 
-    # Zone X-band boundaries (proportional to width)
+    # Zone X-band centers — packing horizontal: cada zona reserva ancho fijo
+    # según su tipo (no fracciones del canvas, eso dejaba huecos enormes).
     x_margin = 80
-    body_w   = max(width - 2 * x_margin, 1000)
-    # Distribute: AC=22%, MCU=22%, RELAY=38%, OUTPUT=18%
-    x_ac_c     = x_margin + int(body_w * 0.11)
-    x_mcu_c    = x_margin + int(body_w * 0.40)
-    x_relay_c  = x_margin + int(body_w * 0.70)
-    x_output_c = x_margin + int(body_w * 0.92)
+    SLOT_AC     = 240   # px reservados por zona (símbolos + label area)
+    SLOT_MCU    = 240
+    SLOT_OTHER  = 220
+    SLOT_RELAY  = 360   # más ancho porque la celda es relay+diodo+resistencia
+    SLOT_OUTPUT = 200
+    GAP         = 60    # px entre zonas
+
+    mcu_sorted = sorted(
+        zones["mcu"],
+        key=lambda c: 1 if (c.get("resolved_type") or c.get("type") or "").lower() in _MCU_TYPES else 0,
+    )
+    has_ac     = bool(zones["ac"])
+    has_mcu    = bool(mcu_sorted)
+    has_other  = bool([c for c in zones["other"] if c["id"] not in positions])
+    has_relay  = bool(relay_groups)
+    has_output = bool(zones["output"])
+
+    cur = x_margin
+    if has_ac:
+        x_ac_c = cur + SLOT_AC // 2; cur += SLOT_AC + GAP
+    else:
+        x_ac_c = cur
+
+    if has_mcu:
+        x_mcu_c = cur + SLOT_MCU // 2; cur += SLOT_MCU + GAP
+    else:
+        x_mcu_c = cur
+
+    if has_other:
+        x_other_c = cur + SLOT_OTHER // 2; cur += SLOT_OTHER + GAP
+    else:
+        x_other_c = cur
+
+    if has_relay:
+        x_relay_c = cur + SLOT_RELAY // 2; cur += SLOT_RELAY + GAP
+    else:
+        x_relay_c = cur
+
+    if has_output:
+        x_output_c = cur + SLOT_OUTPUT // 2; cur += SLOT_OUTPUT
+    else:
+        x_output_c = cur
 
     # Y-band (vertical extent for stacks)
     y_top    = 90
@@ -223,15 +265,7 @@ def _layout_components(components: List[Dict], width: int, height: int,
     for comp, ypos in zip(ac_comps, _stack_y_positions(len(ac_comps))):
         positions[comp["id"]] = (x_ac_c, ypos)
 
-    # ── MCU/Power zone (vertical stack — MCU central, regulators above/below) ──
-    mcu_comps = zones["mcu"]
-    # Sort: regulators first (top), then MCU(s) in middle, then anything else
-    def _mcu_sort_key(c):
-        t = (c.get("resolved_type") or c.get("type") or "").lower()
-        if t in _MCU_TYPES:
-            return 1  # MCU stays in middle
-        return 0  # regulators above
-    mcu_sorted = sorted(mcu_comps, key=_mcu_sort_key)
+    # ── MCU/Power zone (vertical stack) — usa mcu_sorted ya calculado arriba ──
     for comp, ypos in zip(mcu_sorted, _stack_y_positions(len(mcu_sorted))):
         positions[comp["id"]] = (x_mcu_c, ypos)
 
@@ -264,13 +298,76 @@ def _layout_components(components: List[Dict], width: int, height: int,
     for comp, ypos in zip(out_comps, _stack_y_positions(len(out_comps))):
         positions[comp["id"]] = (x_output_c, ypos)
 
-    # ── 'other' / misc (sensors, displays, etc.) — distribute across MCU column extras ──
+    # ── 'other' / misc (sensors, displays, etc.) — usa x_other_c ya calculado ──
     other_comps = [c for c in zones["other"] if c["id"] not in positions]
     if other_comps:
-        # Place them in a secondary column to the left of MCU zone
-        x_other = x_margin + int(body_w * 0.25)
         for comp, ypos in zip(other_comps, _stack_y_positions(len(other_comps))):
-            positions[comp["id"]] = (x_other, ypos)
+            positions[comp["id"]] = (x_other_c, ypos)
+
+    # ── HPWL barycentric Y-reorder (3 iters) ──
+    # Reordena cada zona Y según el promedio de Y de los componentes con los
+    # que comparte net en otras zonas. La zona ancla (más poblada) no se
+    # reordena para no perder el patrón visual del usuario.
+    if nets:
+        adj: Dict[str, set] = {c["id"]: set() for c in pending}
+        for net in nets:
+            ids_in_net = [str(node).split(".")[0] for node in net.get("nodes", [])]
+            ids_in_net = [i for i in ids_in_net if i in adj]
+            for i in ids_in_net:
+                for j in ids_in_net:
+                    if i != j:
+                        adj[i].add(j)
+
+        comp_zone: Dict[str, str] = {}
+        for z, lst in zones.items():
+            for c in lst:
+                comp_zone[c["id"]] = z
+        for cell in relay_groups.values():
+            for c in cell:
+                comp_zone[c["id"]] = "relay"
+
+        zone_pop = {z: len(lst) for z, lst in zones.items()}
+        zone_pop["relay"] = max(zone_pop["relay"], len(relay_groups))
+        anchor = max(zone_pop, key=lambda z: zone_pop[z])
+
+        def _reorder_zone(zone_name: str, zone_comps: List[Dict], x_center: int) -> None:
+            if zone_name == anchor or len(zone_comps) < 2:
+                return
+            targets: List[Tuple[float, Dict]] = []
+            for c in zone_comps:
+                ys = [positions[nb][1] for nb in adj.get(c["id"], ())
+                       if nb in positions and comp_zone.get(nb) != zone_name]
+                if ys:
+                    targets.append((sum(ys) / len(ys), c))
+                else:
+                    targets.append((float(positions[c["id"]][1]), c))
+            targets.sort(key=lambda t: t[0])
+            reordered = [t[1] for t in targets]
+            for c, y in zip(reordered, _stack_y_positions(len(reordered))):
+                positions[c["id"]] = (x_center, y)
+
+        for _ in range(3):
+            _reorder_zone("ac",     ac_comps,    x_ac_c)
+            _reorder_zone("mcu",    mcu_sorted,  x_mcu_c)
+            _reorder_zone("other",  other_comps, x_other_c)
+            _reorder_zone("output", out_comps,   x_output_c)
+            if anchor != "relay" and len(relay_groups) >= 2:
+                relay_targets: List[Tuple[float, List[Dict]]] = []
+                for cell in relay_cells:
+                    relay = cell[0]
+                    ys = [positions[nb][1] for nb in adj.get(relay["id"], ())
+                           if nb in positions and comp_zone.get(nb) != "relay"]
+                    relay_targets.append((sum(ys) / len(ys) if ys else float(positions[relay["id"]][1]), cell))
+                relay_targets.sort(key=lambda t: t[0])
+                reordered_cells = [t[1] for t in relay_targets]
+                new_cy = _stack_y_positions(len(reordered_cells))
+                for cell, cy in zip(reordered_cells, new_cy):
+                    relay = cell[0]
+                    positions[relay["id"]] = (x_relay_c, cy)
+                    if len(cell) > 1:
+                        positions[cell[1]["id"]] = (x_relay_c - 75, cy - 18)
+                    if len(cell) > 2:
+                        positions[cell[2]["id"]] = (x_relay_c - 140, cy)
 
     return positions
 
@@ -310,9 +407,8 @@ class SchematicRenderer:
             components = circuit_data.get("components", [])
             nets       = circuit_data.get("nets", [])
 
-            # Dynamic canvas: scale with component count so nothing overlaps.
-            # The 4-zone layout (AC | MCU | Relay | Output) needs ample width;
-            # height scales with the largest zone (typically the relay column).
+            # Dynamic canvas: ancho = suma de slots de zonas activas, altura =
+            # stack vertical más alto. Sin huecos horizontales innecesarios.
             n = len(components)
             n_relays = sum(
                 1 for c in components
@@ -320,19 +416,32 @@ class SchematicRenderer:
                 in ("relay", "relay_module", "ssr")
                 or c.get("id", "").lower().startswith("rl")
             )
+            # Detectar zonas activas para dimensionar el canvas (debe coincidir
+            # con la lógica de _layout_components: AC, MCU, OTHER, RELAY, OUTPUT)
+            n_ac = sum(1 for c in components if _classify_zone(c) == "ac")
+            n_mcu = sum(1 for c in components if _classify_zone(c) == "mcu")
+            n_other = sum(1 for c in components if _classify_zone(c) == "other")
+            n_output = sum(1 for c in components if _classify_zone(c) == "output")
+            active_zones = sum(1 for v in (n_ac, n_mcu, n_other, n_relays, n_output) if v > 0)
+            # SLOTs (debe coincidir con _layout_components): AC=240 MCU=240 OTHER=220 RELAY=360 OUTPUT=200
+            slots_w = 240 * (1 if n_ac else 0) + 240 * (1 if n_mcu else 0) \
+                    + 220 * (1 if n_other else 0) + 360 * (1 if n_relays else 0) \
+                    + 200 * (1 if n_output else 0)
+            gap_w = 60 * max(0, active_zones - 1)
+            margin_w = 160  # 80 left + 80 right (legend + title)
+
             if width is None:
-                width  = max(1500, n * 70 + 400)
+                width  = max(1100, slots_w + gap_w + margin_w)
             if height is None:
-                # Height driven by longest vertical stack (relay cells dominate)
-                max_stack = max(n_relays, 6)
-                height = max(800, max_stack * 140 + 250)
+                max_stack = max(n_relays, n_ac, n_mcu, n_output, n_other, 5)
+                height = max(700, max_stack * 130 + 240)
 
             dwg = svgwrite.Drawing(size=('100%', '100%'),
                                    viewBox=f"0 0 {width} {height}")
             self._draw_background(dwg, width, height)
             self._draw_title_block(dwg, circuit_data, width, height)
             saved      = circuit_data.get("positions", {})
-            positions  = _layout_components(components, width, height - 90, saved)
+            positions  = _layout_components(components, width, height - 90, saved, nets)
             # F2.4 — galvanic isolation barrier between AC and control zones
             self._draw_galvanic_barrier(dwg, components, positions, width, height)
             self._draw_connections(dwg, nets, positions)
