@@ -14,27 +14,64 @@ _MM2PX = 3.7795275591
 # Functional groups for placement
 _MCU_TYPES   = {"arduino_uno", "arduino_nano", "arduino_mega", "esp32", "esp8266",
                 "stm32", "rp2040", "pico", "attiny", "mcu"}
-_SMALL_TYPES = {"resistor", "capacitor", "diode", "led", "led_rgb", "1n4007", "1n5819"}
-_LARGE_TYPES = {"relay", "relay_module", "motor_driver", "l298n", "drv8825",
-                "display", "oled", "lcd", "battery"}
+_SMALL_TYPES = {"resistor", "capacitor", "diode", "led", "led_rgb",
+                "1n4007", "1n5819", "1n4148", "varistor", "fuse"}
+_LARGE_TYPES = {"relay", "relay_module", "ssr", "motor_driver", "l298n", "drv8825",
+                "display", "oled", "lcd", "battery", "transformer", "smps"}
+_RELAY_TYPES = {"relay", "relay_module", "ssr"}
 
-# Footprint dimensions in mm (W × H)
+# F3.2 — industrial footprint dimensions in mm (W × H)
 _FOOTPRINT: Dict[str, Tuple[float, float]] = {
+    # Passives
     "resistor":     (6.5, 2.5),
     "capacitor":    (3.0, 3.0),
+    "capacitor_electrolytic": (8.0, 8.0),
     "led":          (5.0, 5.0),
     "led_rgb":      (5.0, 5.0),
     "diode":        (6.5, 2.5),
     "1n4007":       (6.5, 2.5),
+    "1n5819":       (6.5, 2.5),
+    "1n4148":       (4.0, 1.6),
     "button":       (6.0, 6.0),
-    "relay":        (19.0, 15.5),
-    "relay_module": (19.0, 15.5),
-    "motor_driver": (35.0, 35.0),
     "buzzer":       (12.0, 12.0),
+    "inductor":     (10.0, 10.0),
+
+    # Industrial / power components (F3.2)
+    "transformer":      (80.0, 60.0),  # toroidal/EI core
+    "smps":             (80.0, 40.0),  # Mean Well style module
+    "bridge_rectifier": (8.5, 5.0),    # GBU/KBP package
+    "fuse":             (30.0, 14.0),  # 5×20mm fuse + holder
+    "fuse_holder":      (30.0, 14.0),
+    "varistor":         (10.0, 7.0),   # MOV disc
+    "mov":              (10.0, 7.0),
+    "voltage_regulator":(10.5, 14.0),  # TO-220 with tab
+    "lm7805":           (10.5, 14.0),
+    "lm317":            (10.5, 14.0),
+    "ams1117":          (5.0, 4.5),    # SOT-223 SMD
+    "regulator":        (10.5, 14.0),
+    "optoacoplador":    (6.5, 9.0),    # DIP-4
+    "pc817":            (6.5, 9.0),
+    "ssr":              (45.0, 53.0),  # Fotek SSR-25DA
+    "inductor_cm":      (25.0, 20.0),  # common-mode choke
+    "x_capacitor":      (15.0, 10.0),  # X2 safety cap
+
+    # Modules
+    "relay":        (19.0, 15.5),
+    "relay_module": (40.0, 25.0),
+    "motor_driver": (35.0, 35.0),
     "oled":         (27.0, 27.0),
     "lcd":          (80.0, 36.0),
+
+    # Connectors
+    "connector":      (10.0, 8.0),
+    "header":         (5.0, 5.0),
+    "pin_header":     (5.0, 5.0),
+    "terminal_block": (10.0, 8.0),
+
+    # MCUs
     "arduino_uno":  (68.6, 53.4),
     "arduino_nano": (18.0, 43.2),
+    "arduino_mega": (101.5, 53.4),
     "esp32":        (18.0, 25.4),
     "esp8266":      (24.8, 16.0),
     "pico":         (21.0, 51.0),
@@ -56,6 +93,71 @@ def _group(comp_type: str) -> str:
     return "misc"
 
 
+# F3 — Zone classification mirroring schematic layout
+_ZONE_HV_TYPES = {
+    "transformer", "smps", "bridge_rectifier", "fuse", "fuse_holder",
+    "varistor", "mov", "inductor_cm", "x_capacitor",
+}
+_ZONE_MCU_PWR_TYPES = _MCU_TYPES | {
+    "voltage_regulator", "lm7805", "ams1117", "lm317", "regulator",
+    "buck_converter", "boost_converter", "ldo", "dc_dc",
+}
+
+
+def _pcb_zone(comp: Dict) -> str:
+    """Returns 'hv', 'mcu', 'relay', 'output', or 'other'."""
+    cid = (comp.get("id", "") or "").lower()
+    t = (comp.get("resolved_type") or comp.get("type") or "").lower()
+    name = (comp.get("name", "") or "").lower()
+
+    if t in _RELAY_TYPES or cid.startswith("rl"):
+        return "relay"
+    if t in _ZONE_HV_TYPES:
+        return "hv"
+    if t == "connector" and (
+        cid == "j1" or "220" in name or "110" in name
+        or "ac" in name or "input" in name or "entrada" in name
+    ):
+        return "hv"
+    if t in _ZONE_MCU_PWR_TYPES:
+        return "mcu"
+    if t == "connector":
+        return "output"
+    return "other"
+
+
+def _build_pcb_relay_groups(components: List[Dict]) -> Dict[str, List[Dict]]:
+    """Same as schematic: pair RLn with its Dn flyback + Rn control resistor."""
+    by_id = {c["id"]: c for c in components}
+    relay_ids = [
+        c["id"] for c in components
+        if (c.get("resolved_type") or c.get("type") or "").lower() in _RELAY_TYPES
+        or c["id"].lower().startswith("rl")
+    ]
+    groups: Dict[str, List[Dict]] = {}
+    used: set = set()
+    for rid in relay_ids:
+        if rid in used:
+            continue
+        cell = [by_id[rid]]
+        used.add(rid)
+        n_match = "".join(ch for ch in rid if ch.isdigit())
+        if n_match:
+            for cand in (f"D_fly{n_match}", f"D_fly_{rid}", f"D{n_match}",
+                         f"D_flyback_{rid}", f"Dfly{n_match}"):
+                if cand in by_id and cand not in used:
+                    cell.append(by_id[cand])
+                    used.add(cand)
+                    break
+            for cand in (f"R{n_match}", f"R_ctrl_{rid}", f"Rctrl{n_match}", f"R_{rid}"):
+                if cand in by_id and cand not in used:
+                    cell.append(by_id[cand])
+                    used.add(cand)
+                    break
+        groups[rid] = cell
+    return groups
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Placement
 # ──────────────────────────────────────────────────────────────────────────────
@@ -63,46 +165,111 @@ def _group(comp_type: str) -> str:
 def _place_components(components: List[Dict],
                       board_w: float, board_h: float) -> Dict[str, Tuple[float, float]]:
     """
-    Returns {comp_id: (cx_mm, cy_mm)} — component centers in mm.
-    Layout:
-      - MCU: center
-      - Small passives: cluster near MCU
-      - Large modules: outer rows
-      - Misc: bottom row
+    F3.1 — 4-zone placement (signal flow left → right):
+      Zone HV     (x: 0-30%):   AC input, transformer, rectifier, varistor, SMPS
+      Zone MCU    (x: 30-50%):  voltage regulator, MCU, decoupling caps
+      Zone Relay  (x: 50-80%):  RL1..RLN in vertical column with Dn + Rn cells
+      Zone Output (x: 80-100%): output connectors J2..JN
     """
     positions: Dict[str, Tuple[float, float]] = {}
 
-    groups: Dict[str, List[Dict]] = {g: [] for g in ("mcu", "small", "large", "misc")}
+    relay_groups = _build_pcb_relay_groups(components)
+    grouped_ids = {cid for cell in relay_groups.values() for cid in (c["id"] for c in cell)}
+
+    zones: Dict[str, List[Dict]] = {z: [] for z in ("hv", "mcu", "relay", "output", "other")}
     for comp in components:
-        t = comp.get("resolved_type", comp.get("type", "generic")).lower()
-        groups[_group(t)].append(comp)
+        if comp["id"] in grouped_ids:
+            continue
+        zones[_pcb_zone(comp)].append(comp)
 
+    # X bands (centers)
     margin = 5.0
-    cx, cy = board_w / 2, board_h / 2
+    body_w = board_w - 2 * margin
+    x_hv     = margin + body_w * 0.15
+    x_mcu    = margin + body_w * 0.40
+    x_relay  = margin + body_w * 0.68
+    x_output = margin + body_w * 0.92
 
-    # MCU(s) at center
-    for i, comp in enumerate(groups["mcu"]):
-        w, h = _fp(comp.get("resolved_type", comp.get("type", "generic")))
-        positions[comp["id"]] = (cx + i * (w + 5.0), cy)
+    top = margin + 8.0
+    bot = board_h - margin - 8.0
+    usable = max(bot - top, 1.0)
 
-    # Small passives: grid below and right of MCU
-    sx, sy = cx + 35.0, cy - 25.0
-    sp = 8.0
-    cols = 5
-    for i, comp in enumerate(groups["small"]):
-        col, row = i % cols, i // cols
-        positions[comp["id"]] = (sx + col * sp, sy + row * sp)
+    def _per_comp_stack(comps_in_zone: List[Dict], pad: float = 4.0) -> List[float]:
+        """
+        Returns Y-center for each component, packed sequentially.
+        Each component reserves its actual footprint height + pad as its slot.
+        If total slots exceed usable height, slots scale down uniformly so that
+        the column fits inside the board (large parts may then visually overlap,
+        but coordinates stay in-bounds — the caller should grow the board first).
+        """
+        n = len(comps_in_zone)
+        if n == 0:
+            return []
+        slot_heights = []
+        for c in comps_in_zone:
+            _, h = _fp(c.get("resolved_type", c.get("type", "")))
+            slot_heights.append(max(h, 12.0) + pad)
+        total = sum(slot_heights)
+        scale = 1.0 if total <= usable else usable / total
+        # Center the stack vertically inside [top, bot]
+        scaled_total = total * scale
+        cur = top + (usable - scaled_total) / 2
+        centers = []
+        for h in slot_heights:
+            slot = h * scale
+            centers.append(cur + slot / 2)
+            cur += slot
+        return centers
 
-    # Large modules: left column
-    lx, ly = margin + 20.0, margin + 20.0
-    for i, comp in enumerate(groups["large"]):
-        w, h = _fp(comp.get("resolved_type", comp.get("type", "generic")))
-        positions[comp["id"]] = (lx, ly + i * (h + 6.0))
+    # ── Zone HV ──
+    hv_comps = zones["hv"]
+    for comp, ypos in zip(hv_comps, _per_comp_stack(hv_comps, pad=6.0)):
+        positions[comp["id"]] = (x_hv, ypos)
 
-    # Misc: bottom row
-    bx, by = margin + 15.0, board_h - margin - 10.0
-    for i, comp in enumerate(groups["misc"]):
-        positions[comp["id"]] = (bx + i * 14.0, by)
+    # ── Zone MCU/Power ──
+    mcu_comps = zones["mcu"]
+    def _mcu_key(c):
+        t = (c.get("resolved_type") or c.get("type") or "").lower()
+        return 1 if t in _MCU_TYPES else 0
+    mcu_sorted = sorted(mcu_comps, key=_mcu_key)
+    for comp, ypos in zip(mcu_sorted, _per_comp_stack(mcu_sorted, pad=6.0)):
+        positions[comp["id"]] = (x_mcu, ypos)
+
+    # ── Zone Relay (cells: relay + diode + control resistor) ──
+    relay_cells = list(relay_groups.values())
+    n_cells = len(relay_cells)
+    if n_cells > 0:
+        # Each cell takes ~max(relay_h, 26)+6 mm vertically
+        relay_h = _fp("relay_module")[1]
+        cell_pitch = max(28.0, relay_h + 8.0)
+        # Build a stack treating each cell as one "slot"
+        cell_slots = [{"resolved_type": "relay_module"}] * n_cells
+        cell_y_centers = _per_comp_stack(cell_slots, pad=8.0)
+        for cell, cy_c in zip(relay_cells, cell_y_centers):
+            relay = cell[0]
+            positions[relay["id"]] = (x_relay, cy_c)
+            if len(cell) > 1:
+                positions[cell[1]["id"]] = (x_relay - 18.0, cy_c - 5.0)
+            if len(cell) > 2:
+                positions[cell[2]["id"]] = (x_relay - 18.0, cy_c + 5.0)
+
+    # Standalone relays (defensive)
+    standalone_relays = [c for c in zones["relay"] if c["id"] not in positions]
+    if standalone_relays:
+        for comp, ypos in zip(standalone_relays, _per_comp_stack(standalone_relays, pad=8.0)):
+            positions[comp["id"]] = (x_relay, ypos)
+
+    # ── Zone Output (connectors stacked) ──
+    out_comps = zones["output"]
+    for comp, ypos in zip(out_comps, _per_comp_stack(out_comps, pad=6.0)):
+        positions[comp["id"]] = (x_output, ypos)
+
+    # ── 'other' / misc — between MCU and relay zones ──
+    other_comps = [c for c in zones["other"] if c["id"] not in positions]
+    if other_comps:
+        x_other = margin + body_w * 0.55
+        for comp, ypos in zip(other_comps, _per_comp_stack(other_comps, pad=4.0)):
+            positions[comp["id"]] = (x_other, ypos)
 
     return positions
 
@@ -112,20 +279,60 @@ def _place_components(components: List[Dict],
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _board_size(components: List[Dict]) -> Tuple[float, float]:
-    n = len(components)
-    has_mcu  = any(c.get("resolved_type", c.get("type", "")).lower() in _MCU_TYPES
-                   for c in components)
-    has_large = any(c.get("resolved_type", c.get("type", "")).lower() in _LARGE_TYPES
-                    for c in components)
-    base_w = max(50.0, n * 8.0 + 30.0)
-    base_h = max(40.0, n * 6.0 + 20.0)
-    if has_mcu:
-        base_w = max(base_w, 90.0)
-        base_h = max(base_h, 70.0)
-    if has_large:
-        base_w = max(base_w, 120.0)
-        base_h = max(base_h, 90.0)
-    return (min(base_w, 200.0), min(base_h, 160.0))
+    """
+    F3.4 — board size driven by actual zone widths and the largest vertical stack
+    (typically the relay column). No hard upper cap — boards grow as needed.
+    """
+    if not components:
+        return (60.0, 50.0)
+
+    # Per-zone widest footprint = zone column requirement
+    zone_widths: Dict[str, float] = {z: 0.0 for z in ("hv", "mcu", "relay", "output", "other")}
+    zone_count:  Dict[str, int]   = {z: 0   for z in ("hv", "mcu", "relay", "output", "other")}
+
+    for c in components:
+        z = _pcb_zone(c)
+        w, h = _fp(c.get("resolved_type", c.get("type", "")))
+        zone_widths[z] = max(zone_widths[z], w)
+        zone_count[z] += 1
+
+    # Sum widths plus inter-zone gaps for board width
+    gap = 8.0  # mm between zones (clearance + trace area)
+    margin = 8.0
+    total_w = (margin * 2
+               + zone_widths["hv"] + gap
+               + zone_widths["mcu"] + gap
+               + zone_widths["other"] + gap
+               + zone_widths["relay"] + 22.0  # extra room for the diode+resistor cell
+               + gap
+               + zone_widths["output"])
+    # Override: at minimum match the components present (relay-only board still has MCU column placeholders)
+    total_w = max(total_w, 110.0)
+
+    # Height: driven by the longest zone stack. Mirrors _per_comp_stack pad logic
+    # in _place_components so the column fits without negative-Y overflow.
+    def _stack_height(zone: str, default_pitch: float, pad: float) -> float:
+        comps_in_zone = [c for c in components if _pcb_zone(c) == zone]
+        if not comps_in_zone:
+            return 0.0
+        total = 0.0
+        for c in comps_in_zone:
+            _, h = _fp(c.get("resolved_type", c.get("type", "")))
+            total += max(h, default_pitch) + pad
+        return total
+
+    h_hv     = _stack_height("hv",     12.0, 6.0)
+    h_mcu    = _stack_height("mcu",    12.0, 6.0)
+    # Relay zone: each cell counts as relay_module height + 8 pad
+    relay_count = sum(1 for c in components if _pcb_zone(c) == "relay")
+    h_relay  = relay_count * (max(_FOOTPRINT.get("relay_module", (40, 25))[1], 28.0) + 8.0)
+    h_output = _stack_height("output", 12.0, 6.0)
+    h_other  = _stack_height("other",  12.0, 4.0)
+
+    total_h = max(h_hv, h_mcu, h_relay, h_output, h_other) + margin * 2 + 14.0  # +14 for label area
+    total_h = max(total_h, 70.0)
+
+    return (round(total_w, 1), round(total_h, 1))
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -221,6 +428,45 @@ class PCBRenderer:
                 f'<rect x="0.5" y="0.5" width="{board_w-1:.2f}" height="{board_h-1:.2f}" '
                 f'fill="none" stroke="#ffcc00" stroke-width="0.15" stroke-dasharray="0.5,0.5"/>',
             ]
+
+            # ── F3.3 — HV/LV separation line ─────────────────────────────────
+            # Drawn between the HV zone (rightmost HV component) and the MCU zone
+            # (leftmost MCU component), with a 3mm clearance band.
+            hv_xs = [
+                positions[c["id"]][0] + _fp(c.get("resolved_type", c.get("type", "")))[0] / 2
+                for c in components
+                if c["id"] in positions and _pcb_zone(c) == "hv"
+            ]
+            mcu_xs = [
+                positions[c["id"]][0] - _fp(c.get("resolved_type", c.get("type", "")))[0] / 2
+                for c in components
+                if c["id"] in positions and _pcb_zone(c) == "mcu"
+            ]
+            if hv_xs and mcu_xs:
+                sep_x = (max(hv_xs) + min(mcu_xs)) / 2
+                # Clearance band (semi-transparent red)
+                svg.append(
+                    f'<rect x="{sep_x-1.5:.3f}" y="2" width="3" height="{board_h-4:.2f}" '
+                    f'fill="#aa0000" fill-opacity="0.10" stroke="none"/>'
+                )
+                # Dashed warning line
+                svg.append(
+                    f'<line x1="{sep_x:.3f}" y1="2" x2="{sep_x:.3f}" y2="{board_h-2:.2f}" '
+                    f'stroke="#ff3300" stroke-width="0.4" stroke-dasharray="1.5,0.8"/>'
+                )
+                # Zone labels
+                svg.append(
+                    f'<text x="{sep_x-2.5:.3f}" y="6" font-size="2.2" fill="#ff6633" '
+                    f'text-anchor="end" font-family="monospace" font-weight="bold">HV ZONE</text>'
+                )
+                svg.append(
+                    f'<text x="{sep_x+2.5:.3f}" y="6" font-size="2.2" fill="#66ff66" '
+                    f'text-anchor="start" font-family="monospace" font-weight="bold">LV ZONE</text>'
+                )
+                svg.append(
+                    f'<text x="{sep_x:.3f}" y="{board_h-3:.2f}" font-size="1.6" fill="#ffaa66" '
+                    f'text-anchor="middle" font-family="monospace">⚠ 3mm clearance</text>'
+                )
 
             # ── GND copper pour (hatched zone) ───────────────────────────────
             svg.append('<!-- GND copper pour (hatched) -->')
@@ -596,10 +842,28 @@ class PCBRenderer:
 
 def _body_color(ctype: str) -> str:
     colors = {
-        "resistor": "#d4a028", "capacitor": "#cccccc", "led": "#446688",
-        "led_rgb": "#664488", "diode": "#888888", "relay": "#224488",
-        "relay_module": "#224488", "arduino_uno": "#006699", "esp32": "#aa2222",
-        "esp8266": "#aa2222", "motor_driver": "#333333", "buzzer": "#222222",
+        "resistor": "#d4a028", "capacitor": "#cccccc",
+        "capacitor_electrolytic": "#202060",
+        "led": "#446688", "led_rgb": "#664488",
+        "diode": "#888888", "1n4007": "#888888", "1n5819": "#888888",
+        "relay": "#224488", "relay_module": "#224488",
+        "ssr": "#552222",
+        "arduino_uno": "#006699", "arduino_mega": "#006699", "arduino_nano": "#006699",
+        "esp32": "#aa2222", "esp8266": "#aa2222",
+        "motor_driver": "#333333", "buzzer": "#222222",
         "oled": "#111133", "lcd": "#334422",
+        # Industrial
+        "transformer": "#3a2a18",
+        "smps": "#444444",
+        "bridge_rectifier": "#222222",
+        "fuse": "#cccccc", "fuse_holder": "#cccccc",
+        "varistor": "#cc6600", "mov": "#cc6600",
+        "voltage_regulator": "#1a1a1a", "lm7805": "#1a1a1a",
+        "lm317": "#1a1a1a", "ams1117": "#1a1a1a", "regulator": "#1a1a1a",
+        "optoacoplador": "#222222", "pc817": "#222222",
+        "inductor": "#332211", "inductor_cm": "#332211",
+        "x_capacitor": "#aa6600",
+        "connector": "#226633", "terminal_block": "#226633",
+        "header": "#888888", "pin_header": "#888888",
     }
     return colors.get(ctype, "#3a3a3a")

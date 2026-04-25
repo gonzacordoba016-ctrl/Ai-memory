@@ -62,69 +62,215 @@ def _comp_group(comp: Dict) -> str:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Layout
+# F2 — Zone-based layout (signal flow: AC → Power/MCU → Relay → Output)
 # ──────────────────────────────────────────────────────────────────────────────
+
+# Component types that belong in each zone
+_ZONE_AC_TYPES = {
+    "transformer", "smps", "bridge_rectifier", "fuse", "fuse_holder",
+    "varistor", "mov", "inductor_cm", "ac_filter", "x_capacitor",
+}
+_ZONE_MCU_TYPES = _MCU_TYPES | {
+    "voltage_regulator", "lm7805", "ams1117", "lm317", "regulator",
+    "buck_converter", "boost_converter", "buck_boost", "ldo", "dc_dc",
+}
+_RELAY_TYPES = {"relay", "relay_module", "ssr"}
+
+
+def _classify_zone(comp: Dict) -> str:
+    """
+    Returns zone name: 'ac', 'mcu', 'relay', 'output', or 'other'.
+    Uses type, id, and name heuristics.
+    """
+    cid = (comp.get("id", "") or "").lower()
+    t = (comp.get("resolved_type") or comp.get("type") or "").lower()
+    name = (comp.get("name", "") or "").lower()
+
+    # Relay zone: RL1..RLN (and any associated diode/resistor handled in grouping)
+    if t in _RELAY_TYPES or cid.startswith("rl"):
+        return "relay"
+
+    # AC/HV zone
+    if t in _ZONE_AC_TYPES:
+        return "ac"
+    if t == "connector" and (
+        cid == "j1" or "220" in name or "110" in name
+        or "ac" in name or "input" in name or "alimenta" in name or "entrada" in name
+    ):
+        return "ac"
+
+    # MCU / power-conditioning zone
+    if t in _ZONE_MCU_TYPES:
+        return "mcu"
+
+    # Output connectors (J2..JN typically)
+    if t == "connector":
+        return "output"
+
+    return "other"
+
+
+def _build_relay_groups(components: List[Dict]) -> Dict[str, List[Dict]]:
+    """
+    For each relay RLn, find its associated flyback diode (D_flyN, D_fly_RLN, Dn)
+    and its control resistor (Rn). Returns {relay_id: [relay_comp, diode_comp?, resistor_comp?]}.
+    Components that belong to a relay group are NOT placed independently.
+    """
+    by_id = {c["id"]: c for c in components}
+    relay_ids = [
+        c["id"] for c in components
+        if (c.get("resolved_type") or c.get("type") or "").lower() in _RELAY_TYPES
+        or c["id"].lower().startswith("rl")
+    ]
+
+    groups: Dict[str, List[Dict]] = {}
+    used_ids: set = set()
+
+    for rid in relay_ids:
+        if rid in used_ids:
+            continue
+        relay = by_id[rid]
+        cell = [relay]
+        used_ids.add(rid)
+
+        # Try to find associated flyback diode
+        n_match = "".join(ch for ch in rid if ch.isdigit())
+        candidates_d = []
+        if n_match:
+            candidates_d += [f"D_fly{n_match}", f"D_fly_{rid}", f"D{n_match}",
+                             f"D_flyback_{rid}", f"Dfly{n_match}"]
+        for cid in candidates_d:
+            if cid in by_id and cid not in used_ids:
+                cell.append(by_id[cid])
+                used_ids.add(cid)
+                break
+
+        # Try to find associated control resistor
+        candidates_r = []
+        if n_match:
+            candidates_r += [f"R{n_match}", f"R_ctrl_{rid}", f"Rctrl{n_match}",
+                             f"R_{rid}"]
+        for cid in candidates_r:
+            if cid in by_id and cid not in used_ids:
+                cell.append(by_id[cid])
+                used_ids.add(cid)
+                break
+
+        groups[rid] = cell
+
+    return groups
+
 
 def _layout_components(components: List[Dict], width: int, height: int,
                        saved: Dict[str, Dict]) -> Dict[str, Tuple[int, int]]:
+    """
+    Zone-based layout with signal flow left → right:
+      [AC | barrera galvánica | Power+MCU | Relay cells | Output]
+    """
     positions: Dict[str, Tuple[int, int]] = {}
+
+    # Honor previously-saved positions
     for comp_id, pos in saved.items():
         if isinstance(pos, dict) and "x" in pos and "y" in pos:
             positions[comp_id] = (int(pos["x"]), int(pos["y"]))
 
-    groups: Dict[str, List[Dict]] = {g: [] for g in ("mcu", "input", "output", "power", "comm", "misc")}
-    for comp in components:
-        if comp["id"] not in positions:
-            groups[_comp_group(comp)].append(comp)
+    pending = [c for c in components if c["id"] not in positions]
+    if not pending:
+        return positions
 
-    cx, cy = width // 2, height // 2
+    # Build relay groups so that flyback diodes + control resistors are
+    # placed adjacent to their relay (not as floating components).
+    relay_groups = _build_relay_groups(pending)
+    grouped_ids: set = {cid for cell in relay_groups.values() for cid in (c["id"] for c in cell)}
 
-    # Spacing scales with canvas size to prevent overlaps
-    h_unit = max(100, height // (max(len(components), 1) + 2))
-    spacing_y = max(90, min(130, h_unit))
-    spacing_x = max(140, min(200, width // 8))
+    zones: Dict[str, List[Dict]] = {z: [] for z in ("ac", "mcu", "relay", "output", "other")}
+    for comp in pending:
+        if comp["id"] in grouped_ids:
+            # Will be placed via relay_groups
+            continue
+        zones[_classify_zone(comp)].append(comp)
+    # Add a representative comp for each relay group (the relay itself)
+    for rid in relay_groups:
+        # The relay is already classified as 'relay'; keep zones["relay"] as authoritative
+        pass
 
-    # MCU(s) at center — support multiple MCUs side by side
-    n_mcu = len(groups["mcu"])
-    for i, comp in enumerate(groups["mcu"]):
-        offset = (i - (n_mcu - 1) / 2) * spacing_x
-        positions[comp["id"]] = (int(cx + offset), cy)
+    # Zone X-band boundaries (proportional to width)
+    x_margin = 80
+    body_w   = max(width - 2 * x_margin, 1000)
+    # Distribute: AC=22%, MCU=22%, RELAY=38%, OUTPUT=18%
+    x_ac_c     = x_margin + int(body_w * 0.11)
+    x_mcu_c    = x_margin + int(body_w * 0.40)
+    x_relay_c  = x_margin + int(body_w * 0.70)
+    x_output_c = x_margin + int(body_w * 0.92)
 
-    # Input sensors: left column(s) of MCU
-    n_in = len(groups["input"])
-    col_height = n_in * spacing_y
-    start_y = cy - col_height // 2 + spacing_y // 2
-    left_base = max(100, cx - spacing_x * 2)
-    for i, comp in enumerate(groups["input"]):
-        col = i // max(1, (height // spacing_y))
-        row = i % max(1, (height // spacing_y))
-        positions[comp["id"]] = (left_base - col * 110, start_y + row * spacing_y)
+    # Y-band (vertical extent for stacks)
+    y_top    = 90
+    y_bottom = max(y_top + 200, height - 40)
+    y_height = y_bottom - y_top
 
-    # Output relays/loads: right column(s) of MCU
-    n_out = len(groups["output"])
-    col_height = n_out * spacing_y
-    start_y = cy - col_height // 2 + spacing_y // 2
-    right_base = min(width - 100, cx + spacing_x * 2)
-    for i, comp in enumerate(groups["output"]):
-        col = i // max(1, (height // spacing_y))
-        row = i % max(1, (height // spacing_y))
-        positions[comp["id"]] = (right_base + col * 110, start_y + row * spacing_y)
+    def _stack_y_positions(n: int) -> List[int]:
+        if n == 0:
+            return []
+        if n == 1:
+            return [y_top + y_height // 2]
+        spacing = max(95, min(150, y_height // n))
+        total = (n - 1) * spacing
+        start = y_top + (y_height - total) // 2
+        return [start + i * spacing for i in range(n)]
 
-    # Power components: top row
-    n_pwr = len(groups["power"])
-    pwr_step = max(110, min(160, (width - 220) // max(n_pwr, 1)))
-    for i, comp in enumerate(groups["power"]):
-        positions[comp["id"]] = (120 + i * pwr_step, max(75, spacing_y // 2))
+    # ── AC zone (vertical stack) ──
+    ac_comps = zones["ac"]
+    for comp, ypos in zip(ac_comps, _stack_y_positions(len(ac_comps))):
+        positions[comp["id"]] = (x_ac_c, ypos)
 
-    # Comm modules: top-right area
-    for i, comp in enumerate(groups["comm"]):
-        positions[comp["id"]] = (width - 120 - i * 115, max(75, spacing_y // 2))
+    # ── MCU/Power zone (vertical stack — MCU central, regulators above/below) ──
+    mcu_comps = zones["mcu"]
+    # Sort: regulators first (top), then MCU(s) in middle, then anything else
+    def _mcu_sort_key(c):
+        t = (c.get("resolved_type") or c.get("type") or "").lower()
+        if t in _MCU_TYPES:
+            return 1  # MCU stays in middle
+        return 0  # regulators above
+    mcu_sorted = sorted(mcu_comps, key=_mcu_sort_key)
+    for comp, ypos in zip(mcu_sorted, _stack_y_positions(len(mcu_sorted))):
+        positions[comp["id"]] = (x_mcu_c, ypos)
 
-    # Misc: bottom row
-    n_misc = len(groups["misc"])
-    misc_step = max(110, min(160, (width - 220) // max(n_misc, 1)))
-    for i, comp in enumerate(groups["misc"]):
-        positions[comp["id"]] = (120 + i * misc_step, height - max(75, spacing_y // 2))
+    # ── Relay zone (cells: relay + diode + resistor stacked tightly) ──
+    relay_cells = list(relay_groups.values())
+    n_cells = len(relay_cells)
+    if n_cells > 0:
+        cell_height = max(120, min(180, y_height // max(n_cells, 1)))
+        cell_y_positions = _stack_y_positions(n_cells)
+        for cell, cy_center in zip(relay_cells, cell_y_positions):
+            # Relay at center of cell
+            relay = cell[0]
+            positions[relay["id"]] = (x_relay_c, cy_center)
+            # Flyback diode just to the left of relay
+            if len(cell) > 1:
+                positions[cell[1]["id"]] = (x_relay_c - 75, cy_center - 18)
+            # Control resistor to the left of diode
+            if len(cell) > 2:
+                positions[cell[2]["id"]] = (x_relay_c - 140, cy_center)
+
+    # Plus any standalone relays (shouldn't happen if grouping ran, but defensive)
+    standalone_relays = [c for c in zones["relay"] if c["id"] not in positions]
+    if standalone_relays:
+        sr_y = _stack_y_positions(len(standalone_relays))
+        for comp, ypos in zip(standalone_relays, sr_y):
+            positions[comp["id"]] = (x_relay_c, ypos)
+
+    # ── Output zone (vertical stack of connectors) ──
+    out_comps = zones["output"]
+    for comp, ypos in zip(out_comps, _stack_y_positions(len(out_comps))):
+        positions[comp["id"]] = (x_output_c, ypos)
+
+    # ── 'other' / misc (sensors, displays, etc.) — distribute across MCU column extras ──
+    other_comps = [c for c in zones["other"] if c["id"] not in positions]
+    if other_comps:
+        # Place them in a secondary column to the left of MCU zone
+        x_other = x_margin + int(body_w * 0.25)
+        for comp, ypos in zip(other_comps, _stack_y_positions(len(other_comps))):
+            positions[comp["id"]] = (x_other, ypos)
 
     return positions
 
@@ -164,12 +310,22 @@ class SchematicRenderer:
             components = circuit_data.get("components", [])
             nets       = circuit_data.get("nets", [])
 
-            # Dynamic canvas: scale with component count so nothing overlaps
+            # Dynamic canvas: scale with component count so nothing overlaps.
+            # The 4-zone layout (AC | MCU | Relay | Output) needs ample width;
+            # height scales with the largest zone (typically the relay column).
             n = len(components)
+            n_relays = sum(
+                1 for c in components
+                if (c.get("resolved_type") or c.get("type") or "").lower()
+                in ("relay", "relay_module", "ssr")
+                or c.get("id", "").lower().startswith("rl")
+            )
             if width is None:
-                width  = max(1100, n * 90 + 300)
+                width  = max(1500, n * 70 + 400)
             if height is None:
-                height = max(750,  n * 60 + 200)
+                # Height driven by longest vertical stack (relay cells dominate)
+                max_stack = max(n_relays, 6)
+                height = max(800, max_stack * 140 + 250)
 
             dwg = svgwrite.Drawing(size=('100%', '100%'),
                                    viewBox=f"0 0 {width} {height}")
@@ -177,6 +333,8 @@ class SchematicRenderer:
             self._draw_title_block(dwg, circuit_data, width, height)
             saved      = circuit_data.get("positions", {})
             positions  = _layout_components(components, width, height - 90, saved)
+            # F2.4 — galvanic isolation barrier between AC and control zones
+            self._draw_galvanic_barrier(dwg, components, positions, width, height)
             self._draw_connections(dwg, nets, positions)
             # Power rail symbols
             self._draw_power_rails(dwg, nets, positions)
@@ -297,34 +455,168 @@ class SchematicRenderer:
                          font_size=8, fill="#9999bb", font_family="Arial",
                          font_style="italic"))
 
-    # ── Net connections ──────────────────────────────────────────────────────
+    # ── F2.4 — Galvanic isolation barrier ───────────────────────────────────
+
+    def _draw_galvanic_barrier(self, dwg, components: List[Dict],
+                                positions: Dict[str, Tuple[int, int]],
+                                width: int, height: int):
+        """
+        Draws a vertical dashed line with zigzag separating the AC/HV zone
+        from the LV control zone. Only drawn if at least one AC-zone component
+        is present.
+        """
+        ac_xs = [
+            positions[c["id"]][0]
+            for c in components
+            if c["id"] in positions and _classify_zone(c) == "ac"
+        ]
+        mcu_xs = [
+            positions[c["id"]][0]
+            for c in components
+            if c["id"] in positions and _classify_zone(c) == "mcu"
+        ]
+        if not ac_xs or not mcu_xs:
+            return  # not a HV circuit — skip the barrier
+
+        bx = (max(ac_xs) + min(mcu_xs)) // 2
+        y_top, y_bot = 60, height - 110
+
+        # Two parallel dashed lines forming the barrier band
+        for offset in (-6, 6):
+            dwg.add(dwg.line(
+                start=(bx + offset, y_top), end=(bx + offset, y_bot),
+                stroke="#aa3300", stroke_width=1.2,
+                stroke_dasharray="6,4", stroke_opacity=0.85,
+            ))
+
+        # Zigzag pattern in the middle (galvanic isolation pictogram)
+        zigzag_step = 18
+        zy = y_top + 30
+        while zy < y_bot - 30:
+            dwg.add(dwg.path(
+                d=f"M {bx-5} {zy} L {bx+5} {zy+zigzag_step//2} "
+                  f"L {bx-5} {zy+zigzag_step} L {bx+5} {zy+int(zigzag_step*1.5)}",
+                fill="none", stroke="#aa3300", stroke_width=1.4,
+                stroke_opacity=0.7,
+            ))
+            zy += zigzag_step * 2
+
+        # Top label
+        dwg.add(dwg.rect(
+            insert=(bx - 80, y_top - 4), size=(160, 22),
+            fill="#fff0e8", stroke="#aa3300", stroke_width=1, rx=4,
+        ))
+        dwg.add(dwg.text(
+            "BARRERA GALVÁNICA", insert=(bx, y_top + 11),
+            font_size=10, fill="#aa3300", font_family="monospace",
+            text_anchor="middle", font_weight="bold",
+        ))
+
+        # Side warnings (HV ↔ LV)
+        dwg.add(dwg.text(
+            "⚠ HV", insert=(bx - 14, y_top + 35),
+            font_size=11, fill="#aa3300", font_family="Arial",
+            font_weight="bold", text_anchor="end",
+        ))
+        dwg.add(dwg.text(
+            "LV", insert=(bx + 14, y_top + 35),
+            font_size=11, fill="#117755", font_family="Arial",
+            font_weight="bold", text_anchor="start",
+        ))
+
+    # ── Net connections (F2.1 — net labels for distant nodes) ──────────────
+
+    _LABEL_DISTANCE_THRESHOLD = 220  # px — beyond this, use net labels instead of wires
+
+    def _draw_net_label(self, dwg, name: str, pos: Tuple[int, int],
+                        color: str, direction: str = "right"):
+        """
+        Draw a KiCad-style net label flag at (pos) with text.
+        direction: 'right' (default) | 'left' | 'up' | 'down'
+        """
+        x, y = pos
+        label_w = max(40, len(name) * 6 + 14)
+        if direction == "right":
+            # Flag points right: tail at (x,y), head at (x+18,y), text further right
+            poly = [(x, y), (x + 8, y - 7), (x + 8 + label_w, y - 7),
+                    (x + 8 + label_w, y + 7), (x + 8, y + 7)]
+            tx, anchor = x + 12, "start"
+        elif direction == "left":
+            poly = [(x, y), (x - 8, y - 7), (x - 8 - label_w, y - 7),
+                    (x - 8 - label_w, y + 7), (x - 8, y + 7)]
+            tx, anchor = x - 12, "end"
+        elif direction == "up":
+            poly = [(x, y), (x - 7, y - 8), (x - 7, y - 8 - label_w),
+                    (x + 7, y - 8 - label_w), (x + 7, y - 8)]
+            tx, anchor = x, "middle"
+            ty = y - 16
+        else:  # down
+            poly = [(x, y), (x - 7, y + 8), (x - 7, y + 8 + label_w),
+                    (x + 7, y + 8 + label_w), (x + 7, y + 8)]
+            tx, anchor = x, "middle"
+            ty = y + 22
+        dwg.add(dwg.polygon(poly, fill="#fffdf0", stroke=color, stroke_width=1))
+        if direction in ("right", "left"):
+            dwg.add(dwg.text(name, insert=(tx, y + 3),
+                             font_size=9, fill=color,
+                             font_family="monospace", text_anchor=anchor,
+                             font_weight="bold"))
+        else:
+            dwg.add(dwg.text(name, insert=(tx, ty),
+                             font_size=9, fill=color,
+                             font_family="monospace", text_anchor="middle",
+                             font_weight="bold"))
 
     def _draw_connections(self, dwg, nets: List[Dict],
                           positions: Dict[str, Tuple[int, int]]):
         for net in nets:
-            name  = net.get("name","")
+            name  = net.get("name", "")
             color = _net_color(name)
             nodes = net.get("nodes", [])
             coords = [positions[n.split(".")[0]] for n in nodes
                       if n.split(".")[0] in positions]
             if len(coords) < 2:
                 continue
-            for i in range(len(coords)-1):
-                path = _route_orthogonal(coords[i], coords[i+1])
-                for j in range(len(path)-1):
-                    dwg.add(dwg.line(start=path[j], end=path[j+1],
+
+            # Compute span of this net to decide wires vs labels
+            xs = [c[0] for c in coords]
+            ys = [c[1] for c in coords]
+            span_x = max(xs) - min(xs)
+            span_y = max(ys) - min(ys)
+            use_labels = (span_x > self._LABEL_DISTANCE_THRESHOLD
+                          or span_y > self._LABEL_DISTANCE_THRESHOLD)
+
+            if use_labels:
+                # Draw a short stub + net label flag at each node (no long wires)
+                for cx, cy in coords:
+                    # Determine label direction by node X relative to canvas mean
+                    avg_x = sum(xs) / len(xs)
+                    direction = "right" if cx <= avg_x else "left"
+                    # Short stub from component
+                    stub_len = 18
+                    stub_dx = stub_len if direction == "right" else -stub_len
+                    dwg.add(dwg.line(start=(cx, cy), end=(cx + stub_dx, cy),
                                      stroke=color, stroke_width=1.8))
-            # Junction dots
-            for pt in coords:
-                dwg.add(dwg.circle(center=pt, r=3.5, fill=color))
-            # Net label (small, on wire)
-            if coords:
+                    self._draw_net_label(dwg, name, (cx + stub_dx, cy),
+                                         color, direction=direction)
+                    dwg.add(dwg.circle(center=(cx, cy), r=3, fill=color))
+            else:
+                # Draw physical wires (orthogonal routing) for nearby nodes
+                for i in range(len(coords) - 1):
+                    path = _route_orthogonal(coords[i], coords[i + 1])
+                    for j in range(len(path) - 1):
+                        dwg.add(dwg.line(start=path[j], end=path[j + 1],
+                                         stroke=color, stroke_width=1.8))
+                # Junction dots
+                for pt in coords:
+                    dwg.add(dwg.circle(center=pt, r=3.5, fill=color))
+                # Net label centered on wire
                 lx = (coords[0][0] + coords[-1][0]) // 2
-                ly = min(c[1] for c in coords) - 10
-                label_w = len(name)*5 + 8
-                dwg.add(dwg.rect(insert=(lx-2, ly-11), size=(label_w, 14),
+                ly = min(ys) - 10
+                label_w = len(name) * 5 + 8
+                dwg.add(dwg.rect(insert=(lx - 2, ly - 11), size=(label_w, 14),
                                  fill="#ffffee", stroke=color, stroke_width=0.7, rx=2))
-                dwg.add(dwg.text(name, insert=(lx+2, ly),
+                dwg.add(dwg.text(name, insert=(lx + 2, ly),
                                  font_size=9, fill=color, font_family="monospace"))
 
     # ── Power rail symbols (VCC ↑ / GND ⏚) ─────────────────────────────────

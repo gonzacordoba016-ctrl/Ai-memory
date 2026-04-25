@@ -86,6 +86,27 @@ CIRCUIT_DESIGN_KEYWORDS = [
     "el esquematico y pcb", "esquematico y pcb", "esquemático y pcb",
     "generate the schematic", "give me the schematic", "give me the pcb",
     "generame el pcb", "generame la pcb", "generame el diseño",
+    # F1.1 — variantes naturales en español argentino
+    "diseña el pcb y esquematico", "diseña el esquematico y pcb",
+    "diseña el pcb y esquemático", "diseña el esquemático y pcb",
+    "diseña el pcb", "diseña el esquematico", "diseña el esquemático",
+    "diseñá el pcb", "diseñá el esquematico", "diseñá el esquemático",
+    "diseñá el pcb y esquematico", "diseñá el esquematico y pcb",
+    "haceme el pcb", "haceme el esquematico", "haceme el esquemático",
+    "haceme el circuito", "haceme la pcb",
+    "quiero el pcb", "quiero la pcb", "quiero el esquematico",
+    "quiero el esquemático", "quiero ver el circuito", "quiero ver la pcb",
+    "crear el esquematico", "crear el esquemático", "crear el pcb",
+    "crear la pcb", "crear el circuito",
+    "diseña el circuito completo", "diseñá el circuito completo",
+    "generar el pcb", "generar la pcb",
+    "generar el esquematico", "generar el esquemático",
+    "hace el esquematico", "hace el pcb", "hace el circuito",
+    "hacé el esquematico", "hacé el pcb", "hacé el circuito",
+    "muestrame el esquematico", "muestrame el pcb",
+    "mostrame el esquematico", "mostrame el pcb", "mostrame el circuito",
+    "armar el pcb", "armar el esquematico", "armar el circuito",
+    "armame el pcb", "armame el esquematico",
 ]
 
 KEYWORD_ROUTES = {

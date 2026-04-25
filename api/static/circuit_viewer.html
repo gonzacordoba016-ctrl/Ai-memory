@@ -827,41 +827,179 @@
             if (!currentCircuit) return;
 
             const comps = currentCircuit.components || [];
-            // Functional layout: MCU center, others around
+            // F4.2 — zone-based layout mirroring PCB (HV | MCU | Relay | Output)
             const mcuTypes = new Set(['arduino_uno','arduino_nano','arduino_mega','esp32','esp8266','pico','stm32','mcu']);
-            const mcus  = comps.filter(c => mcuTypes.has(c.resolved_type || c.type));
-            const rest  = comps.filter(c => !mcuTypes.has(c.resolved_type || c.type));
-            const ordered = [...mcus, ...rest];
-            const cols = Math.max(1, Math.ceil(Math.sqrt(ordered.length)));
-            const rows = Math.ceil(ordered.length / cols);
-            const spX  = (pcbW * 0.85) / (cols + 1);
-            const spZ  = (pcbD * 0.85) / (rows + 1);
+            const hvTypes = new Set(['transformer','smps','bridge_rectifier','fuse','fuse_holder',
+                                     'varistor','mov','inductor_cm','x_capacitor']);
+            const pwrTypes = new Set(['voltage_regulator','lm7805','ams1117','lm317','regulator',
+                                       'buck_converter','boost_converter','ldo','dc_dc']);
+            const relayTypes = new Set(['relay','relay_module','ssr']);
 
-            const compPos = {};
-            ordered.forEach((comp, i) => {
-                const col = i % cols;
-                const row = Math.floor(i / cols);
-                const x   = -pcbW * 0.425 + spX * (col + 1);
-                const z   = -pcbD * 0.425 + spZ * (row + 1);
-                const t   = (comp.resolved_type || comp.type || 'generic').toLowerCase();
-                const topY = _addComponent3D(comp, t, x, z);
-                compPos[comp.id] = { x, y: topY, z };
+            function _classifyZone3D(c) {
+                const t = (c.resolved_type || c.type || '').toLowerCase();
+                const cid = (c.id || '').toLowerCase();
+                const name = (c.name || '').toLowerCase();
+                if (relayTypes.has(t) || cid.startsWith('rl')) return 'relay';
+                if (hvTypes.has(t)) return 'hv';
+                if (t === 'connector' && (cid === 'j1' || name.includes('220') || name.includes('110')
+                    || name.includes('input') || name.includes('entrada'))) return 'hv';
+                if (mcuTypes.has(t) || pwrTypes.has(t)) return 'mcu';
+                if (t === 'connector') return 'output';
+                return 'other';
+            }
+
+            // Build relay groups (relay + flyback diode + control resistor placed adjacent)
+            const byId = {};
+            comps.forEach(c => byId[c.id] = c);
+            const usedInRelayGroup = new Set();
+            const relayGroups = [];
+            comps.forEach(c => {
+                const t = (c.resolved_type || c.type || '').toLowerCase();
+                const cid = (c.id || '').toLowerCase();
+                if (!(relayTypes.has(t) || cid.startsWith('rl'))) return;
+                if (usedInRelayGroup.has(c.id)) return;
+                const cell = [c]; usedInRelayGroup.add(c.id);
+                const nMatch = (c.id.match(/\d+/) || [''])[0];
+                if (nMatch) {
+                    for (const cand of [`D_fly${nMatch}`, `D_fly_${c.id}`, `D${nMatch}`,
+                                         `D_flyback_${c.id}`, `Dfly${nMatch}`]) {
+                        if (byId[cand] && !usedInRelayGroup.has(cand)) {
+                            cell.push(byId[cand]); usedInRelayGroup.add(cand); break;
+                        }
+                    }
+                    for (const cand of [`R${nMatch}`, `R_ctrl_${c.id}`, `Rctrl${nMatch}`, `R_${c.id}`]) {
+                        if (byId[cand] && !usedInRelayGroup.has(cand)) {
+                            cell.push(byId[cand]); usedInRelayGroup.add(cand); break;
+                        }
+                    }
+                }
+                relayGroups.push(cell);
             });
 
-            // Wires between nets — colored arcs
+            const zones = { hv: [], mcu: [], output: [], other: [] };
+            comps.forEach(c => {
+                if (usedInRelayGroup.has(c.id)) return;
+                const z = _classifyZone3D(c);
+                if (z === 'relay') return; // standalone relay handled below
+                zones[z].push(c);
+            });
+
+            // Zone X centers (mirror PCB renderer ratios: 0.15 / 0.40 / 0.70 / 0.92)
+            const W = pcbW * 0.85;
+            const xLeft = -W / 2;
+            const xHv     = xLeft + W * 0.15;
+            const xMcu    = xLeft + W * 0.40;
+            const xRelay  = xLeft + W * 0.70;
+            const xOutput = xLeft + W * 0.92;
+
+            function _stackZ(n, pitch) {
+                if (n === 0) return [];
+                if (n === 1) return [0];
+                const total = (n - 1) * pitch;
+                const start = -total / 2;
+                return Array.from({ length: n }, (_, i) => start + i * pitch);
+            }
+
+            const compPos = {};
+
+            // Place HV zone
+            const hvZ = _stackZ(zones.hv.length, Math.max(20, pcbD * 0.85 / Math.max(zones.hv.length, 1)));
+            zones.hv.forEach((c, i) => {
+                const t = (c.resolved_type || c.type || 'generic').toLowerCase();
+                const topY = _addComponent3D(c, t, xHv, hvZ[i]);
+                compPos[c.id] = { x: xHv, y: topY, z: hvZ[i] };
+            });
+
+            // Place MCU zone (regulators above MCU)
+            const mcuSorted = [...zones.mcu].sort((a, b) => {
+                const ta = (a.resolved_type || a.type || '').toLowerCase();
+                const tb = (b.resolved_type || b.type || '').toLowerCase();
+                return (mcuTypes.has(ta) ? 1 : 0) - (mcuTypes.has(tb) ? 1 : 0);
+            });
+            const mcuZ = _stackZ(mcuSorted.length, Math.max(18, pcbD * 0.85 / Math.max(mcuSorted.length, 1)));
+            mcuSorted.forEach((c, i) => {
+                const t = (c.resolved_type || c.type || 'generic').toLowerCase();
+                const topY = _addComponent3D(c, t, xMcu, mcuZ[i]);
+                compPos[c.id] = { x: xMcu, y: topY, z: mcuZ[i] };
+            });
+
+            // Place relay cells (relay + flyback diode + control resistor adjacent)
+            const cellPitch = Math.max(28, pcbD * 0.85 / Math.max(relayGroups.length, 1));
+            const cellZ = _stackZ(relayGroups.length, cellPitch);
+            relayGroups.forEach((cell, i) => {
+                const cz = cellZ[i];
+                cell.forEach((c, j) => {
+                    let cx, czOff;
+                    if (j === 0) { cx = xRelay; czOff = 0; }            // relay center
+                    else if (j === 1) { cx = xRelay - 14; czOff = -3; } // flyback diode
+                    else { cx = xRelay - 14; czOff = 3; }               // control resistor
+                    const t = (c.resolved_type || c.type || 'generic').toLowerCase();
+                    const topY = _addComponent3D(c, t, cx, cz + czOff);
+                    compPos[c.id] = { x: cx, y: topY, z: cz + czOff };
+                });
+            });
+
+            // Place output connectors
+            const outZ = _stackZ(zones.output.length, Math.max(14, pcbD * 0.85 / Math.max(zones.output.length, 1)));
+            zones.output.forEach((c, i) => {
+                const t = (c.resolved_type || c.type || 'generic').toLowerCase();
+                const topY = _addComponent3D(c, t, xOutput, outZ[i]);
+                compPos[c.id] = { x: xOutput, y: topY, z: outZ[i] };
+            });
+
+            // Place 'other' (sensors etc.) between MCU and relay
+            const otherX = xLeft + W * 0.55;
+            const otherZ = _stackZ(zones.other.length, Math.max(14, pcbD * 0.85 / Math.max(zones.other.length, 1)));
+            zones.other.forEach((c, i) => {
+                const t = (c.resolved_type || c.type || 'generic').toLowerCase();
+                const topY = _addComponent3D(c, t, otherX, otherZ[i]);
+                compPos[c.id] = { x: otherX, y: topY, z: otherZ[i] };
+            });
+
+            // F4.3 — Thicker wires (TubeGeometry) with net-type color coding
             const netColorMap = {
-                vcc: 0xff3333, gnd: 0x444444, i2c: 0x33aa66,
-                spi: 0xaa33aa, uart: 0xcc8800, pwm: 0xff6600,
+                // High-voltage / AC nets — orange (drawn first to take priority)
+                '220vac': 0xff7700, '110vac': 0xff7700, 'vac': 0xff7700,
+                'rectified': 0xff5500, 'mains': 0xff7700, 'hv': 0xff7700,
+                // VCC family — red
+                vcc: 0xff3333, '5v': 0xff3333, '3v3': 0xff3333,
+                vin: 0xff3333, vdd: 0xff3333, 'power': 0xff3333,
+                // GND — near-black
+                gnd: 0x222222, ground: 0x222222,
+                // Control/signal — yellow
+                ctrl: 0xffdd33, control: 0xffdd33, relay: 0xffdd33,
+                // Buses
+                i2c: 0x33aa66, sda: 0x33aa66, scl: 0x33aa66,
+                spi: 0xaa33aa, mosi: 0xaa33aa, miso: 0xaa33aa, sck: 0xaa33aa,
+                uart: 0xcc8800, tx: 0xcc8800, rx: 0xcc8800,
+                pwm: 0xff6600,
                 data: 0x3366ff,
             };
             const defaultNetColors = [0xff4444, 0x44cc88, 0x4488ff, 0xffcc44, 0xff44cc, 0x44ffcc, 0xff8833];
             (currentCircuit.nets || []).forEach((net, ni) => {
                 const nl = (net.name || '').toLowerCase();
                 let wireColor = defaultNetColors[ni % defaultNetColors.length];
+                let wireRadius = 0.35;       // signal default
+                let isPower = false;
                 for (const [key, col] of Object.entries(netColorMap)) {
-                    if (nl.includes(key)) { wireColor = col; break; }
+                    if (nl.includes(key)) {
+                        wireColor = col;
+                        if (['220vac', '110vac', 'vac', 'rectified', 'mains', 'hv',
+                             'vcc', '5v', '3v3', 'vin', 'vdd', 'power',
+                             'gnd', 'ground'].includes(key)) {
+                            wireRadius = 0.55;
+                            isPower = true;
+                        }
+                        break;
+                    }
                 }
-                const mat = new THREE.LineBasicMaterial({ color: wireColor });
+                const mat = new THREE.MeshStandardMaterial({
+                    color: wireColor,
+                    emissive: wireColor,
+                    emissiveIntensity: isPower ? 0.35 : 0.18,
+                    roughness: 0.4,
+                    metalness: 0.5,
+                });
                 const nodes = net.nodes || [];
                 for (let i = 0; i < nodes.length - 1; i++) {
                     const id1 = nodes[i].split('.')[0];
@@ -869,17 +1007,17 @@
                     if (!compPos[id1] || !compPos[id2]) continue;
                     const p1 = compPos[id1], p2 = compPos[id2];
                     const arcH = Math.max(p1.y, p2.y) + 8;
-                    // Smooth arc with 5 points
                     const pts = [];
-                    for (let t = 0; t <= 1; t += 0.2) {
-                        const ix = p1.x + (p2.x - p1.x) * t;
-                        const iz = p1.z + (p2.z - p1.z) * t;
-                        const iy = p1.y + (arcH - p1.y) * Math.sin(t * Math.PI);
+                    for (let tp = 0; tp <= 1; tp += 0.1) {
+                        const ix = p1.x + (p2.x - p1.x) * tp;
+                        const iz = p1.z + (p2.z - p1.z) * tp;
+                        const iy = p1.y + (arcH - p1.y) * Math.sin(tp * Math.PI);
                         pts.push(new THREE.Vector3(ix, iy, iz));
                     }
                     pts.push(new THREE.Vector3(p2.x, p2.y, p2.z));
-                    const geo = new THREE.BufferGeometry().setFromPoints(pts);
-                    threeScene.add(new THREE.Line(geo, mat));
+                    const curve = new THREE.CatmullRomCurve3(pts);
+                    const tubeGeo = new THREE.TubeGeometry(curve, 24, wireRadius, 8, false);
+                    threeScene.add(new THREE.Mesh(tubeGeo, mat));
                 }
             });
         }
@@ -1117,6 +1255,231 @@
                 act.position.set(x, 4.5, z);
                 threeScene.add(act);
                 topY = 6;
+
+            // ── F4.1 — Industrial component geometries ─────────────────────
+            } else if (t === 'transformer') {
+                // EI-core transformer: dark base + visible bobbin and laminations
+                const baseGeo = new THREE.BoxGeometry(70, 8, 50);
+                mesh = new THREE.Mesh(baseGeo, new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.7 }));
+                mesh.position.set(x, 4, z);
+                threeScene.add(mesh);
+                // Iron core stack
+                const coreGeo = new THREE.BoxGeometry(60, 30, 36);
+                const core = new THREE.Mesh(coreGeo, new THREE.MeshStandardMaterial({ color: 0x55554a, metalness: 0.6, roughness: 0.4 }));
+                core.position.set(x, 23, z);
+                threeScene.add(core);
+                // Lamination lines
+                for (let li = -2; li <= 2; li++) {
+                    const lamGeo = new THREE.BoxGeometry(60.2, 0.3, 36.2);
+                    const lam = new THREE.Mesh(lamGeo, new THREE.MeshStandardMaterial({ color: 0x000000 }));
+                    lam.position.set(x, 13 + li * 5, z);
+                    threeScene.add(lam);
+                }
+                // Bobbin (copper coil cylinder visible at sides)
+                for (const dz of [-12, 12]) {
+                    const bobGeo = new THREE.CylinderGeometry(8, 8, 24, 16);
+                    const bob = new THREE.Mesh(bobGeo, new THREE.MeshStandardMaterial({ color: 0xb87333, roughness: 0.4, metalness: 0.5 }));
+                    bob.rotation.x = Math.PI / 2;
+                    bob.position.set(x, 22, z + dz);
+                    threeScene.add(bob);
+                }
+                _addEdgeHighlight(mesh, 0xff8800);
+                topY = 38;
+
+            } else if (t === 'voltage_regulator' || t === 'lm7805' || t === 'lm317') {
+                // TO-220 package: black plastic body + heat tab
+                const bodyGeo = new THREE.BoxGeometry(10, 13, 4.5);
+                mesh = new THREE.Mesh(bodyGeo, new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.85 }));
+                mesh.position.set(x, 6.5, z);
+                threeScene.add(mesh);
+                // Metal heat tab on top
+                const tabGeo = new THREE.BoxGeometry(10, 6, 1.4);
+                const tab = new THREE.Mesh(tabGeo, new THREE.MeshStandardMaterial({ color: 0xc0c0c0, metalness: 0.85, roughness: 0.3 }));
+                tab.position.set(x, 14, z);
+                threeScene.add(tab);
+                // Mounting hole on tab
+                const holeGeo = new THREE.CylinderGeometry(0.8, 0.8, 1.6, 12);
+                const hole = new THREE.Mesh(holeGeo, new THREE.MeshStandardMaterial({ color: 0x000000 }));
+                hole.rotation.x = Math.PI / 2;
+                hole.position.set(x, 15.5, z);
+                threeScene.add(hole);
+                // Three pins
+                for (const dxPin of [-3, 0, 3]) {
+                    const pinGeo = new THREE.BoxGeometry(0.6, 4, 0.6);
+                    const pin = new THREE.Mesh(pinGeo, new THREE.MeshStandardMaterial({ color: 0xc8a000, metalness: 0.9 }));
+                    pin.position.set(x + dxPin, -2, z);
+                    threeScene.add(pin);
+                }
+                _addEdgeHighlight(mesh, 0xffaa00);
+                topY = 17;
+
+            } else if (t === 'bridge_rectifier') {
+                // Square encapsulated package with 4 pins (~ button size)
+                const bGeo = new THREE.BoxGeometry(10, 7, 10);
+                mesh = new THREE.Mesh(bGeo, new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.85 }));
+                mesh.position.set(x, 3.5, z);
+                threeScene.add(mesh);
+                // 4 pins at corners
+                for (const [dx, dz] of [[-3, -3], [3, -3], [-3, 3], [3, 3]]) {
+                    const pinGeo = new THREE.BoxGeometry(0.7, 4, 0.7);
+                    const pin = new THREE.Mesh(pinGeo, new THREE.MeshStandardMaterial({ color: 0xc8a000, metalness: 0.9 }));
+                    pin.position.set(x + dx, -2, z + dz);
+                    threeScene.add(pin);
+                }
+                // White ~ marking on top
+                const markGeo = new THREE.BoxGeometry(6, 0.1, 0.6);
+                const mark = new THREE.Mesh(markGeo, new THREE.MeshStandardMaterial({ color: 0xffffff }));
+                mark.position.set(x, 7.1, z);
+                threeScene.add(mark);
+                topY = 8;
+
+            } else if (t === 'fuse' || t === 'fuse_holder') {
+                // Glass fuse in holder: transparent cylinder with metal end caps
+                const tubeGeo = new THREE.CylinderGeometry(2.2, 2.2, 18, 16);
+                const tubeMat = new THREE.MeshStandardMaterial({
+                    color: 0xeeeeff, transparent: true, opacity: 0.4,
+                    roughness: 0.05, metalness: 0.0,
+                });
+                mesh = new THREE.Mesh(tubeGeo, tubeMat);
+                mesh.rotation.z = Math.PI / 2;
+                mesh.position.set(x, 4, z);
+                threeScene.add(mesh);
+                // Metal end caps
+                for (const dxCap of [-9, 9]) {
+                    const capGeo = new THREE.CylinderGeometry(2.5, 2.5, 3, 16);
+                    const cap = new THREE.Mesh(capGeo, new THREE.MeshStandardMaterial({ color: 0xc0c0c0, metalness: 0.85, roughness: 0.3 }));
+                    cap.rotation.z = Math.PI / 2;
+                    cap.position.set(x + dxCap, 4, z);
+                    threeScene.add(cap);
+                }
+                // Filament wire inside
+                const filGeo = new THREE.CylinderGeometry(0.15, 0.15, 18, 6);
+                const fil = new THREE.Mesh(filGeo, new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.6 }));
+                fil.rotation.z = Math.PI / 2;
+                fil.position.set(x, 4, z);
+                threeScene.add(fil);
+                // Holder base (black plastic)
+                const baseGeo = new THREE.BoxGeometry(24, 2, 8);
+                const base = new THREE.Mesh(baseGeo, new THREE.MeshStandardMaterial({ color: 0x222222 }));
+                base.position.set(x, 1, z);
+                threeScene.add(base);
+                topY = 7;
+
+            } else if (t === 'varistor' || t === 'mov') {
+                // MOV: round orange/blue disc on edge with 2 leads
+                const discGeo = new THREE.CylinderGeometry(5, 5, 2.5, 24);
+                mesh = new THREE.Mesh(discGeo, new THREE.MeshStandardMaterial({ color: 0xcc6600, roughness: 0.7 }));
+                mesh.rotation.x = Math.PI / 2;
+                mesh.position.set(x, 5.5, z);
+                threeScene.add(mesh);
+                // Coating shine
+                const ringGeo = new THREE.TorusGeometry(4.6, 0.3, 8, 24);
+                const ring = new THREE.Mesh(ringGeo, new THREE.MeshStandardMaterial({ color: 0x885500 }));
+                ring.position.set(x, 5.5, z);
+                ring.rotation.x = Math.PI / 2;
+                threeScene.add(ring);
+                // Two leads
+                for (const dxL of [-3, 3]) {
+                    const leadGeo = new THREE.CylinderGeometry(0.3, 0.3, 4, 6);
+                    const lead = new THREE.Mesh(leadGeo, new THREE.MeshStandardMaterial({ color: 0xc0c0c0, metalness: 0.85 }));
+                    lead.position.set(x + dxL, 1, z);
+                    threeScene.add(lead);
+                }
+                topY = 9;
+
+            } else if (t === 'smps') {
+                // Mean Well style switching power supply: rectangular metal case with vents
+                const bGeo = new THREE.BoxGeometry(70, 28, 35);
+                mesh = new THREE.Mesh(bGeo, new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.4, roughness: 0.5 }));
+                mesh.position.set(x, 14, z);
+                threeScene.add(mesh);
+                // Top vent slats
+                for (let vi = -3; vi <= 3; vi++) {
+                    const slGeo = new THREE.BoxGeometry(50, 0.3, 1.2);
+                    const sl = new THREE.Mesh(slGeo, new THREE.MeshStandardMaterial({ color: 0x111111 }));
+                    sl.position.set(x, 28.2, z + vi * 3.5);
+                    threeScene.add(sl);
+                }
+                // Terminal block on right side
+                const tbGeo = new THREE.BoxGeometry(8, 12, 30);
+                const tb = new THREE.Mesh(tbGeo, new THREE.MeshStandardMaterial({ color: 0x115522 }));
+                tb.position.set(x + 30, 6, z);
+                threeScene.add(tb);
+                // Indicator LED
+                const ledGeo = new THREE.SphereGeometry(0.8, 8, 6);
+                const led = new THREE.Mesh(ledGeo, new THREE.MeshStandardMaterial({ color: 0x33ff33, emissive: 0x118811 }));
+                led.position.set(x - 30, 16, z + 14);
+                threeScene.add(led);
+                _addEdgeHighlight(mesh, 0xaaaaff);
+                topY = 30;
+
+            } else if (t === 'connector' || t === 'terminal_block' || t === 'header' || t === 'pin_header') {
+                // Terminal block: green plastic with screws
+                const bGeo = new THREE.BoxGeometry(12, 9, 8);
+                mesh = new THREE.Mesh(bGeo, new THREE.MeshStandardMaterial({ color: 0x115533, roughness: 0.85 }));
+                mesh.position.set(x, 4.5, z);
+                threeScene.add(mesh);
+                // 2 screw heads on top
+                for (const dxS of [-3, 3]) {
+                    const screwGeo = new THREE.CylinderGeometry(1.4, 1.4, 1.0, 12);
+                    const screw = new THREE.Mesh(screwGeo, new THREE.MeshStandardMaterial({ color: 0xc8c8c8, metalness: 0.9, roughness: 0.3 }));
+                    screw.position.set(x + dxS, 9.5, z);
+                    threeScene.add(screw);
+                    // Slot in screw
+                    const slotGeo = new THREE.BoxGeometry(2.0, 0.2, 0.4);
+                    const slot = new THREE.Mesh(slotGeo, new THREE.MeshStandardMaterial({ color: 0x000000 }));
+                    slot.position.set(x + dxS, 10.0, z);
+                    threeScene.add(slot);
+                }
+                // 2 wire entry holes (front face)
+                for (const dxH of [-3, 3]) {
+                    const holeGeo = new THREE.CylinderGeometry(0.9, 0.9, 1.2, 12);
+                    const hole = new THREE.Mesh(holeGeo, new THREE.MeshStandardMaterial({ color: 0x000000 }));
+                    hole.rotation.x = Math.PI / 2;
+                    hole.position.set(x + dxH, 4, z + 4);
+                    threeScene.add(hole);
+                }
+                topY = 11;
+
+            } else if (t === 'optoacoplador' || t === 'pc817') {
+                // DIP-4 black package
+                const bGeo = new THREE.BoxGeometry(7, 4, 9);
+                mesh = new THREE.Mesh(bGeo, new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.9 }));
+                mesh.position.set(x, 2.5, z);
+                threeScene.add(mesh);
+                // Pin 1 indicator (small dot)
+                const dotGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.1, 12);
+                const dot = new THREE.Mesh(dotGeo, new THREE.MeshStandardMaterial({ color: 0xffffff }));
+                dot.position.set(x - 2.5, 4.55, z - 3);
+                threeScene.add(dot);
+                // 4 pins (2 per side)
+                for (const sd of [-1, 1]) {
+                    for (const dz2 of [-2.5, 2.5]) {
+                        const pinGeo = new THREE.BoxGeometry(0.8, 2.5, 0.8);
+                        const pin = new THREE.Mesh(pinGeo, new THREE.MeshStandardMaterial({ color: 0xc8a000, metalness: 0.9 }));
+                        pin.position.set(x + sd * 4, -0.5, z + dz2);
+                        threeScene.add(pin);
+                    }
+                }
+                topY = 5;
+
+            } else if (t === 'inductor' || t === 'inductor_cm') {
+                // Common-mode choke: toroid with copper winding
+                const torGeo = new THREE.TorusGeometry(8, 3.5, 12, 24);
+                mesh = new THREE.Mesh(torGeo, new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6 }));
+                mesh.rotation.x = Math.PI / 2;
+                mesh.position.set(x, 4, z);
+                threeScene.add(mesh);
+                // Copper winding indicator
+                for (let wi = 0; wi < 12; wi++) {
+                    const ang = (wi / 12) * Math.PI * 2;
+                    const wGeo = new THREE.BoxGeometry(0.6, 1.5, 7);
+                    const w = new THREE.Mesh(wGeo, new THREE.MeshStandardMaterial({ color: 0xb87333, metalness: 0.5 }));
+                    w.position.set(x + Math.cos(ang) * 8, 4, z + Math.sin(ang) * 8);
+                    w.rotation.y = ang;
+                    threeScene.add(w);
+                }
+                topY = 8;
 
             } else {
                 // Generic IC: flat box with pin stubs

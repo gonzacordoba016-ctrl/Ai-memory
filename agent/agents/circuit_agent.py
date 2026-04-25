@@ -172,6 +172,62 @@ def _detect_domain(description: str) -> str:
     return best if scores[best] > 0 else "default"
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# F1.3 — LOAD COUNT EXTRACTOR
+# Detects N from text ("5 bombas" → 5, "tres motores" → 3, "dos relays" → 2)
+# ──────────────────────────────────────────────────────────────────────────────
+
+_NUM_WORDS_ES = {
+    "una": 1, "uno": 1, "un": 1,
+    "dos": 2, "tres": 3, "cuatro": 4, "cinco": 5,
+    "seis": 6, "siete": 7, "ocho": 8, "nueve": 9, "diez": 10,
+    "once": 11, "doce": 12, "trece": 13, "catorce": 14, "quince": 15,
+    "dieciséis": 16, "dieciseis": 16, "diecisiete": 17, "dieciocho": 18,
+    "diecinueve": 19, "veinte": 20,
+}
+
+_LOAD_NOUNS = (
+    r"bombas?", r"motores?", r"motor", r"relays?", r"relés?", r"reles?",
+    r"válvulas?", r"valvulas?", r"solenoides?",
+    r"electroválvulas?", r"electrovalvulas?",
+    r"contactores?", r"actuadores?", r"cargas?",
+    r"luces?", r"lámparas?", r"lamparas?",
+    r"ventiladores?", r"calefactores?",
+    r"pumps?", r"motors?", r"valves?", r"loads?", r"lights?",
+)
+
+
+def _extract_load_count(description: str) -> int:
+    """
+    Detect explicit load count in description.
+    Returns the maximum N found (so "5 bombas y 3 sensores" → 5).
+    Returns 0 if no count found.
+    """
+    if not description:
+        return 0
+    text = description.lower()
+    nouns = "(?:" + "|".join(_LOAD_NOUNS) + ")"
+    counts: List[int] = []
+
+    # Numeric digits: "5 bombas", "10 relays"
+    for m in re.finditer(rf"(\d{{1,3}})\s+{nouns}\b", text):
+        try:
+            n = int(m.group(1))
+            if 1 <= n <= 64:
+                counts.append(n)
+        except ValueError:
+            pass
+
+    # Spanish number words: "tres motores", "cinco bombas"
+    word_pattern = "|".join(_NUM_WORDS_ES.keys())
+    for m in re.finditer(rf"\b({word_pattern})\s+{nouns}\b", text):
+        n = _NUM_WORDS_ES.get(m.group(1))
+        if n:
+            counts.append(n)
+
+    return max(counts) if counts else 0
+
+
 def _select_mcu(description: str, domain: str, user_mcu: str) -> str:
     """Return the best MCU for the circuit; prefer user choice if explicit."""
     explicit_mcus = ["esp32", "arduino", "stm32", "pico", "attiny", "esp8266",
@@ -265,6 +321,7 @@ DESCRIPCIÓN DEL CIRCUITO:
 {description}
 
 MCU / Controlador: {mcu}
+{load_count_hint}
 {domain_hint}
 {mcu_pin_rules}
 {pinout_context}
@@ -283,7 +340,7 @@ NOMENCLATURA (respetar siempre):
   • Resistencias: R1, R2, R3...  (valor en Ω, ej: "value":"10000", "unit":"Ω")
   • Capacitores: C1, C2, C3...   (valor en µF o nF, ej: "value":"100", "unit":"nF")
   • Diodos: D1, D2, D3...
-  • Relays: RL1, RL2, RL3...
+  • Relays: RL1, RL2, RL3...  (NO U2/U3 — los relays SIEMPRE son RLn)
   • Inductores: L1, L2...
   • Conectores/terminales: J1, J2...
   • Módulos: MOD1, MOD2...
@@ -295,24 +352,50 @@ PINES DEL MCU:
 NETS:
   • Nombres descriptivos: VCC_5V, VCC_12V, VCC_48V, GND, AGND, RELAY1_CTRL, PUMP1_PWR...
   • CRÍTICO: cada nodo (ej: "U1.GND") debe aparecer en UN SOLO net — NUNCA repetido
-  • Conectar TODOS los componentes en al menos un net
+  • Conectar TODOS los componentes en al menos un net (sin componentes flotantes)
   • GND compartido entre todas las secciones (separar AGND si hay señales analógicas)
 
-CIRCUITOS CON MÚLTIPLES CARGAS (>2 relays/bombas/motores):
-  • Un relay independiente (RLn) + diodo flyback (Dn) por cada carga
-  • Pin de control separado del MCU para cada relay
-  • Net de control nombrado: RELAY1_CTRL, RELAY2_CTRL, etc.
-  • Si las cargas son ≥10W: fusible individual por rama
+═══════════════════════════════════════════════════════
+REGLA CRÍTICA — N CARGAS / BOMBAS / MOTORES / RELAYS:
+═══════════════════════════════════════════════════════
+Si la descripción menciona N unidades (ej: "5 bombas", "3 motores", "4 relays", "tres válvulas"):
+
+  • DEBES generar exactamente N componentes relay SEPARADOS: RL1, RL2, ..., RLN
+    (NUNCA un único componente "Relay Module N-canales" agrupando las N cargas)
+
+  • DEBES generar exactamente N diodos flyback separados: D_fly1, D_fly2, ..., D_flyN
+    (cada diodo en paralelo con la bobina de SU relay correspondiente)
+
+  • DEBES generar exactamente N resistencias de control: R1, R2, ..., RN (típico 470Ω-1kΩ)
+    (entre cada pin del MCU y la entrada del relay correspondiente)
+
+  • DEBES generar exactamente N nets de control separados:
+    RELAY1_CTRL, RELAY2_CTRL, ..., RELAYn_CTRL
+    (cada uno conecta U1.D## → Rn.1 → RLn.IN)
+
+  • DEBES generar exactamente N nets de salida hacia las cargas:
+    PUMP1_OUT/MOTOR1_OUT/LOAD1_OUT, PUMP2_OUT, ..., PUMPN_OUT
+    (cada uno conecta RLn.NO al conector de salida correspondiente)
+
+  • DEBES generar exactamente N conectores de salida: J2, J3, ..., J(N+1)
+    (uno por carga; J1 reservado para entrada de alimentación)
+
+  • PROHIBIDO: comprimir las N cargas en un solo módulo relay multi-canal
+  • PROHIBIDO: omitir el flyback, la resistencia de control o el conector de cualquiera de las N cargas
+  • PROHIBIDO: reusar el mismo net RELAY1_CTRL para varias cargas
 
 CIRCUITOS DE ALTA TENSIÓN (220VAC, 110VAC):
   • Separación galvánica obligatoria entre control (MCU) y potencia (AC)
-  • Usar optoacopladores o módulos relay con optoacoplamiento
-  • Incluir transformador o fuente SMPS para generar VCC de control
+  • Usar optoacopladores (PC817) o módulos relay con optoacoplamiento integrado
+  • Incluir transformador + puente rectificador + cap filtro + LM7805 para generar 5V del MCU
+    (o fuente SMPS dedicada 220VAC→5V)
+  • Si hay un voltaje de potencia distinto (ej: 50V para los motores): fuente SMPS adicional
+  • Fusible (F1) en la entrada AC, varistor MOV (D6 o equivalente) en paralelo con la entrada
 
 COMPLETITUD:
   • Incluir TODOS los componentes necesarios para que el circuito funcione en producción
   • No omitir capacitores de desacoplo, resistencias de pull-up, diodos de protección
-  • Incluir conectores/terminales de entrada y salida
+  • Incluir conectores/terminales de entrada y salida (input AC + output por carga)
   • Si hay múltiples voltajes, incluir el regulador/conversor correspondiente
 
 ═══════════════════════════════════════════════════════
@@ -339,15 +422,37 @@ class CircuitAgent:
             if pinout_context:
                 logger.info(f"[CircuitAgent] Pinout context inyectado ({len(pinout_context)} chars)")
 
+            # F1.3 — detect explicit N-load count and inject as hint
+            load_count = _extract_load_count(description)
+            if load_count >= 2:
+                load_count_hint = (
+                    f"\n═══════════════════════════════════════════════════════\n"
+                    f"NÚMERO DE CARGAS DETECTADAS EN LA DESCRIPCIÓN: {load_count}\n"
+                    f"═══════════════════════════════════════════════════════\n"
+                    f"⚠ INSTRUCCIÓN OBLIGATORIA: el JSON DEBE contener exactamente "
+                    f"{load_count} relays separados (RL1..RL{load_count}), "
+                    f"{load_count} diodos flyback (D_fly1..D_fly{load_count}), "
+                    f"{load_count} resistencias de control (R1..R{load_count}), "
+                    f"{load_count} nets RELAY1_CTRL..RELAY{load_count}_CTRL, "
+                    f"y {load_count} conectores de salida (J2..J{load_count + 1}).\n"
+                    f"NUNCA agrupes las {load_count} cargas en un único módulo relay multi-canal.\n"
+                )
+            else:
+                load_count_hint = ""
+
             prompt = CIRCUIT_PARSE_PROMPT.format(
                 description=description,
                 mcu=best_mcu,
+                load_count_hint=load_count_hint,
                 domain_hint=domain_hint,
                 mcu_pin_rules=_mcu_pin_rules(best_mcu),
                 pinout_context=pinout_context,
             )
 
-            logger.info(f"[CircuitAgent] parse_circuit START — domain={domain} mcu={best_mcu} model={LLM_MODEL_SMART!r} prompt_len={len(prompt)}")
+            logger.info(
+                f"[CircuitAgent] parse_circuit START — domain={domain} mcu={best_mcu} "
+                f"load_count={load_count} model={LLM_MODEL_SMART!r} prompt_len={len(prompt)}"
+            )
 
             messages = [{"role": "user", "content": prompt}]
 
@@ -541,32 +646,97 @@ class CircuitAgent:
                 warnings.append("[Dominio] Proyecto IoT sin módulo WiFi (ESP32 recomendado)")
 
     def _validate_circuit(self, circuit_data: Dict[str, Any]) -> List[str]:
-        warnings = []
+        """
+        F1.4 — validates AND auto-fixes the netlist:
+          • Duplicate nodes → removed from the SECONDARY net (first occurrence wins)
+          • Floating components → connected to GND if 2-terminal passive,
+            or removed from JSON if no recovery is possible
+        """
+        warnings: List[str] = []
+        nets = circuit_data.get("nets", [])
+        components = circuit_data.get("components", [])
 
-        # Duplicate nodes
-        nodes_used: Dict[str, str] = {}
-        for net in circuit_data.get("nets", []):
+        # ── 1. Duplicate nodes — auto-fix by removing from secondary nets ──
+        nodes_seen: Dict[str, str] = {}
+        for net in nets:
+            kept_nodes = []
             for node in net.get("nodes", []):
-                if node in nodes_used:
-                    warnings.append(f"Nodo duplicado: {node} en nets '{nodes_used[node]}' y '{net['name']}'")
+                if node in nodes_seen:
+                    if nodes_seen[node] != net["name"]:
+                        warnings.append(
+                            f"[Auto-fix] Nodo duplicado {node} removido de net "
+                            f"'{net['name']}' (ya estaba en '{nodes_seen[node]}')"
+                        )
+                    # drop from this net (keep first occurrence)
                 else:
-                    nodes_used[node] = net["name"]
+                    nodes_seen[node] = net["name"]
+                    kept_nodes.append(node)
+            net["nodes"] = kept_nodes
 
-        # Disconnected components
-        connected = {node.split('.')[0] for net in circuit_data.get("nets", [])
-                     for node in net.get("nodes", [])}
-        for comp in circuit_data.get("components", []):
-            if comp["id"] not in connected:
-                warnings.append(f"Componente {comp['id']} ({comp.get('name','')}) no tiene nets asignados")
+        # ── 2. Floating components — auto-fix by connecting to GND or removing ──
+        connected = {node.split('.')[0] for net in nets for node in net.get("nodes", [])}
+        gnd_net = next((n for n in nets if "gnd" in n["name"].lower() or "ground" in n["name"].lower()), None)
 
-        # No VCC/GND nets
-        net_names = [n["name"].lower() for n in circuit_data.get("nets", [])]
+        # 2-terminal passives that are safe to ground if floating
+        groundable_types = {
+            "capacitor", "capacitor_ceramic", "capacitor_electrolytic",
+            "resistor", "diode", "varistor", "fuse", "inductor",
+        }
+
+        components_to_remove: List[str] = []
+        for comp in components:
+            if comp["id"] in connected:
+                continue
+
+            ctype = (comp.get("resolved_type") or comp.get("type") or "").lower()
+
+            # Strategy 1: groundable passive → connect 2nd pin to GND
+            if gnd_net and ctype in groundable_types:
+                gnd_node = f"{comp['id']}.2"
+                if gnd_node not in gnd_net["nodes"]:
+                    gnd_net["nodes"].append(gnd_node)
+                    connected.add(comp["id"])
+                    warnings.append(
+                        f"[Auto-fix] Componente flotante {comp['id']} ({comp.get('name','')}) "
+                        f"conectado a GND vía {gnd_node}"
+                    )
+                    continue
+
+            # Strategy 2: not safely auto-connectable → mark for removal
+            components_to_remove.append(comp["id"])
+            warnings.append(
+                f"[Auto-fix] Componente {comp['id']} ({comp.get('name','')}) "
+                f"removido del JSON — no tenía nets y no es auto-conectable"
+            )
+
+        if components_to_remove:
+            circuit_data["components"] = [
+                c for c in components if c["id"] not in components_to_remove
+            ]
+
+        # ── 3. Sanity checks (informational) ──
+        net_names = [n["name"].lower() for n in nets]
         has_vcc = any(v in name for name in net_names for v in ("vcc", "5v", "3v3", "3.3v", "vin", "vdd"))
         has_gnd = any("gnd" in name or "ground" in name for name in net_names)
         if not has_vcc:
             warnings.append("No se detectó net de alimentación (VCC/5V/3V3)")
         if not has_gnd:
             warnings.append("No se detectó net de masa (GND)")
+
+        # ── 4. N-load compliance check (post-LLM verification) ──
+        desc = circuit_data.get("description", "") or ""
+        expected_n = _extract_load_count(desc)
+        if expected_n >= 2:
+            relay_count = sum(
+                1 for c in circuit_data["components"]
+                if (c.get("resolved_type") or c.get("type") or "").lower()
+                in ("relay", "relay_module", "ssr")
+            )
+            if relay_count < expected_n:
+                warnings.append(
+                    f"[N-load] Se esperaban {expected_n} relays separados "
+                    f"pero el LLM generó {relay_count}. Revisar prompt o regenerar."
+                )
 
         return warnings
 
