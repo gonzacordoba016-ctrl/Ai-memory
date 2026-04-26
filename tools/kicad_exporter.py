@@ -586,6 +586,75 @@ class KiCadExporter:
 
         lines.append(f'')
 
+        # ── Wires (F2.1): orth routing pin → trunk → pin ────────────────────
+        # KiCad accepts both wires AND net labels (labels suffice for connectivity,
+        # but real schematics show wires too — the file looked empty without them).
+        # Strategy: for each net with ≥2 nodes, compute absolute pin coords and
+        # connect them with a star topology — every pin spokes H-then-V to a
+        # common trunk point (the median of pin coordinates).
+        def _abs_pin_pos(comp_id: str, pin_name: str) -> Tuple[float, float] | None:
+            comp = next((c for c in components if c.get("id") == comp_id), None)
+            if comp is None or comp_id not in positions:
+                return None
+            cx, cy = positions[comp_id]
+            lid    = _lib_id(comp)
+            if lid == "Device:IC_Generic":
+                cpins: Dict[str, str] = {}
+                for n in nets:
+                    for nd in n.get("nodes", []):
+                        ps = nd.split(".", 1)
+                        if len(ps) == 2 and ps[0] == comp_id:
+                            cpins[ps[1]] = n["name"]
+                offs = _mcu_pin_offsets(list(cpins.keys()))
+            else:
+                offs = _PIN_OFFSETS.get(lid, {})
+            if pin_name not in offs:
+                return None
+            dx, dy = offs[pin_name]
+            return (_snap(cx + dx), _snap(cy + dy))
+
+        def _wire(x1: float, y1: float, x2: float, y2: float):
+            if x1 == x2 and y1 == y2:
+                return
+            lines.append(
+                f'  (wire (pts (xy {_fmt(x1)} {_fmt(y1)}) (xy {_fmt(x2)} {_fmt(y2)}))'
+            )
+            lines.append(
+                f'    (stroke (width 0) (type default)) (uuid "{_uid()}"))'
+            )
+
+        for net in nets:
+            pin_pts: List[Tuple[float, float]] = []
+            for node in net.get("nodes", []):
+                ps = node.split(".", 1)
+                if len(ps) != 2:
+                    continue
+                p = _abs_pin_pos(ps[0], ps[1])
+                if p is not None:
+                    pin_pts.append(p)
+            if len(pin_pts) < 2:
+                continue
+            # Trunk = median of pin coords (snapped). Star routing pin → trunk.
+            xs = sorted(p[0] for p in pin_pts)
+            ys = sorted(p[1] for p in pin_pts)
+            tx = _snap(xs[len(xs) // 2])
+            ty = _snap(ys[len(ys) // 2])
+            for px, py in pin_pts:
+                # H first, then V — junctions only emitted at trunk.
+                if px != tx:
+                    _wire(px, py, tx, py)
+                if py != ty:
+                    _wire(tx, py, tx, ty)
+
+            # Junction at trunk if ≥3 pins meet there
+            if len(pin_pts) >= 3:
+                lines.append(
+                    f'  (junction (at {_fmt(tx)} {_fmt(ty)}) (diameter 0) '
+                    f'(color 0 0 0 0) (uuid "{_uid()}"))'
+                )
+
+        lines.append(f'')
+
         # ── Power symbols for VCC and GND nets ──────────────────────────────
         vcc_nets = [n["name"] for n in nets
                     if any(v in n["name"].lower()

@@ -484,6 +484,28 @@ async def get_kicad_schematic(circuit_id: int):
     )
 
 
+@router.get("/{circuit_id}/board.kicad_pcb")
+async def get_kicad_pcb(circuit_id: int):
+    """Exporta el PCB como KiCad v6 (.kicad_pcb) — abre directo en pcbnew con
+    footprints reales (Resistor_THT:R_Axial_..., Module:Arduino_Nano, etc.),
+    nets numeradas y traces Manhattan en F.Cu/B.Cu."""
+    from tools.kicad_pcb_exporter import export_kicad_pcb
+
+    agent        = _get_circuit_agent()
+    circuit_data = agent.get_circuit_by_id(circuit_id)
+    if not circuit_data:
+        raise HTTPException(status_code=404, detail="Circuito no encontrado")
+
+    pcb_str  = export_kicad_pcb(circuit_data)
+    cname    = (circuit_data.get("name") or "circuit").replace(" ", "_")[:40]
+    filename = f"stratum_{cname}_{circuit_id}.kicad_pcb"
+    return Response(
+        content=pcb_str.encode("utf-8"),
+        media_type="text/plain",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
 @router.get("/{circuit_id}/bom.csv")
 async def get_circuit_bom_csv(circuit_id: int):
     """Descarga el BOM como CSV."""
@@ -562,6 +584,14 @@ async def export_circuit_zip(circuit_id: int):
                     SchematicRenderer().render_schematic_svg(circuit_data))
         zf.writestr(f"{cname}/{cname}.kicad_sch",
                     export_kicad_schematic(circuit_data))
+        # F2.2 — incluir .kicad_pcb para round-trip con pcbnew
+        try:
+            from tools.kicad_pcb_exporter import export_kicad_pcb
+            zf.writestr(f"{cname}/{cname}.kicad_pcb",
+                        export_kicad_pcb(circuit_data))
+        except Exception as _pcb_err:
+            from core.logger import logger as _l
+            _l.warning(f"[ZIP] export_kicad_pcb falló: {_pcb_err}")
         zf.writestr(f"{cname}/bom.csv",
                     bom_to_csv(bom))
         zf.writestr(f"{cname}/netlist.json",
