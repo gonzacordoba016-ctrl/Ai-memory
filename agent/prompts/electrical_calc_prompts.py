@@ -108,8 +108,15 @@ Consulta: "{task}"
 Respondé SOLO con JSON válido.""",
 
     "transformer_turns_ratio": """Extraé parámetros para transformador.
-JSON con claves: vp (float, tensión primario V, null si no se menciona), vs (float, tensión secundario V, null si no se menciona),
-ip (float, corriente primario A, null si no se menciona), is_ (float, corriente secundario A, null si no se menciona).
+JSON con claves:
+- vp (float, tensión primario V, null si no se menciona)
+- vs: tensión(es) secundaria(s) en V. Si hay UNA sola → float (ej. 12). Si hay VARIAS (multi-tap, ej. "220V a 12V y 24V") → array de floats (ej. [12, 24]). null si no se menciona.
+- ip (float, corriente primario A, null si no se menciona)
+- is_ (float, corriente secundario A, null si no se menciona)
+Ejemplos:
+  "transformador 220V a 12V"           → {"vp":220,"vs":12,"ip":null,"is_":null}
+  "transformador 220V a 12V y 24V"     → {"vp":220,"vs":[12,24],"ip":null,"is_":null}
+  "fuente de 220V con tomas a 12 y 24" → {"vp":220,"vs":[12,24],"ip":null,"is_":null}
 Consulta: "{task}"
 Respondé SOLO con JSON válido.""",
 

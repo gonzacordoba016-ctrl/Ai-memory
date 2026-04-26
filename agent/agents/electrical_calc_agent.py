@@ -76,7 +76,15 @@ class ElectricalCalcAgent:
             present = [k for k in ("v", "i_ma", "r") if params.get(k) is not None]
             return [] if len(present) >= 2 else ["v (voltios)", "i_ma (corriente mA)", "r (resistencia Ω) — al menos 2 de estos 3"]
         required = REQUIRED_PARAMS.get(formula_key, [])
-        return [p for p in required if params.get(p) is None]
+        # F1.6 — un parámetro lista vacía también cuenta como faltante
+        def _missing(p):
+            v = params.get(p)
+            if v is None:
+                return True
+            if isinstance(v, (list, tuple)) and len(v) == 0:
+                return True
+            return False
+        return [p for p in required if _missing(p)]
 
     # ── Clasificación de intención ────────────────────────────────────────────
 
@@ -233,6 +241,9 @@ class ElectricalCalcAgent:
 
     def _fmt_val(self, v, unit="") -> str:
         """Formatea un número con sufijo de magnitud."""
+        # F1.6 — soporte multi-tap: "12, 24 V"
+        if isinstance(v, (list, tuple)):
+            return ", ".join(self._fmt_val(x, unit) for x in v)
         if not isinstance(v, (int, float)):
             return str(v)
         abs_v = abs(v)

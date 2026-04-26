@@ -77,23 +77,29 @@ class AgentController:
         if _trivial is not None:
             await _phase("responding")
             self.state.add_message("assistant", _trivial)
-            self._store_episode(user_input, _trivial)
+            # F1.3 — Token PRIMERO, persistencia en background.
+            # Bug regresión 180s: store_memory() (Qdrant + embeddings + 2x SQL)
+            # bloqueaba la entrega del token hasta completar el upsert.
             if on_token:
                 await on_token(_trivial)
+            asyncio.create_task(asyncio.to_thread(self._store_episode, user_input, _trivial))
             return {"text": _trivial, "agents_used": ["greeting"]}
 
         # 2. Extraer hechos y relaciones en paralelo (async, no bloquean)
-        new_facts, _ = await asyncio.gather(
-            extract_facts(user_input),
-            extract_relations(user_input),
-            return_exceptions=True,
-        )
-        if isinstance(new_facts, dict):
-            for key, value in new_facts.items():
-                self.state.set_user_fact(key, value)
-            if new_facts:
-                graph_memory.add_facts_from_dict(new_facts)
-                logger.info(f"Nuevos hechos: {new_facts}")
+        # F1.4 — skip en queries técnicas: ahorra 2 LLM calls (~6s con gpt-4o-mini).
+        # "diseñame una fuente" no contiene facts personales que valga extraer.
+        if self._should_extract_facts(user_input):
+            new_facts, _ = await asyncio.gather(
+                extract_facts(user_input),
+                extract_relations(user_input),
+                return_exceptions=True,
+            )
+            if isinstance(new_facts, dict):
+                for key, value in new_facts.items():
+                    self.state.set_user_fact(key, value)
+                if new_facts:
+                    graph_memory.add_facts_from_dict(new_facts)
+                    logger.info(f"Nuevos hechos: {new_facts}")
 
         # 3. Orquestador async
         await _phase("routing")
@@ -144,28 +150,46 @@ class AgentController:
                 f"- [Ver en 3D](/api/circuits/viewer?id={design_id})\n"
             )
             self.state.add_message("assistant", hw_md)
-            self._store_episode(user_input, hw_md)
-            self.profiler.update_from_interaction(user_input, hw_md)
+            # F1.5 — persistir circuito activo para próximos turnos (Bug D)
+            self.state.set_active_circuit({
+                "design_id": design_id,
+                "name": cname,
+                "description": cdesc,
+                "mcu": mcu,
+                "power": power,
+                "domain": domain,
+                "n_components": len(comps),
+                "n_nets": len(nets),
+                "top_components": [c.get("name", "") for c in comps[:6]],
+            })
+            # F1.3 — Token PRIMERO, persistencia en background
             if on_token:
                 await on_token(hw_md)
+            asyncio.create_task(asyncio.to_thread(self._store_episode, user_input, hw_md))
+            asyncio.create_task(asyncio.to_thread(self.profiler.update_from_interaction, user_input, hw_md))
             return {"text": hw_md, "circuit_design_id": design_id,
                     "circuit_name": cname, "agents_used": agents_used}
 
         # Si el hardware agent manejó el comando completamente, devolver directo
         # (evita que el LLM principal reescriba o contradiga la respuesta del agente)
+        # F1.7 — antes exigía agents_used == ["hardware"], pero combinaciones
+        # como ["hardware","memory"] caían al LLM general que reescribía todo
+        # (origen de la alucinación DHT22 en turnos follow-up). Ahora basta
+        # con que hardware haya devuelto contenido sustancial (>200 chars).
         hw_result = orch_result["results"].get("hardware", "")
-        if hw_result and agents_used == ["hardware"]:
+        if hw_result and "hardware" in agents_used and len(hw_result) > 200:
             self.state.add_message("assistant", hw_result)
-            self._store_episode(user_input, hw_result)
-            self.profiler.update_from_interaction(user_input, hw_result)
             # Guardar firmware draft si la respuesta contiene código C++
             if "```cpp" in hw_result or "void setup()" in hw_result or "void loop()" in hw_result:
                 import re
                 code_blocks = re.findall(r'```(?:cpp|c|arduino)?\n(.*?)```', hw_result, re.DOTALL)
                 if code_blocks:
                     self.state.set_firmware_draft(code_blocks[0])
+            # F1.3 — Token PRIMERO, persistencia en background
             if on_token:
                 await on_token(hw_result)
+            asyncio.create_task(asyncio.to_thread(self._store_episode, user_input, hw_result))
+            asyncio.create_task(asyncio.to_thread(self.profiler.update_from_interaction, user_input, hw_result))
             return {"text": hw_result, "agents_used": agents_used}
 
         # 4. Obtener perfil activo de IA + contexto de fuentes
@@ -305,6 +329,20 @@ class AgentController:
             "¡Hasta luego!",
     }
 
+    # F1.4 — heurística para skip extract_facts/relations en queries técnicas.
+    # Reusa el routing keyword-first del orchestrator: si el input cae en
+    # circuit_design / hardware / code / research, no contiene facts personales.
+    _TECHNICAL_ROUTES = {"circuit_design", "hardware", "code", "research"}
+
+    def _should_extract_facts(self, user_input: str) -> bool:
+        try:
+            route = self.orchestrator._keyword_route(user_input)
+        except Exception:
+            return True
+        if not route:
+            return True
+        return route[0] not in self._TECHNICAL_ROUTES
+
     def _maybe_trivial_response(self, user_input: str) -> str | None:
         """Si user_input es un saludo trivial, devuelve respuesta hardcoded.
         En otro caso, None y el agente sigue pipeline normal."""
@@ -346,6 +384,21 @@ class AgentController:
         if draft:
             preview = draft[:300].replace('\n', ' ')
             parts.append(f"FIRMWARE ACTUAL EN SESIÓN (primeras líneas): {preview}…")
+
+        # F1.5 — circuito activo: evita alucinación entre turnos (Bug D)
+        circ = self.state.get_active_circuit()
+        if circ:
+            top = ", ".join(circ.get("top_components", [])[:6])
+            parts.append(
+                f"CIRCUITO ACTIVO EN SESIÓN: id={circ.get('design_id')} "
+                f"| nombre={circ.get('name')} "
+                f"| MCU={circ.get('mcu')} | alimentación={circ.get('power')} "
+                f"| dominio={circ.get('domain')} "
+                f"| componentes={circ.get('n_components')} (top: {top}) "
+                f"| nets={circ.get('n_nets')}. "
+                f"Si el usuario hace un follow-up ambiguo (ej. 'dame los esquemas', "
+                f"'y el pcb?', 'mejorá esto'), se refiere a ESTE circuito."
+            )
 
         return "\n".join(parts)
 

@@ -107,6 +107,14 @@ CIRCUIT_DESIGN_KEYWORDS = [
     "mostrame el esquematico", "mostrame el pcb", "mostrame el circuito",
     "armar el pcb", "armar el esquematico", "armar el circuito",
     "armame el pcb", "armame el esquematico",
+    # F1.2 — variantes "dame ..." en singular y combinadas con pcb
+    "dame el esquema", "dame el esquematico", "dame el esquemático",
+    "dame el pcb", "dame la pcb", "dame el circuito",
+    "dame el esquema y pcb", "dame el esquema y la pcb",
+    "dame el esquematico y pcb", "dame el esquemático y pcb",
+    "dame el pcb y esquema", "dame el pcb y el esquematico",
+    "esquema y pcb", "el esquema y pcb", "el esquema y la pcb",
+    "pcb y esquema", "pcb y esquematico", "pcb y esquemático",
 ]
 
 KEYWORD_ROUTES = {
@@ -209,12 +217,13 @@ class Orchestrator:
         if self._CIRCUIT_REGEX is None:
             import re as _re
             type(self)._CIRCUIT_REGEX = _re.compile(
-                r"\b(diseñ[aá]|crea|cre[aá]me|gener[aá]|gener[aá]me|"
+                r"\b(diseñ[aá]|diseñ[aá]me|crea|cre[aá]me|gener[aá]|gener[aá]me|"
                 r"arm[aá]|arm[aá]me|hac[eé]|hac[eé]me|necesito|quiero|"
-                r"construy[eé]|construime|"
-                r"design|create|generate|build|make)\b"
+                r"construy[eé]|construime|dame|d[aá]me|mostrame|mostr[aá]me|"
+                r"muestrame|muestr[aá]me|"
+                r"design|create|generate|build|make|show)\b"
                 r"[\w\s,.;:¿?¡!()-]{0,80}?"
-                r"\b(circuito|esquem[aá]tico|pcb|netlist|schematic|board|"
+                r"\b(circuito|esquema|esquem[aá]tico|pcb|netlist|schematic|board|"
                 r"controlador|driver|fuente|amplificador|regulador|"
                 r"sistema\s+de)\b"
             )

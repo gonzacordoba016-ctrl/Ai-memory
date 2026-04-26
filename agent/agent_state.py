@@ -9,6 +9,10 @@ class AgentState:
         self.context = {}
         self.session_platform: str | None = None
         self.current_firmware_draft: str | None = None
+        # F1.5 — circuito activo (Bug D): evita alucinación entre turnos
+        # cuando el usuario hace follow-ups ambiguos ("dame los esquemas",
+        # "y el pcb?") y el LLM no tiene contexto del circuito en curso.
+        self.active_circuit: dict | None = None
 
     def add_message(self, role: str, content: str):
         self.conversation_history.append({"role": role, "content": content})
@@ -40,3 +44,9 @@ class AgentState:
 
     def get_firmware_draft(self) -> str | None:
         return self.current_firmware_draft
+
+    def set_active_circuit(self, circuit: dict | None):
+        self.active_circuit = circuit
+
+    def get_active_circuit(self) -> dict | None:
+        return self.active_circuit
