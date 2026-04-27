@@ -76,6 +76,59 @@ _FOOTPRINT: Dict[str, Tuple[float, float]] = {
     "esp8266":      (24.8, 16.0),
     "pico":         (21.0, 51.0),
     "stm32":        (25.4, 25.4),
+
+    # ── Sensor ICs & modules (GAP 4) ────────────────────────────────────────
+    # Pressure / humidity / temperature
+    "bmp280":   (2.5, 2.5),    # QFN-8 (or 10×10mm breakout board)
+    "bme280":   (2.5, 2.5),
+    "bmp180":   (3.5, 3.5),
+    "bmp085":   (3.5, 3.5),
+    "dht22":    (15.5, 25.0),  # DIP-4 rectangular white body
+    "am2302":   (15.5, 25.0),
+    "dht11":    (12.0, 15.5),
+    "si7021":   (3.0, 3.0),
+    "htu21d":   (3.0, 3.0),
+    "sht31":    (2.5, 2.5),
+    "sht30":    (2.5, 2.5),
+    "aht20":    (3.0, 3.0),
+
+    # IMU / accelerometer
+    "mpu6050":  (4.0, 4.0),    # QFN-24
+    "mpu9250":  (3.0, 3.0),
+    "icm20600": (3.0, 3.0),
+    "lsm6ds3":  (3.5, 3.5),
+
+    # Temperature (1-wire / analog)
+    "ds18b20":  (5.0, 4.5),    # TO-92
+    "ds18s20":  (5.0, 4.5),
+    "lm35":     (5.0, 4.5),    # TO-92
+    "ntc":      (4.0, 4.0),
+
+    # Distance / proximity
+    "hc_sr04":  (45.0, 20.0),  # 2-transducer module
+    "ultrasonic": (45.0, 20.0),
+    "vl53l0x":  (13.0, 18.0),  # breakout
+
+    # Current / ADC
+    "ina219":   (10.0, 13.5),  # 8-SOIC breakout
+    "ina226":   (10.0, 13.5),
+    "ads1115":  (10.0, 13.5),  # 16-SSOP breakout
+    "ads1015":  (10.0, 13.5),
+    "mcp3208":  (16.0, 16.0),  # DIP-16
+    "mcp3008":  (16.0, 16.0),
+
+    # Gas sensors
+    "mq2":      (36.0, 36.0),  # round disc module
+    "mq135":    (36.0, 36.0),
+    "gas_sensor": (36.0, 36.0),
+
+    # Motion
+    "pir":      (25.0, 35.0),  # PIR module with Fresnel lens
+    "moisture_sensor": (16.0, 60.0),  # soil probe module
+
+    # RTC
+    "ds3231":   (38.0, 22.0),  # breakout with coin cell
+    "ds1307":   (8.5, 8.0),    # DIP-8
 }
 
 _DEFAULT_FP = (10.0, 8.0)
@@ -129,7 +182,12 @@ def _pcb_zone(comp: Dict) -> str:
 
 
 def _build_pcb_relay_groups(components: List[Dict]) -> Dict[str, List[Dict]]:
-    """Same as schematic: pair RLn with its Dn flyback + Rn control resistor."""
+    """
+    Pair each relay RLn with its flyback diode (D_flyN, Dfly{N}, D{N}, etc.)
+    and control resistor (R{N}, R_ctrl_RLn, etc.).
+    Components that are grouped are NOT placed independently (no zone 'other' fallback).
+    GAP-5 fix: also matches IDs containing 'fly' that reference the relay number.
+    """
     by_id = {c["id"]: c for c in components}
     relay_ids = [
         c["id"] for c in components
@@ -144,18 +202,44 @@ def _build_pcb_relay_groups(components: List[Dict]) -> Dict[str, List[Dict]]:
         cell = [by_id[rid]]
         used.add(rid)
         n_match = "".join(ch for ch in rid if ch.isdigit())
+        rid_lo = rid.lower()
+
+        # --- Flyback diode candidates (expanded) ---
+        diode_cands = []
         if n_match:
-            for cand in (f"D_fly{n_match}", f"D_fly_{rid}", f"D{n_match}",
-                         f"D_flyback_{rid}", f"Dfly{n_match}"):
-                if cand in by_id and cand not in used:
-                    cell.append(by_id[cand])
-                    used.add(cand)
-                    break
-            for cand in (f"R{n_match}", f"R_ctrl_{rid}", f"Rctrl{n_match}", f"R_{rid}"):
-                if cand in by_id and cand not in used:
-                    cell.append(by_id[cand])
-                    used.add(cand)
-                    break
+            diode_cands += [
+                f"D_fly{n_match}", f"D_fly_{rid}", f"D_fly_{rid_lo}",
+                f"D{n_match}", f"D_flyback_{rid}", f"Dfly{n_match}",
+                f"d_fly{n_match}", f"d{n_match}",  # lower-case variants
+            ]
+        # Also catch any diode whose ID contains 'fly' and the relay number
+        for cid2, comp2 in by_id.items():
+            cid2_lo = cid2.lower()
+            t2 = (comp2.get("resolved_type") or comp2.get("type") or "").lower()
+            if t2 in ("diode", "1n4007", "1n5819", "1n4148") and \
+               "fly" in cid2_lo and n_match and n_match in cid2_lo and \
+               cid2 not in used:
+                diode_cands.append(cid2)
+
+        for cand in diode_cands:
+            if cand in by_id and cand not in used:
+                cell.append(by_id[cand])
+                used.add(cand)
+                break
+
+        # --- Control resistor candidates ---
+        res_cands = []
+        if n_match:
+            res_cands += [
+                f"R{n_match}", f"R_ctrl_{rid}", f"Rctrl{n_match}",
+                f"R_{rid}", f"r{n_match}",
+            ]
+        for cand in res_cands:
+            if cand in by_id and cand not in used:
+                cell.append(by_id[cand])
+                used.add(cand)
+                break
+
         groups[rid] = cell
     return groups
 

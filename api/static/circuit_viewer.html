@@ -1535,6 +1535,126 @@
                 }
                 topY = 8;
 
+
+            // ── F4.2 — I2C / 1-wire sensor packages ───────────────────────
+            } else if (t === 'bmp280' || t === 'bme280' || t === 'bmp180') {
+                // QFN-8 breakout: small green PCB + tiny black IC die (2.5×2.5mm scaled ×2)
+                const pcbGeo = new THREE.BoxGeometry(14, 1.6, 14);
+                mesh = new THREE.Mesh(pcbGeo, new THREE.MeshStandardMaterial({ color: 0x0a5c0a, roughness: 0.85 }));
+                mesh.position.set(x, 0.8, z);
+                threeScene.add(mesh);
+                // Black IC die (QFN-8 scaled for visibility)
+                const dieGeo = new THREE.BoxGeometry(5, 1.0, 5);
+                const die = new THREE.Mesh(dieGeo, new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.6 }));
+                die.position.set(x, 2.1, z);
+                threeScene.add(die);
+                // Silkscreen text stripe
+                const ssGeo = new THREE.BoxGeometry(10, 0.05, 2);
+                const ss = new THREE.Mesh(ssGeo, new THREE.MeshStandardMaterial({ color: 0xffffff }));
+                ss.position.set(x, 1.63, z + 4);
+                threeScene.add(ss);
+                // 4 castellated pads on each long side
+                for (const side of [-1, 1]) {
+                    for (let pi = 0; pi < 4; pi++) {
+                        const padGeo = new THREE.BoxGeometry(1.2, 0.3, 1.5);
+                        const pad = new THREE.Mesh(padGeo, new THREE.MeshStandardMaterial({ color: 0xd4aa00, metalness: 0.9 }));
+                        pad.position.set(x + side * 7, 1.63, z - 4.5 + pi * 3);
+                        threeScene.add(pad);
+                    }
+                }
+                _addEdgeHighlight(mesh, 0x00ff99);
+                topY = 4;
+
+            } else if (t === 'dht22' || t === 'am2302' || t === 'dht11') {
+                // White rectangular body (15×25mm) with ventilation grill
+                const bodyGeo = new THREE.BoxGeometry(15, 18, 25);
+                mesh = new THREE.Mesh(bodyGeo, new THREE.MeshStandardMaterial({ color: 0xf0f0f0, roughness: 0.7 }));
+                mesh.position.set(x, 9, z);
+                threeScene.add(mesh);
+                // Grill slots (horizontal bars cut into front face)
+                for (let gi = 0; gi < 6; gi++) {
+                    const slotGeo = new THREE.BoxGeometry(11, 1.2, 0.5);
+                    const slot = new THREE.Mesh(slotGeo, new THREE.MeshStandardMaterial({ color: 0x222222 }));
+                    slot.position.set(x, 3 + gi * 2.4, z + 12.8);
+                    threeScene.add(slot);
+                }
+                // PCB tab at bottom (grey)
+                const tabGeo = new THREE.BoxGeometry(15, 3, 6);
+                const tab = new THREE.Mesh(tabGeo, new THREE.MeshStandardMaterial({ color: 0x226622, roughness: 0.85 }));
+                tab.position.set(x, -1.5, z - 9.5);
+                threeScene.add(tab);
+                // 3 through-hole pins (2.54mm pitch)
+                for (const dz of [-2.54, 0, 2.54]) {
+                    const pinGeo = new THREE.CylinderGeometry(0.35, 0.35, 6, 8);
+                    const pin = new THREE.Mesh(pinGeo, new THREE.MeshStandardMaterial({ color: 0xd4aa00, metalness: 0.9 }));
+                    pin.position.set(x, -4.5, z - 9.5 + dz);
+                    threeScene.add(pin);
+                }
+                _addEdgeHighlight(mesh, 0x88ddff);
+                topY = 19;
+
+            } else if (t === 'mpu6050' || t === 'mpu9250' || t === 'icm20600') {
+                // QFN-24 breakout: blue PCB + black square die (4×4mm)
+                const pcbGeo = new THREE.BoxGeometry(20, 1.6, 20);
+                mesh = new THREE.Mesh(pcbGeo, new THREE.MeshStandardMaterial({ color: 0x0033aa, roughness: 0.85 }));
+                mesh.position.set(x, 0.8, z);
+                threeScene.add(mesh);
+                // Black IC die (QFN-24, 4×4mm scaled ×2 for visibility)
+                const dieGeo = new THREE.BoxGeometry(8, 1.2, 8);
+                const die = new THREE.Mesh(dieGeo, new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.5 }));
+                die.position.set(x, 2.4, z);
+                threeScene.add(die);
+                // Pin 1 dot
+                const dotGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.1, 8);
+                const dot = new THREE.Mesh(dotGeo, new THREE.MeshStandardMaterial({ color: 0xffffff }));
+                dot.position.set(x - 3, 2.05, z - 3);
+                threeScene.add(dot);
+                // Decoupling caps (tiny SMD 0402 on PCB)
+                for (const [dc, dz] of [[6, 7], [-6, 7], [6, -7]]) {
+                    const capGeo = new THREE.BoxGeometry(1.5, 1.0, 1.0);
+                    const cap = new THREE.Mesh(capGeo, new THREE.MeshStandardMaterial({ color: 0xccaa44 }));
+                    cap.position.set(x + dc, 2.1, z + dz);
+                    threeScene.add(cap);
+                }
+                // 6 pads per side (castellated)
+                for (const side of [-1, 1]) {
+                    for (let pi = 0; pi < 6; pi++) {
+                        const padGeo = new THREE.BoxGeometry(1.0, 0.3, 1.8);
+                        const pad = new THREE.Mesh(padGeo, new THREE.MeshStandardMaterial({ color: 0xd4aa00, metalness: 0.9 }));
+                        pad.position.set(x + side * 10, 1.63, z - 7.5 + pi * 3);
+                        threeScene.add(pad);
+                    }
+                }
+                _addEdgeHighlight(mesh, 0x4488ff);
+                topY = 5;
+
+            } else if (t === 'ds18b20' || t === 'ds18s20' || t === 'lm35') {
+                // TO-92 package: black teardrop with 3 bent leads
+                // Main body (cylinder slightly flattened = box approximation)
+                const bodyGeo = new THREE.CylinderGeometry(2.5, 2.5, 4.3, 16, 1, false, 0, Math.PI);
+                mesh = new THREE.Mesh(bodyGeo, new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.85 }));
+                mesh.position.set(x, 2.15, z);
+                threeScene.add(mesh);
+                // Flat face (back)
+                const flatGeo = new THREE.BoxGeometry(5, 4.3, 0.4);
+                const flat = new THREE.Mesh(flatGeo, new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.85 }));
+                flat.position.set(x, 2.15, z);
+                threeScene.add(flat);
+                // White silkscreen text line
+                const textGeo = new THREE.BoxGeometry(3.5, 0.05, 1.0);
+                const text = new THREE.Mesh(textGeo, new THREE.MeshStandardMaterial({ color: 0xffffff }));
+                text.position.set(x, 4.35, z);
+                threeScene.add(text);
+                // 3 leads (bent at 90° coming down from bottom)
+                for (const dxPin of [-1.27, 0, 1.27]) {
+                    const legGeo = new THREE.CylinderGeometry(0.25, 0.25, 6, 8);
+                    const leg = new THREE.Mesh(legGeo, new THREE.MeshStandardMaterial({ color: 0xc0c0c0, metalness: 0.85 }));
+                    leg.position.set(x + dxPin, -3, z);
+                    threeScene.add(leg);
+                }
+                _addEdgeHighlight(mesh, 0xff8844);
+                topY = 6;
+
             } else {
                 // Generic IC: flat box with pin stubs
                 const bw = 14, bh = 3, bd = 10;

@@ -76,10 +76,35 @@ _ZONE_MCU_TYPES = _MCU_TYPES | {
 }
 _RELAY_TYPES = {"relay", "relay_module", "ssr"}
 
+# Sensor types that get their own dedicated column between MCU and relay
+_ZONE_SENSOR_TYPES = {
+    # I2C sensors
+    "bmp280", "bme280", "bmp180", "bmp085",
+    "mpu6050", "mpu9250", "icm20600", "icm42688",
+    "ina219", "ina226", "ads1115", "ads1015",
+    "si7021", "htu21d", "sht31", "sht30", "aht20",
+    "ds3231", "ds1307", "pcf8574",
+    "vl53l0x", "tof", "apds9960",
+    # 1-wire / analog sensors
+    "ds18b20", "ds18s20", "lm35", "ntc", "thermistor",
+    "dht22", "dht11", "am2302",
+    # SPI sensors
+    "max6675", "max31855", "max31865",
+    "mcp3208", "mcp3204", "mcp3008",
+    "nrf24l01",
+    # Generic sensor modules
+    "sensor", "moisture_sensor", "soil_sensor",
+    "pir", "motion_sensor",
+    "gas_sensor", "mq2", "mq135",
+    "ultrasonic", "hc_sr04",
+    "ir_sensor", "color_sensor",
+}
+
 
 def _classify_zone(comp: Dict) -> str:
     """
-    Returns zone name: 'ac', 'mcu', 'relay', 'output', or 'other'.
+    Returns zone name: 'ac', 'mcu', 'sensor', 'relay', 'output', or 'other'.
+    Signal flow: AC → MCU/Power → Sensors → Relay → Output
     Uses type, id, and name heuristics.
     """
     cid = (comp.get("id", "") or "").lower()
@@ -103,6 +128,10 @@ def _classify_zone(comp: Dict) -> str:
     # MCU / power-conditioning zone
     if t in _ZONE_MCU_TYPES:
         return "mcu"
+
+    # Dedicated sensor column (I2C, SPI, 1-wire, analog modules)
+    if t in _ZONE_SENSOR_TYPES:
+        return "sensor"
 
     # Output connectors (J2..JN typically)
     if t == "connector":
@@ -134,28 +163,41 @@ def _build_relay_groups(components: List[Dict]) -> Dict[str, List[Dict]]:
         cell = [relay]
         used_ids.add(rid)
 
-        # Try to find associated flyback diode
+        # Try to find associated flyback diode (expanded patterns — GAP-5 fix)
         n_match = "".join(ch for ch in rid if ch.isdigit())
+        rid_lo = rid.lower()
         candidates_d = []
         if n_match:
-            candidates_d += [f"D_fly{n_match}", f"D_fly_{rid}", f"D{n_match}",
-                             f"D_flyback_{rid}", f"Dfly{n_match}"]
-        for cid in candidates_d:
-            if cid in by_id and cid not in used_ids:
-                cell.append(by_id[cid])
-                used_ids.add(cid)
+            candidates_d += [
+                f"D_fly{n_match}", f"D_fly_{rid}", f"D_fly_{rid_lo}",
+                f"D{n_match}", f"D_flyback_{rid}", f"Dfly{n_match}",
+                f"d_fly{n_match}", f"d{n_match}",
+            ]
+        # Also catch any diode whose ID contains 'fly' and the relay number
+        for cid2, comp2 in by_id.items():
+            cid2_lo = cid2.lower()
+            t2 = (comp2.get("resolved_type") or comp2.get("type") or "").lower()
+            if t2 in ("diode", "1n4007", "1n5819", "1n4148") and \
+               "fly" in cid2_lo and n_match and n_match in cid2_lo and \
+               cid2 not in used_ids:
+                candidates_d.append(cid2)
+        for cid2 in candidates_d:
+            if cid2 in by_id and cid2 not in used_ids:
+                cell.append(by_id[cid2])
+                used_ids.add(cid2)
                 break
 
         # Try to find associated control resistor
         candidates_r = []
         if n_match:
             candidates_r += [f"R{n_match}", f"R_ctrl_{rid}", f"Rctrl{n_match}",
-                             f"R_{rid}"]
-        for cid in candidates_r:
-            if cid in by_id and cid not in used_ids:
-                cell.append(by_id[cid])
-                used_ids.add(cid)
+                             f"R_{rid}", f"r{n_match}"]
+        for cid2 in candidates_r:
+            if cid2 in by_id and cid2 not in used_ids:
+                cell.append(by_id[cid2])
+                used_ids.add(cid2)
                 break
+
 
         groups[rid] = cell
 
@@ -189,7 +231,7 @@ def _layout_components(components: List[Dict], width: int, height: int,
     relay_groups = _build_relay_groups(pending)
     grouped_ids: set = {cid for cell in relay_groups.values() for cid in (c["id"] for c in cell)}
 
-    zones: Dict[str, List[Dict]] = {z: [] for z in ("ac", "mcu", "relay", "output", "other")}
+    zones: Dict[str, List[Dict]] = {z: [] for z in ("ac", "mcu", "sensor", "relay", "output", "other")}
     for comp in pending:
         if comp["id"] in grouped_ids:
             # Will be placed via relay_groups
@@ -205,7 +247,8 @@ def _layout_components(components: List[Dict], width: int, height: int,
     x_margin = 80
     SLOT_AC     = 240   # px reservados por zona (símbolos + label area)
     SLOT_MCU    = 240
-    SLOT_OTHER  = 220
+    SLOT_SENSOR = 220   # dedicated I2C/SPI/1-wire sensor column
+    SLOT_OTHER  = 200
     SLOT_RELAY  = 360   # más ancho porque la celda es relay+diodo+resistencia
     SLOT_OUTPUT = 200
     GAP         = 60    # px entre zonas
@@ -214,11 +257,12 @@ def _layout_components(components: List[Dict], width: int, height: int,
         zones["mcu"],
         key=lambda c: 1 if (c.get("resolved_type") or c.get("type") or "").lower() in _MCU_TYPES else 0,
     )
-    has_ac     = bool(zones["ac"])
-    has_mcu    = bool(mcu_sorted)
-    has_other  = bool([c for c in zones["other"] if c["id"] not in positions])
-    has_relay  = bool(relay_groups)
-    has_output = bool(zones["output"])
+    has_ac      = bool(zones["ac"])
+    has_mcu     = bool(mcu_sorted)
+    has_sensor  = bool(zones["sensor"])
+    has_other   = bool([c for c in zones["other"] if c["id"] not in positions])
+    has_relay   = bool(relay_groups)
+    has_output  = bool(zones["output"])
 
     cur = x_margin
     if has_ac:
@@ -230,6 +274,11 @@ def _layout_components(components: List[Dict], width: int, height: int,
         x_mcu_c = cur + SLOT_MCU // 2; cur += SLOT_MCU + GAP
     else:
         x_mcu_c = cur
+
+    if has_sensor:
+        x_sensor_c = cur + SLOT_SENSOR // 2; cur += SLOT_SENSOR + GAP
+    else:
+        x_sensor_c = cur
 
     if has_other:
         x_other_c = cur + SLOT_OTHER // 2; cur += SLOT_OTHER + GAP
@@ -299,7 +348,13 @@ def _layout_components(components: List[Dict], width: int, height: int,
     for comp, ypos in zip(out_comps, _stack_y_positions(len(out_comps))):
         positions[comp["id"]] = (x_output_c, ypos)
 
-    # ── 'other' / misc (sensors, displays, etc.) — usa x_other_c ya calculado ──
+    # ── Sensor zone (I2C/SPI/1-wire between MCU and relay) ──
+    sensor_comps = [c for c in zones["sensor"] if c["id"] not in positions]
+    if sensor_comps:
+        for comp, ypos in zip(sensor_comps, _stack_y_positions(len(sensor_comps))):
+            positions[comp["id"]] = (x_sensor_c, ypos)
+
+    # ── 'other' / misc (passive clusters, displays, etc.) ──
     other_comps = [c for c in zones["other"] if c["id"] not in positions]
     if other_comps:
         for comp, ypos in zip(other_comps, _stack_y_positions(len(other_comps))):
@@ -348,10 +403,11 @@ def _layout_components(components: List[Dict], width: int, height: int,
                 positions[c["id"]] = (x_center, y)
 
         for _ in range(3):
-            _reorder_zone("ac",     ac_comps,    x_ac_c)
-            _reorder_zone("mcu",    mcu_sorted,  x_mcu_c)
-            _reorder_zone("other",  other_comps, x_other_c)
-            _reorder_zone("output", out_comps,   x_output_c)
+            _reorder_zone("ac",      ac_comps,      x_ac_c)
+            _reorder_zone("mcu",     mcu_sorted,    x_mcu_c)
+            _reorder_zone("sensor",  sensor_comps,  x_sensor_c)
+            _reorder_zone("other",   other_comps,   x_other_c)
+            _reorder_zone("output",  out_comps,     x_output_c)
             if anchor != "relay" and len(relay_groups) >= 2:
                 relay_targets: List[Tuple[float, List[Dict]]] = []
                 for cell in relay_cells:
