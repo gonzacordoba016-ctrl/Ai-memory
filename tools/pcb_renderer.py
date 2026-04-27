@@ -114,9 +114,11 @@ def _pcb_zone(comp: Dict) -> str:
         return "relay"
     if t in _ZONE_HV_TYPES:
         return "hv"
+    # Connector is HV only if name explicitly says so
     if t == "connector" and (
-        cid == "j1" or "220" in name or "110" in name
-        or "ac" in name or "input" in name or "entrada" in name
+        "220" in name or "110" in name
+        or "ac" in name or "mains" in name
+        or "input" in name or "entrada" in name
     ):
         return "hv"
     if t in _ZONE_MCU_PWR_TYPES:

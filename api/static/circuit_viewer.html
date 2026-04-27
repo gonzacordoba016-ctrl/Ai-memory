@@ -953,7 +953,7 @@
             const compPos = {};
 
             // Place HV zone
-            const hvZ = _stackZ(zones.hv.length, Math.max(20, pcbD * 0.85 / Math.max(zones.hv.length, 1)));
+            const hvZ = _stackZ(zones.hv.length, Math.max(20, bbD * 0.75 / Math.max(zones.hv.length, 1)));
             zones.hv.forEach((c, i) => {
                 const t = (c.resolved_type || c.type || 'generic').toLowerCase();
                 const topY = _addComponent3D(c, t, xHv, hvZ[i]);
@@ -966,7 +966,7 @@
                 const tb = (b.resolved_type || b.type || '').toLowerCase();
                 return (mcuTypes.has(ta) ? 1 : 0) - (mcuTypes.has(tb) ? 1 : 0);
             });
-            const mcuZ = _stackZ(mcuSorted.length, Math.max(18, pcbD * 0.85 / Math.max(mcuSorted.length, 1)));
+            const mcuZ = _stackZ(mcuSorted.length, Math.max(18, bbD * 0.75 / Math.max(mcuSorted.length, 1)));
             mcuSorted.forEach((c, i) => {
                 const t = (c.resolved_type || c.type || 'generic').toLowerCase();
                 const topY = _addComponent3D(c, t, xMcu, mcuZ[i]);
@@ -974,7 +974,7 @@
             });
 
             // Place relay cells (relay + flyback diode + control resistor adjacent)
-            const cellPitch = Math.max(28, pcbD * 0.85 / Math.max(relayGroups.length, 1));
+            const cellPitch = Math.max(28, bbD * 0.75 / Math.max(relayGroups.length, 1));
             const cellZ = _stackZ(relayGroups.length, cellPitch);
             relayGroups.forEach((cell, i) => {
                 const cz = cellZ[i];
@@ -990,7 +990,7 @@
             });
 
             // Place output connectors
-            const outZ = _stackZ(zones.output.length, Math.max(14, pcbD * 0.85 / Math.max(zones.output.length, 1)));
+            const outZ = _stackZ(zones.output.length, Math.max(14, bbD * 0.75 / Math.max(zones.output.length, 1)));
             zones.output.forEach((c, i) => {
                 const t = (c.resolved_type || c.type || 'generic').toLowerCase();
                 const topY = _addComponent3D(c, t, xOutput, outZ[i]);
@@ -999,7 +999,7 @@
 
             // Place 'other' (sensors etc.) between MCU and relay
             const otherX = xLeft + W * 0.55;
-            const otherZ = _stackZ(zones.other.length, Math.max(14, pcbD * 0.85 / Math.max(zones.other.length, 1)));
+            const otherZ = _stackZ(zones.other.length, Math.max(14, bbD * 0.75 / Math.max(zones.other.length, 1)));
             zones.other.forEach((c, i) => {
                 const t = (c.resolved_type || c.type || 'generic').toLowerCase();
                 const topY = _addComponent3D(c, t, otherX, otherZ[i]);

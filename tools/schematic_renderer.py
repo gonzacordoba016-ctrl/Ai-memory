@@ -94,8 +94,9 @@ def _classify_zone(comp: Dict) -> str:
     if t in _ZONE_AC_TYPES:
         return "ac"
     if t == "connector" and (
-        cid == "j1" or "220" in name or "110" in name
-        or "ac" in name or "input" in name or "alimenta" in name or "entrada" in name
+        "220" in name or "110" in name
+        or "ac" in name or "mains" in name
+        or "input" in name or "alimenta" in name or "entrada" in name
     ):
         return "ac"
 
@@ -676,59 +677,58 @@ class SchematicRenderer:
                              font_family="monospace", text_anchor="middle",
                              font_weight="bold"))
 
-    def _draw_connections(self, dwg, nets: List[Dict],
-                          positions: Dict[str, Tuple[int, int]]):
+    def _draw_connections(self, dwg, nets, positions):
+        """Draw wires or net labels for each net."""
         for net in nets:
-            name  = net.get("name", "")
-            color = _net_color(name)
-            nodes = net.get("nodes", [])
-            coords = [positions[n.split(".")[0]] for n in nodes
-                      if n.split(".")[0] in positions]
-            if len(coords) < 2:
-                continue
-
-            # Compute span of this net to decide wires vs labels
-            xs = [c[0] for c in coords]
-            ys = [c[1] for c in coords]
-            span_x = max(xs) - min(xs)
-            span_y = max(ys) - min(ys)
-            use_labels = (span_x > self._LABEL_DISTANCE_THRESHOLD
-                          or span_y > self._LABEL_DISTANCE_THRESHOLD)
-
-            if use_labels:
-                # Draw a short stub + net label flag at each node (no long wires)
-                for cx, cy in coords:
-                    # Determine label direction by node X relative to canvas mean
+            try:
+                name  = net.get("name", "")
+                color = _net_color(name)
+                nodes = net.get("nodes", [])
+                coords = [
+                    positions[n.split(".")[0]]
+                    for n in nodes
+                    if n.split(".")[0] in positions
+                ]
+                if len(coords) < 2:
+                    continue
+                xs = [c[0] for c in coords]
+                ys = [c[1] for c in coords]
+                span_x = max(xs) - min(xs)
+                span_y = max(ys) - min(ys)
+                use_labels = (span_x > self._LABEL_DISTANCE_THRESHOLD
+                              or span_y > self._LABEL_DISTANCE_THRESHOLD)
+                if use_labels:
                     avg_x = sum(xs) / len(xs)
-                    direction = "right" if cx <= avg_x else "left"
-                    # Short stub from component
-                    stub_len = 18
-                    stub_dx = stub_len if direction == "right" else -stub_len
-                    dwg.add(dwg.line(start=(cx, cy), end=(cx + stub_dx, cy),
-                                     stroke=color, stroke_width=1.8))
-                    self._draw_net_label(dwg, name, (cx + stub_dx, cy),
-                                         color, direction=direction)
-                    dwg.add(dwg.circle(center=(cx, cy), r=3, fill=color))
-            else:
-                # Draw physical wires (orthogonal routing) for nearby nodes
-                for i in range(len(coords) - 1):
-                    path = _route_orthogonal(coords[i], coords[i + 1])
-                    for j in range(len(path) - 1):
-                        dwg.add(dwg.line(start=path[j], end=path[j + 1],
-                                         stroke=color, stroke_width=1.8))
-                # Junction dots
-                for pt in coords:
-                    dwg.add(dwg.circle(center=pt, r=3.5, fill=color))
-                # Net label centered on wire
-                lx = (coords[0][0] + coords[-1][0]) // 2
-                ly = min(ys) - 10
-                label_w = len(name) * 5 + 8
-                dwg.add(dwg.rect(insert=(lx - 2, ly - 11), size=(label_w, 14),
-                                 fill="#ffffee", stroke=color, stroke_width=0.7, rx=2))
-                dwg.add(dwg.text(name, insert=(lx + 2, ly),
-                                 font_size=9, fill=color, font_family="monospace"))
-
-    # ── Power rail symbols (VCC ↑ / GND ⏚) ─────────────────────────────────
+                    for cx, cy in coords:
+                        direction = "right" if cx <= avg_x else "left"
+                        stub_dx = 18 if direction == "right" else -18
+                        dwg.add(dwg.line(
+                            start=(cx, cy), end=(cx + stub_dx, cy),
+                            stroke=color, stroke_width=1.8))
+                        self._draw_net_label(dwg, name, (cx + stub_dx, cy),
+                                             color, direction=direction)
+                        dwg.add(dwg.circle(center=(cx, cy), r=3, fill=color))
+                else:
+                    for i in range(len(coords) - 1):
+                        path = _route_orthogonal(coords[i], coords[i + 1])
+                        for j in range(len(path) - 1):
+                            dwg.add(dwg.line(
+                                start=path[j], end=path[j + 1],
+                                stroke=color, stroke_width=1.8))
+                    for pt in coords:
+                        dwg.add(dwg.circle(center=pt, r=3.5, fill=color))
+                    lx = (coords[0][0] + coords[-1][0]) // 2
+                    ly = min(ys) - 10
+                    label_w = len(name) * 5 + 8
+                    dwg.add(dwg.rect(
+                        insert=(lx - 2, ly - 11), size=(label_w, 14),
+                        fill="#ffffee", stroke=color, stroke_width=0.7, rx=2))
+                    dwg.add(dwg.text(
+                        name, insert=(lx + 2, ly),
+                        font_size=9, fill=color, font_family="monospace"))
+            except Exception as ex:
+                logger.warning(
+                    f"_draw_connections skipped net '{net.get('name','')}': {ex}")
 
     def _draw_power_rails(self, dwg, nets: List[Dict],
                           positions: Dict[str, Tuple[int, int]]):
