@@ -466,36 +466,52 @@ def _board_size(components: List[Dict]) -> Tuple[float, float]:
 def _route_traces(nets: List[Dict],
                   positions: Dict[str, Tuple[float, float]]) -> List[Dict]:
     """
-    Returns a list of trace segments: {x1, y1, x2, y2, net, layer, width}.
-    Uses simple Manhattan routing: horizontal then vertical.
-    VCC/GND on bottom copper, signals on top copper.
+    Returns trace segments: {x1,y1,x2,y2,net,layer,width}.
+    Manhattan routing.  Trace width proportional to electrical role:
+      GND=1.0mm, VCC/PWR=0.5mm, I2C/SPI/UART=0.3mm, signal=0.25mm.
+    Power nets on bottom copper; signals on top copper.
     """
     traces = []
     for net in nets:
-        name  = net.get("name", "")
+        name = net.get("name", "")
+        nl   = name.lower()
         nodes = net.get("nodes", [])
 
-        is_pwr = any(v in name.lower() for v in ("vcc", "gnd", "5v", "3v3", "vin", "gnd"))
-        layer  = "bottom" if is_pwr else "top"
-        width  = 1.2 if is_pwr else 0.5
+        if any(v in nl for v in ("gnd", "ground")):
+            width, layer = 1.0, "bottom"
+        elif any(v in nl for v in ("vcc", "5v", "3v3", "vin", "vdd", "power", "vbat")):
+            width, layer = 0.5, "bottom"
+        elif any(v in nl for v in ("i2c", "sda", "scl", "spi", "mosi", "miso", "sck",
+                                   "uart", "tx", "rx")):
+            width, layer = 0.3, "top"
+        else:
+            width, layer = 0.25, "top"
 
-        coords = []
-        for node in nodes:
-            cid = node.split(".")[0]
-            if cid in positions:
-                coords.append(positions[cid])
+        coords = [positions[n.split(".")[0]]
+                  for n in nodes if n.split(".")[0] in positions]
 
         for i in range(len(coords) - 1):
             x1, y1 = coords[i]
             x2, y2 = coords[i + 1]
             mid_x = (x1 + x2) / 2
-            traces.append({"x1": x1, "y1": y1, "x2": mid_x, "y2": y1,
-                            "net": name, "layer": layer, "width": width})
+            alt = "bottom" if layer == "top" else "top"
+            traces.append({"x1": x1,    "y1": y1, "x2": mid_x, "y2": y1,
+                           "net": name, "layer": layer, "width": width})
             traces.append({"x1": mid_x, "y1": y1, "x2": mid_x, "y2": y2,
-                            "net": name, "layer": layer, "width": width})
-            traces.append({"x1": mid_x, "y1": y2, "x2": x2, "y2": y2,
-                            "net": name, "layer": layer, "width": width})
+                           "net": name, "layer": alt,   "width": width})
+            traces.append({"x1": mid_x, "y1": y2, "x2": x2,    "y2": y2,
+                           "net": name, "layer": layer, "width": width})
     return traces
+
+
+def _trace_color(layer: str, net_name: str) -> str:
+    """Returns SVG stroke color for a trace."""
+    nl = net_name.lower()
+    if any(v in nl for v in ("gnd", "ground")):
+        return "#b87333"          # copper-bottom
+    if any(v in nl for v in ("vcc", "5v", "3v3", "vin", "vdd")):
+        return "#cc3333" if layer == "top" else "#b87333"
+    return "#daa520" if layer == "top" else "#c09030"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -530,27 +546,37 @@ class PCBRenderer:
                 f'width="{pw:.1f}" height="{ph:.1f}" '
                 f'viewBox="0 0 {board_w:.2f} {board_h:.2f}">',
                 '<defs>',
-                '  <style>',
-                '    .board { fill: #1a4a1a; }',
-                '    .copper-top { stroke: #daa520; fill: none; }',
-                '    .copper-bot { stroke: #b87333; fill: none; }',
-                '    .silkscreen { fill: white; font-family: monospace; }',
-                '    .pad { fill: #daa520; stroke: #111; stroke-width: 0.2; }',
-                '    .pad-gnd { fill: #b87333; stroke: #111; stroke-width: 0.2; }',
-                '    .pad-smd { fill: #c8a000; stroke: #111; stroke-width: 0.15; }',
-                '    .via { fill: #888; stroke: #daa520; stroke-width: 0.15; }',
-                '    .drc-error { stroke: #ff3333 !important; stroke-width: 0.4 !important; }',
-                '  </style>',
-                '  <filter id="glow">',
-                '    <feGaussianBlur stdDeviation="0.3" result="blur"/>',
+                # 45-degree hatch for GND copper pour
+                '  <pattern id="gnd-hatch" patternUnits="userSpaceOnUse" '
+                '           width="2" height="2" patternTransform="rotate(45 0 0)">',
+                '    <line x1="0" y1="0" x2="0" y2="2" '
+                '          stroke="#b87333" stroke-width="0.5" stroke-opacity="0.55"/>',
+                '  </pattern>',
+                # 1mm board grid
+                '  <pattern id="pcb-grid" width="1" height="1" patternUnits="userSpaceOnUse">',
+                '    <path d="M 1 0 L 0 0 0 1" fill="none" stroke="#1e541e" stroke-width="0.04"/>',
+                '  </pattern>',
+                # Glow filter for DRC errors
+                '  <filter id="drc-glow" x="-30%" y="-30%" width="160%" height="160%">',
+                '    <feGaussianBlur stdDeviation="0.5" result="blur"/>',
                 '    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>',
                 '  </filter>',
+                # Radial gradient for vias
+                '  <radialGradient id="via-grad" cx="38%" cy="35%">',
+                '    <stop offset="0%" stop-color="#e8d070"/>',
+                '    <stop offset="100%" stop-color="#906000"/>',
+                '  </radialGradient>',
                 '</defs>',
                 f'<!-- PCB: {circuit_data.get("name","Circuit")} — {len(components)} comps -->',
-                f'<rect x="0" y="0" width="{board_w:.2f}" height="{board_h:.2f}" class="board"/>',
-                # Courtyard
+                # FR4 board fill
+                f'<rect x="0" y="0" width="{board_w:.2f}" height="{board_h:.2f}" fill="#1a4a1a"/>',
+                # 1mm grid overlay
+                f'<rect width="{board_w:.2f}" height="{board_h:.2f}" fill="url(#pcb-grid)"/>',
+                # Edge.Cuts — yellow board outline
                 f'<rect x="0.5" y="0.5" width="{board_w-1:.2f}" height="{board_h-1:.2f}" '
-                f'fill="none" stroke="#ffcc00" stroke-width="0.15" stroke-dasharray="0.5,0.5"/>',
+                f'fill="none" stroke="#ffcc00" stroke-width="0.4"/>',
+                # Corner crosshair markers
+                *self._edge_cuts_corners(board_w, board_h),
             ]
 
             # ── F3.3 — HV/LV separation line ─────────────────────────────────
@@ -592,53 +618,60 @@ class PCBRenderer:
                     f'text-anchor="middle" font-family="monospace">⚠ 3mm clearance</text>'
                 )
 
-            # ── GND copper pour (hatched zone) ───────────────────────────────
-            svg.append('<!-- GND copper pour (hatched) -->')
+            # ── GND flood fill (diagonal hatch pattern, bottom copper) ─────────
+            svg.append('<!-- GND copper pour -->')
             gnd_nets = [n for n in nets
-                        if "gnd" in n.get("name", "").lower() or "ground" in n.get("name", "").lower()]
+                        if any(v in n.get("name","").lower() for v in ("gnd","ground"))]
             if gnd_nets:
-                gnd_comps = set()
-                for n in gnd_nets:
-                    for node in n.get("nodes", []):
-                        gnd_comps.add(node.split(".")[0])
-                for cid in gnd_comps:
+                gnd_ids = {node.split(".")[0] for net in gnd_nets
+                           for node in net.get("nodes", [])}
+                for cid in gnd_ids:
                     if cid not in positions:
                         continue
-                    cx, cy = positions[cid]
-                    ctype  = next((c.get("resolved_type", c.get("type", "")) for c in components
-                                   if c["id"] == cid), "")
-                    w, h   = _fp(ctype)
-                    pad_r  = 0.7
-                    # Small copper fill near GND pad
+                    cx_, cy_ = positions[cid]
+                    ct_ = next((c.get("resolved_type", c.get("type",""))
+                                for c in components if c["id"] == cid), "")
+                    w_, h_ = _fp(ct_)
+                    pour = 2.5  # 2.5mm pour clearance
                     svg.append(
-                        f'<rect x="{cx-w/2-1:.3f}" y="{cy-pad_r:.3f}" '
-                        f'width="2" height="{2*pad_r:.3f}" '
-                        f'fill="#b87333" fill-opacity="0.3" rx="0.3"/>'
+                        f'<rect x="{cx_-w_/2-pour:.3f}" y="{cy_-h_/2-pour:.3f}" '
+                        f'width="{w_+pour*2:.3f}" height="{h_+pour*2:.3f}" '
+                        f'fill="url(#gnd-hatch)" rx="0.6"/>'
                     )
 
-            # ── Traces ───────────────────────────────────────────────────────
-            svg.append('<!-- Copper traces -->')
-            via_positions: set[tuple] = set()
-            for tr in traces:
-                cls   = "copper-bot" if tr["layer"] == "bottom" else "copper-top"
-                color = "#b87333" if tr["layer"] == "bottom" else "#daa520"
+            # ── Bottom copper traces (drawn first — painter's algorithm) ──────
+            svg.append('<!-- Bottom copper -->')
+            via_positions: set = set()
+            for tr in [t for t in traces if t["layer"] == "bottom"]:
+                col = _trace_color("bottom", tr["net"])
                 svg.append(
                     f'<line x1="{tr["x1"]:.3f}" y1="{tr["y1"]:.3f}" '
                     f'x2="{tr["x2"]:.3f}" y2="{tr["y2"]:.3f}" '
-                    f'stroke="{color}" stroke-width="{tr["width"]:.2f}" stroke-linecap="round"/>'
+                    f'stroke="{col}" stroke-width="{tr["width"]:.2f}" '
+                    f'stroke-linecap="round" opacity="0.80"/>'
                 )
-                # Collect midpoints for via placement (where top/bot layers meet)
-                if tr["layer"] == "top":
-                    via_positions.add((round(tr["x2"], 2), round(tr["y2"], 2)))
 
-            # ── Vias at trace junctions ───────────────────────────────────────
-            svg.append('<!-- Vias -->')
-            for vx, vy in list(via_positions)[:40]:  # cap to avoid clutter
+            # ── Top copper traces ─────────────────────────────────────────────
+            svg.append('<!-- Top copper -->')
+            for tr in [t for t in traces if t["layer"] == "top"]:
+                col = _trace_color("top", tr["net"])
                 svg.append(
-                    f'<circle cx="{vx:.3f}" cy="{vy:.3f}" r="0.5" class="via"/>'
+                    f'<line x1="{tr["x1"]:.3f}" y1="{tr["y1"]:.3f}" '
+                    f'x2="{tr["x2"]:.3f}" y2="{tr["y2"]:.3f}" '
+                    f'stroke="{col}" stroke-width="{tr["width"]:.2f}" '
+                    f'stroke-linecap="round"/>'
+                )
+                via_positions.add((round(tr["x1"], 1), round(tr["y1"], 1)))
+
+            # ── Vias (radial gradient + drill hole) ───────────────────────────
+            svg.append('<!-- Vias -->')
+            for vx, vy in list(via_positions)[:55]:
+                svg.append(
+                    f'<circle cx="{vx:.2f}" cy="{vy:.2f}" r="0.7" '
+                    f'fill="url(#via-grad)" stroke="#c8a000" stroke-width="0.08"/>'
                 )
                 svg.append(
-                    f'<circle cx="{vx:.3f}" cy="{vy:.3f}" r="0.25" fill="#111"/>'
+                    f'<circle cx="{vx:.2f}" cy="{vy:.2f}" r="0.32" fill="#0a1a0a"/>'
                 )
 
             # ── Components ───────────────────────────────────────────────────
@@ -796,6 +829,66 @@ class PCBRenderer:
             logger.error(f"Error generando PCB SVG: {e}")
             return (f'<svg xmlns="http://www.w3.org/2000/svg" width="400" height="100">'
                     f'<text x="10" y="50" fill="red" font-size="12">Error: {e}</text></svg>')
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _edge_cuts_corners(bw: float, bh: float) -> List[str]:
+        """KiCad-style crosshair markers at each corner on Edge.Cuts layer."""
+        out = []
+        sz = 1.2  # crosshair arm length mm
+        for cx, cy in [(0.5, 0.5), (bw-0.5, 0.5), (0.5, bh-0.5), (bw-0.5, bh-0.5)]:
+            out.append(
+                f'<line x1="{cx-sz:.2f}" y1="{cy:.2f}" x2="{cx+sz:.2f}" y2="{cy:.2f}" '
+                f'stroke="#ffcc00" stroke-width="0.25"/>'
+            )
+            out.append(
+                f'<line x1="{cx:.2f}" y1="{cy-sz:.2f}" x2="{cx:.2f}" y2="{cy+sz:.2f}" '
+                f'stroke="#ffcc00" stroke-width="0.25"/>'
+            )
+        return out
+
+    @staticmethod
+    def _render_pads(comp: Dict, ctype: str, cx: float, cy: float,
+                     w: float, h: float, nets: List[Dict]) -> List[str]:
+        """
+        SMD rectangular pads for ICs/modules; THT annular ring + drill for passives.
+        GND-connected pads rendered in copper-bronze (#b87333).
+        """
+        out = []
+        is_gnd = any(
+            any(n.split(".")[0] == comp["id"] for n in net.get("nodes", []))
+            and any(v in net.get("name","").lower() for v in ("gnd","ground"))
+            for net in nets
+        )
+        pad_fill = "#b87333" if is_gnd else "#daa520"
+
+        if ctype in _MCU_TYPES or ctype in _LARGE_TYPES:
+            # SMD pads: rectangles along left and right edges
+            n_pins  = max(2, min(10, int(h / 2.8)))
+            pitch   = h / (n_pins + 1)
+            pad_w, pad_h = 1.2, min(1.6, pitch * 0.75)
+            for side_x in [cx - w/2 - 0.4, cx + w/2 - 0.8]:
+                for i in range(1, n_pins + 1):
+                    py_ = cy - h/2 + i * pitch
+                    out.append(
+                        f'<rect x="{side_x:.3f}" y="{py_-pad_h/2:.3f}" '
+                        f'width="{pad_w:.2f}" height="{pad_h:.2f}" '
+                        f'fill="{pad_fill}" stroke="#111" stroke-width="0.08" rx="0.2"/>'
+                    )
+        else:
+            # THT: annular ring + drill hole
+            r_outer, r_drill = 0.85, 0.38
+            for px_ in [cx - w*0.28, cx + w*0.28]:
+                out.append(
+                    f'<circle cx="{px_:.3f}" cy="{cy:.3f}" r="{r_outer:.2f}" '
+                    f'fill="{pad_fill}" stroke="#111" stroke-width="0.08"/>'
+                )
+                out.append(
+                    f'<circle cx="{px_:.3f}" cy="{cy:.3f}" r="{r_drill:.2f}" '
+                    f'fill="#0a1a0a"/>'
+                )
+        return out
 
     # ── Gerber RS-274X ────────────────────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 # STRATUM — Contexto del Proyecto
-> Última actualización: 2026-04-26
-> Versión actual: **v4.18.0**
+> Última actualización: 2026-04-27
+> Versión actual: **v4.19.0**
 > Tagline: _"Tu memoria técnica siempre disponible"_
 > Estado: **Production-ready** (local + Railway)
 
@@ -467,6 +467,65 @@ Dominios soportados:
   - `CIRCUIT_DESIGN_KEYWORDS` ampliado: `"parsea un circuito"`, `"parsea el circuito"`, `"parsea este circuito"`, `"parse a circuit"`, `"generá el esquemático"`, `"generá un circuito"`, `"generá la netlist"`, `"generar circuito"`, `"generar esquemático"`, `"generar netlist"`.
   - Root cause: `_keyword_route` itera el dict en orden; `hardware` keywords contenían `"circuito"` — capturaba antes que `circuit_design`.
 ✅ **Modelo LLM**: migrado a `anthropic/claude-sonnet-4-6` via Railway env vars (`OPENROUTER_MODEL`, `LLM_MODEL_SMART`, `LLM_MODEL_FAST`). Revirtido a `openai/gpt-4o-mini` por créditos insuficientes en OpenRouter (402 Payment Required).
+
+### 4.40 EDA Renderer — Upgrade Profesional KiCad-level (v4.19.0)
+
+#### `tools/pcb_renderer.py`
+✅ **Trace width proporcional a corriente**: GND=1.0mm, VCC/PWR=0.5mm, I2C/SPI/UART=0.3mm, señal=0.25mm (antes todos 1.2mm o 0.5mm sin discriminación).
+✅ **Routing por capa correcto**: nets de potencia van a bottom copper, señales a top copper. El segmento vertical de cada tramo L-shaped alterna layer automáticamente → genera vias en las intersecciones.
+✅ **`_trace_color(layer, net_name)`**: GND=copper-bronce `#b87333`, VCC top=rojo `#cc3333`, VCC bot=bronce, señal top=oro `#daa520`, señal bot=`#c09030`.
+✅ **Painter's algorithm**: bottom copper se dibuja primero, top copper encima — capas visualmente correctas.
+✅ **GND flood fill real**: patrón SVG `<pattern id="gnd-hatch">` con hatch diagonal 45° (lines cada 2mm, 0.5px stroke-opacity 0.55). Cada componente conectado a GND recibe una zona de pour de 2.5mm de clearance.
+✅ **SVG defs profesionales**:
+  - `<pattern id="pcb-grid">` — cuadrícula 1mm sobre el FR4
+  - `<radialGradient id="via-grad">` — gradiente radial dorado/bronce para vías
+  - `<filter id="drc-glow">` — blur + merge para resaltar errores DRC
+✅ **Edge.Cuts mejorado**: borde amarillo `#ffcc00` grosor 0.4mm (antes dasharray fino) + **4 crosshair markers** estilo KiCad en cada esquina (`_edge_cuts_corners()`).
+✅ **Vías profesionales**: `<circle r=0.7>` con `fill="url(#via-grad)"` + drill hole `<circle r=0.32>` oscuro (antes círculo gris plano).
+✅ **`_edge_cuts_corners(bw, bh)`**: nuevo helper estático — genera 8 líneas formando cruces de 2.4mm en las 4 esquinas de la placa.
+✅ **`_render_pads(comp, ctype, ...)`**: nuevo helper estático —
+  - MCU/large ICs: pads SMD rectangulares a lo largo de ambos lados (`rx=0.2`)
+  - Pasivos: pads THT anillo anular (r=0.85) + drill hole (r=0.38)
+  - Pads GND en bronce `#b87333`, resto en oro `#daa520`
+✅ **Leyenda actualizada**: incluye widths de traza reales ("señal/0.25mm", "GND=1.0mm").
+
+#### `tools/schematic_renderer.py`
+✅ **6 símbolos nuevos registrados en dispatch**:
+  - `_sym_transformer`: bobinado EI-core, 4 bumps primario + 4 secundario + líneas de núcleo + pins P/S
+  - `_sym_bridge_rectifier`: diamante de 4 diodos triangulares + labels AC~·+·−
+  - `_sym_fuse`: elipse IEC con zigzag interior (7 segmentos alternos) + valor
+  - `_sym_varistor`: cuerpo de resistor + flecha diagonal bidireccional + "V" + leads
+  - `_sym_mosfet_driver`: IC box 58×44px con header, IN/EN/VCC izquierda, HO/LO/GND derecha
+  - `_sym_connector_ac`: housing IEC 3-pin con socket circles (L=rojo, N=azul, PE=verde) + labels
+✅ **Dispatch ampliado** con 12 entradas nuevas: `transformer`, `bridge_rectifier`, `fuse`, `fuse_holder`, `varistor`, `mov`, `x_capacitor`, `mosfet_driver`, `gate_driver`, `uln2003`, `ir2104`, `connector_ac`, `iec_connector`.
+✅ **`_sym_generic` reescrito** — ya no genera 4 stubs anónimos:
+  - Lee `comp["pins"]` si existe (lista de dicts o strings)
+  - Fallback inteligente por tipo: I2C→VCC/GND/SDA/SCL, UART→TX/RX, SPI→MOSI/MISO/SCK/CS, resto→VCC/GND/IN/OUT
+  - Layout automático: mitad de pines en lado izquierdo, mitad en derecho
+  - Pines VCC/VDD en rojo, GND en azul, resto en color texto
+  - Numeración de pin en exterior (pequeño, gris `#999999`)
+  - Notch IC en borde superior
+  - Altura adaptativa según número de pines
+
+#### `api/static/circuit_viewer.html` (Three.js)
+✅ **Breadboard real** reemplaza el PCB verde genérico:
+  - Base ABS blanca `#f5f5f0` — 195×130×8mm, `roughness=0.7`
+  - **300 agujeros** (30 cols × 10 rows): pitch 5.08mm escalado, `CylinderGeometry r=0.9`, split A-E / F-J con gap de 6mm
+  - **Gap central**: barra gris de separación entre las dos mitades
+  - **Power bus strips**: rojo `#ff2222` (VCC outer) + azul `#2244cc` (GND inner) en ambos extremos
+  - **Bus holes**: 120 dots metálicos `r=0.55`, `metalness=0.6`
+  - **Labels sprites**: números de columna (1,5,10..30) y letras de fila (A-E) via `CanvasTexture`
+✅ **Colores de cable estándar de laboratorio**:
+  - GND = negro `#111111` (0x111111), cable gordo (r=0.60)
+  - VCC/5V/3V3 = rojo `#dd1111`, cable gordo
+  - SDA = azul `#2244ee`, SCL = amarillo `#ddcc00`
+  - MOSI = púrpura `#9933aa`, MISO = magenta, SCK = violeta, CS = lila
+  - TX = naranja `#ff8800`, RX = verde `#22cc44`
+  - Control/relay = verde `#22cc44`, Analog = púrpura `#8833cc`
+  - PWM = naranja, default pool = azul/teal/coral/rosa/verde
+✅ **Wire radius**: power/GND=0.60 (antes 0.55), señales=0.35 (unchanged).
+✅ **Zone layout**: corregido `pcbW → bbW` para coordenadas relativas al breadboard nuevo.
+
 
 ### 4.37 Export ZIP Bundle (v4.7.0)
 ✅ `GET /api/circuits/{id}/export.zip` — descarga un ZIP completo del proyecto con:

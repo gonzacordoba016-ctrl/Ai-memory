@@ -885,6 +885,20 @@ class SchematicRenderer:
             "irf520":                self._sym_mosfet,
             "irf540":                self._sym_mosfet,
             "irfz44":                self._sym_mosfet,
+            # Power / protection
+            "transformer":           self._sym_transformer,
+            "bridge_rectifier":      self._sym_bridge_rectifier,
+            "fuse":                  self._sym_fuse,
+            "fuse_holder":           self._sym_fuse,
+            "varistor":              self._sym_varistor,
+            "mov":                   self._sym_varistor,
+            "x_capacitor":           self._sym_capacitor,
+            "mosfet_driver":         self._sym_mosfet_driver,
+            "gate_driver":           self._sym_mosfet_driver,
+            "uln2003":               self._sym_mosfet_driver,
+            "ir2104":                self._sym_mosfet_driver,
+            "connector_ac":          self._sym_connector_ac,
+            "iec_connector":         self._sym_connector_ac,
         }
         draw_fn = dispatch.get(t, self._sym_generic)
         draw_fn(dwg, x, y, comp)
@@ -1389,6 +1403,166 @@ class SchematicRenderer:
                              font_size=8, fill="#117700",
                              font_family="monospace", text_anchor="middle"))
 
+    def _sym_transformer(self, dwg, x, y, comp):
+        """Transformer — EI-core with primary/secondary windings."""
+        # Primary winding (left, 4 bumps)
+        for i in range(4):
+            cx0 = x - 28 + i * 8
+            dwg.add(dwg.path(
+                d=f"M {cx0} {y} Q {cx0+4} {y-14} {cx0+8} {y}",
+                fill="none", stroke=self._SYM_STROKE, stroke_width=1.8))
+        # Secondary winding (right, 4 bumps)
+        for i in range(4):
+            cx0 = x + 4 + i * 8
+            dwg.add(dwg.path(
+                d=f"M {cx0} {y} Q {cx0+4} {y-14} {cx0+8} {y}",
+                fill="none", stroke=self._SYM_STROKE, stroke_width=1.8))
+        # Core lines
+        for dx in (-2, 2):
+            dwg.add(dwg.line(start=(x+dx, y-16), end=(x+dx, y+2),
+                             stroke="#553300", stroke_width=1.5))
+        # Pin leads
+        for x0, x1 in [(x-30, x-28), (x+36, x+38)]:
+            dwg.add(dwg.line(start=(x0, y-10), end=(x1, y-10),
+                             stroke=self._PIN_COLOR, stroke_width=1.5))
+            dwg.add(dwg.line(start=(x0, y+10), end=(x1, y+10),
+                             stroke=self._PIN_COLOR, stroke_width=1.5))
+        # Labels
+        dwg.add(dwg.text("P", insert=(x-32, y+4),
+                         font_size=7, fill="#553300", font_family="Arial"))
+        dwg.add(dwg.text("S", insert=(x+34, y+4),
+                         font_size=7, fill="#553300", font_family="Arial"))
+
+    def _sym_bridge_rectifier(self, dwg, x, y, comp):
+        """Bridge rectifier — 4-diode diamond with AC in / DC out."""
+        # Four diode triangles at diamond positions
+        diodes = [
+            # (tip, base_center, direction)
+            ((x, y-14), (x, y-2),  "down"),   # top
+            ((x, y+14), (x, y+2),  "up"),     # bottom
+            ((x-14, y), (x-2, y),  "right"),  # left
+            ((x+14, y), (x+2, y),  "left"),   # right
+        ]
+        for (tx,ty),(bx,by),d in diodes:
+            if d == "down":
+                pts = [(bx-8,by),(bx+8,by),(tx,ty)]
+            elif d == "up":
+                pts = [(bx-8,by),(bx+8,by),(tx,ty)]
+            elif d == "right":
+                pts = [(bx,by-8),(bx,by+8),(tx,ty)]
+            else:
+                pts = [(bx,by-8),(bx,by+8),(tx,ty)]
+            dwg.add(dwg.polygon(pts, fill="#dddddd", fill_opacity=0.4,
+                                stroke=self._SYM_STROKE, stroke_width=1.4))
+        # AC input pins (left/right of diamond)
+        for x0, lbl in [(x-28, "AC~"), (x+16, "AC~")]:
+            dwg.add(dwg.line(start=(x0, y), end=(x0+12, y),
+                             stroke=self._PIN_COLOR, stroke_width=1.5))
+            dwg.add(dwg.text(lbl, insert=(x0-2, y-3),
+                             font_size=6, fill=self._TEXT_COLOR, font_family="monospace"))
+        # DC output pins (top/bottom)
+        for y0, lbl, col in [(y-28, "+", "#cc2222"), (y+18, "−", "#2244aa")]:
+            dwg.add(dwg.line(start=(x, y0), end=(x, y0+12 if y0 < y else y0-12),
+                             stroke=self._PIN_COLOR, stroke_width=1.5))
+            dwg.add(dwg.text(lbl, insert=(x+3, y0+4),
+                             font_size=10, fill=col, font_family="Arial", font_weight="bold"))
+
+    def _sym_fuse(self, dwg, x, y, comp):
+        """Fuse — zigzag inside oval (IEC style)."""
+        # Oval body
+        dwg.add(dwg.ellipse(center=(x, y), r=(22, 9),
+                            fill=self._FILL_PASSIVE, stroke=self._SYM_STROKE, stroke_width=1.6))
+        # Zigzag element
+        pts = [(x-14, y)]
+        for i in range(7):
+            pts.append((x-14+i*4+2, y + (6 if i % 2 == 0 else -6)))
+        pts.append((x+14, y))
+        for i in range(len(pts)-1):
+            dwg.add(dwg.line(start=pts[i], end=pts[i+1],
+                             stroke="#cc5500", stroke_width=1.4))
+        # Lead wires
+        for x0, x1 in [(x-34, x-22), (x+22, x+34)]:
+            dwg.add(dwg.line(start=(x0, y), end=(x1, y),
+                             stroke=self._PIN_COLOR, stroke_width=1.5))
+        val = comp.get("value", "")
+        if val:
+            dwg.add(dwg.text(val, insert=(x, y+18),
+                             font_size=7, fill=self._TEXT_VAL,
+                             font_family="monospace", text_anchor="middle"))
+
+    def _sym_varistor(self, dwg, x, y, comp):
+        """Varistor/MOV — resistor body + diagonal bidirectional arrow."""
+        # Resistor body
+        W, H = 30, 12
+        dwg.add(dwg.rect(insert=(x-W//2, y-H//2), size=(W, H),
+                         fill="#f5e8c8", stroke=self._SYM_STROKE, stroke_width=1.5))
+        # Lead stubs
+        for x0, x1 in [(x-W//2-12, x-W//2), (x+W//2, x+W//2+12)]:
+            dwg.add(dwg.line(start=(x0, y), end=(x1, y),
+                             stroke=self._PIN_COLOR, stroke_width=1.5))
+        # Diagonal arrow (bidirectional)
+        dwg.add(dwg.line(start=(x-10, y+10), end=(x+10, y-10),
+                         stroke="#cc6600", stroke_width=1.6))
+        for tip, ang_off in [((x+10, y-10), 0.7), ((x-10, y+10), 0.7+math.pi)]:
+            ang = math.atan2(-20, 20)
+            for sign in [1, -1]:
+                ex = tip[0] - 4*math.cos(ang + sign*ang_off*0.4)
+                ey = tip[1] - 4*math.sin(ang + sign*ang_off*0.4)
+                dwg.add(dwg.line(start=tip, end=(ex, ey),
+                                 stroke="#cc6600", stroke_width=1.2))
+        # V label
+        dwg.add(dwg.text("V", insert=(x, y+4),
+                         font_size=9, fill="#cc6600",
+                         font_family="Arial", text_anchor="middle", font_weight="bold"))
+
+    def _sym_mosfet_driver(self, dwg, x, y, comp):
+        """Gate driver IC (IR2104, ULN2003, etc) — IC box with labelled pins."""
+        W, H = 58, 44
+        name = (comp.get("name", comp.get("id", "DRV")) or "")[:9]
+        dwg.add(dwg.rect(insert=(x-W//2, y-H//2), size=(W, H),
+                         fill=self._FILL_DRIVER, stroke="#663300", stroke_width=1.8))
+        # Header bar
+        dwg.add(dwg.rect(insert=(x-W//2, y-H//2), size=(W, 15),
+                         fill="#663300", fill_opacity=0.15))
+        dwg.add(dwg.text(name, insert=(x, y-H//2+11),
+                         font_size=10, fill="#663300",
+                         font_family="monospace", text_anchor="middle", font_weight="bold"))
+        # Input pins (left)
+        for i, lbl in enumerate(["IN", "EN", "VCC"]):
+            py_ = y - 8 + i * 11
+            dwg.add(dwg.line(start=(x-W//2-12, py_), end=(x-W//2, py_),
+                             stroke=self._PIN_COLOR, stroke_width=1))
+            dwg.add(dwg.text(lbl, insert=(x-W//2+3, py_+3),
+                             font_size=6.5, fill="#555566", font_family="monospace"))
+        # Output pins (right)
+        for i, lbl in enumerate(["HO", "LO", "GND"]):
+            py_ = y - 8 + i * 11
+            dwg.add(dwg.line(start=(x+W//2, py_), end=(x+W//2+12, py_),
+                             stroke=self._PIN_COLOR, stroke_width=1))
+            dwg.add(dwg.text(lbl, insert=(x+W//2-16, py_+3),
+                             font_size=6.5, fill="#885533", font_family="monospace"))
+
+    def _sym_connector_ac(self, dwg, x, y, comp):
+        """IEC AC connector — 3-pin (L/N/PE) with housing."""
+        W, H = 28, 42
+        dwg.add(dwg.rect(insert=(x-W//2, y-H//2), size=(W, H),
+                         fill="#f0f0e8", stroke="#555566", stroke_width=1.8, rx=3))
+        pins = [("L", "#cc2222"), ("N", "#2244cc"), ("PE", "#117700")]
+        for i, (lbl, col) in enumerate(pins):
+            py_ = y - H//2 + 8 + i * 14
+            # Pin socket
+            dwg.add(dwg.circle(center=(x, py_), r=4,
+                               fill="#dddddd", stroke=col, stroke_width=1.5))
+            dwg.add(dwg.circle(center=(x, py_), r=2,
+                               fill="#111111", stroke="none"))
+            # Wire stub
+            dwg.add(dwg.line(start=(x-W//2-10, py_), end=(x-W//2, py_),
+                             stroke=col, stroke_width=2))
+            # Label
+            dwg.add(dwg.text(lbl, insert=(x+W//2+3, py_+3),
+                             font_size=7, fill=col, font_family="monospace"))
+
+
     def _sym_rtc(self, dwg, x, y, comp):
         """RTC module — IC box + coin cell symbol."""
         W, H = 52, 32
@@ -1422,26 +1596,86 @@ class SchematicRenderer:
                              text_anchor="start" if sign > 0 else "end"))
 
     def _sym_generic(self, dwg, x, y, comp):
-        """Fallback generic IC."""
-        W, H = 48, 34
-        name = comp.get("name", comp.get("id","?"))[:10]
-        t = comp.get("resolved_type", comp.get("type","?"))[:8]
-        dwg.add(dwg.rect(insert=(x-W//2,y-H//2), size=(W,H),
+        """Fallback generic IC with named pin stubs from comp data."""
+        # Infer pin list from component metadata
+        raw_pins = comp.get("pins", [])
+        if isinstance(raw_pins, list) and raw_pins:
+            pin_names = [str(p.get("name", p) if isinstance(p, dict) else p)
+                         for p in raw_pins]
+        else:
+            # Derive from nets: collect all pin labels for this component
+            pin_names = []
+            # Try to pull from name-based heuristics
+            t = (comp.get("resolved_type", comp.get("type","")) or "").lower()
+            if "i2c" in t or "bmp" in t or "sht" in t:
+                pin_names = ["VCC", "GND", "SDA", "SCL"]
+            elif "uart" in t:
+                pin_names = ["VCC", "GND", "TX", "RX"]
+            elif "spi" in t:
+                pin_names = ["VCC", "GND", "MOSI", "MISO", "SCK", "CS"]
+            else:
+                pin_names = ["VCC", "GND", "IN", "OUT"]
+
+        n_left  = (len(pin_names) + 1) // 2
+        n_right = len(pin_names) - n_left
+        n_max   = max(n_left, n_right, 2)
+        W = 52
+        H = max(34, n_max * 13 + 10)
+        name = (comp.get("name", comp.get("id", "?")) or "")[:10]
+        t_label = (comp.get("resolved_type", comp.get("type", "?")) or "")[:8]
+
+        dwg.add(dwg.rect(insert=(x-W//2, y-H//2), size=(W, H),
                          fill="#f0f0f8", stroke="#6666aa", stroke_width=1.5, rx=2))
-        # Small type label at top
-        dwg.add(dwg.text(t, insert=(x,y-H//2+10),
+        # IC notch
+        dwg.add(dwg.path(
+            d=f"M {x-6} {y-H//2} Q {x} {y-H//2+6} {x+6} {y-H//2}",
+            fill="#ccccdd", stroke="#6666aa", stroke_width=0.8))
+        # Type label (small, top)
+        dwg.add(dwg.text(t_label, insert=(x, y-H//2+12),
                          font_size=7, fill="#8888aa",
                          font_family="monospace", text_anchor="middle"))
-        dwg.add(dwg.text(name, insert=(x,y+5),
-                         font_size=8, fill="#333355",
+        # Name label (center)
+        dwg.add(dwg.text(name, insert=(x, y+5),
+                         font_size=9, fill="#333355",
                          font_family="monospace", text_anchor="middle"))
-        # Generic pin stubs (2 each side)
-        for sign in [-1, 1]:
-            for i, yi in enumerate([y-8, y+4]):
-                x_body = x + sign * W//2
-                x_tip  = x + sign * (W//2 + 10)
-                dwg.add(dwg.line(start=(x_body,yi), end=(x_tip,yi),
-                                 stroke=self._PIN_COLOR, stroke_width=1))
+
+        left_pins  = pin_names[:n_left]
+        right_pins = pin_names[n_left:]
+
+        # Left pins
+        for i, lbl in enumerate(left_pins):
+            py_ = y - (n_left - 1) * 6 + i * 12
+            x_body = x - W//2
+            x_tip  = x_body - 12
+            dwg.add(dwg.line(start=(x_body, py_), end=(x_tip, py_),
+                             stroke=self._PIN_COLOR, stroke_width=1))
+            pin_col = ("#cc2222" if "VCC" in lbl or "VDD" in lbl
+                       else "#2244aa" if "GND" in lbl
+                       else self._TEXT_COLOR)
+            dwg.add(dwg.text(lbl, insert=(x_body+3, py_+3),
+                             font_size=6, fill=pin_col,
+                             font_family="monospace"))
+            dwg.add(dwg.text(str(i+1), insert=(x_tip-2, py_+3),
+                             font_size=5.5, fill="#999999",
+                             font_family="monospace", text_anchor="end"))
+
+        # Right pins
+        for i, lbl in enumerate(right_pins):
+            py_ = y - (n_right - 1) * 6 + i * 12
+            x_body = x + W//2
+            x_tip  = x_body + 12
+            dwg.add(dwg.line(start=(x_body, py_), end=(x_tip, py_),
+                             stroke=self._PIN_COLOR, stroke_width=1))
+            pin_col = ("#cc2222" if "VCC" in lbl or "VDD" in lbl
+                       else "#2244aa" if "GND" in lbl
+                       else self._TEXT_COLOR)
+            dwg.add(dwg.text(lbl, insert=(x_body-3, py_+3),
+                             font_size=6, fill=pin_col,
+                             font_family="monospace", text_anchor="end"))
+            dwg.add(dwg.text(str(n_left+i+1), insert=(x_tip+2, py_+3),
+                             font_size=5.5, fill="#999999",
+                             font_family="monospace"))
+
 
     # ── Legend ───────────────────────────────────────────────────────────────
 

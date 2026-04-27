@@ -801,28 +801,78 @@
         async function _buildThreeScene() {
             if (!threeScene) return;
 
-            // PCB base — green FR4 with copper edge
-            const pcbW = 200, pcbD = 140, pcbH = 1.6;
-            const pcbGeo = new THREE.BoxGeometry(pcbW, pcbH, pcbD);
-            const pcbMat = new THREE.MeshStandardMaterial({
-                color: 0x1a5c34, roughness: 0.85, metalness: 0.05
+            // ── Real Breadboard base (white ABS, 2.54mm pitch) ──────────────
+            const bbW = 195, bbD = 130, bbH = 8;
+            const bbMat = new THREE.MeshStandardMaterial({
+                color: 0xf5f5f0, roughness: 0.7, metalness: 0.0
             });
-            const pcb = new THREE.Mesh(pcbGeo, pcbMat);
-            pcb.receiveShadow = true;
-            pcb.position.set(0, -pcbH / 2, 0);
-            threeScene.add(pcb);
-
-            // Copper edge traces (gold border)
-            const edgesGeo = new THREE.EdgesGeometry(pcbGeo);
-            threeScene.add(new THREE.LineSegments(
-                edgesGeo,
-                new THREE.LineBasicMaterial({ color: 0xc8a000 })
-            ));
-
-            // Silkscreen grid pattern on PCB (subtle)
-            const gridHelper = new THREE.GridHelper(Math.min(pcbW,pcbD)*0.9, 12, 0x224433, 0x1a3328);
-            gridHelper.position.set(0, 0.02, 0);
-            threeScene.add(gridHelper);
+            const bbGeo = new THREE.BoxGeometry(bbW, bbH, bbD);
+            const bb = new THREE.Mesh(bbGeo, bbMat);
+            bb.receiveShadow = true; bb.castShadow = false;
+            bb.position.set(0, -bbH/2, 0);
+            threeScene.add(bb);
+            // Hole grid — 2.54mm pitch scaled ×2, 30 cols × 10 rows (5+5, center gap)
+            const bbPitch = 5.08;
+            const bbCols = 30, bbHoleR = 0.9;
+            const holeMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 1.0 });
+            const holeGeo = new THREE.CylinderGeometry(bbHoleR, bbHoleR, bbH + 0.4, 8);
+            for (let row = 0; row < 10; row++) {
+                const zOff = row < 5
+                    ? -bbD/2 + 18 + row * bbPitch
+                    : -bbD/2 + 18 + (row + 1) * bbPitch + 6;
+                for (let col = 0; col < bbCols; col++) {
+                    const h = new THREE.Mesh(holeGeo, holeMat);
+                    h.position.set(-bbW/2 + 16 + col * bbPitch, 0, zOff);
+                    threeScene.add(h);
+                }
+            }
+            // Center gap divider
+            const gapGeo2 = new THREE.BoxGeometry(bbW - 24, 0.4, 4);
+            const gapMesh = new THREE.Mesh(gapGeo2, new THREE.MeshStandardMaterial({ color: 0xdddddd }));
+            gapMesh.position.set(0, bbH/2 + 0.1, -bbD/2 + 18 + 5 * bbPitch + 3);
+            threeScene.add(gapMesh);
+            // Power bus strips (VCC=red, GND=blue)
+            const busGeo2 = new THREE.BoxGeometry(bbW - 24, 0.5, 2.5);
+            for (const [col, zOff2] of [
+                [0xff2222, -bbD/2 + 6], [0x2244cc, -bbD/2 + 9.5],
+                [0x2244cc,  bbD/2 - 9.5],[0xff2222,  bbD/2 - 6],
+            ]) {
+                const s = new THREE.Mesh(busGeo2,
+                    new THREE.MeshStandardMaterial({ color: col, roughness: 0.4 }));
+                s.position.set(0, bbH/2 + 0.2, zOff2);
+                threeScene.add(s);
+            }
+            // Bus holes
+            const busHoleGeo2 = new THREE.CylinderGeometry(0.55, 0.55, 1.0, 6);
+            const busHoleMat2 = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.6 });
+            for (let col = 0; col < bbCols; col++) {
+                const bx = -bbW/2 + 16 + col * bbPitch;
+                for (const bz of [-bbD/2+6, -bbD/2+9.5, bbD/2-9.5, bbD/2-6]) {
+                    const bh = new THREE.Mesh(busHoleGeo2, busHoleMat2);
+                    bh.position.set(bx, bbH/2 + 0.4, bz);
+                    threeScene.add(bh);
+                }
+            }
+            // Row / col sprite labels
+            function _bbLabel(text, color) {
+                const cv = document.createElement('canvas'); cv.width = 64; cv.height = 32;
+                const ctx = cv.getContext('2d');
+                ctx.fillStyle = color || '#555555'; ctx.font = 'bold 18px monospace';
+                ctx.fillText(text, 2, 24);
+                const sp = new THREE.Sprite(new THREE.SpriteMaterial(
+                    { map: new THREE.CanvasTexture(cv), transparent: true }));
+                sp.scale.set(9, 4.5, 1); return sp;
+            }
+            for (let col = 0; col < bbCols; col += 5) {
+                const sp = _bbLabel(String(col + 1), '#888888');
+                sp.position.set(-bbW/2 + 16 + col * bbPitch, bbH/2 + 4, -bbD/2 + 2);
+                threeScene.add(sp);
+            }
+            for (let row = 0; row < 5; row++) {
+                const sp = _bbLabel(String.fromCharCode(65 + row), '#666688');
+                sp.position.set(-bbW/2 + 4, bbH/2 + 4, -bbD/2 + 18 + row * bbPitch);
+                threeScene.add(sp);
+            }
 
             if (!currentCircuit) return;
 
@@ -884,13 +934,13 @@
                 zones[z].push(c);
             });
 
-            // Zone X centers (mirror PCB renderer ratios: 0.15 / 0.40 / 0.70 / 0.92)
-            const W = pcbW * 0.85;
-            const xLeft = -W / 2;
-            const xHv     = xLeft + W * 0.15;
-            const xMcu    = xLeft + W * 0.40;
-            const xRelay  = xLeft + W * 0.70;
-            const xOutput = xLeft + W * 0.92;
+            // Zone X centers (mirror PCB renderer: HV=15% | MCU=40% | Relay=70% | Out=92%)
+            const W = bbW * 0.85;
+            const xLeft  = -W / 2;
+            const xHv     = xLeft + W * 0.12;
+            const xMcu    = xLeft + W * 0.38;
+            const xRelay  = xLeft + W * 0.68;
+            const xOutput = xLeft + W * 0.90;
 
             function _stackZ(n, pitch) {
                 if (n === 0) return [];
@@ -956,26 +1006,30 @@
                 compPos[c.id] = { x: otherX, y: topY, z: otherZ[i] };
             });
 
-            // F4.3 — Thicker wires (TubeGeometry) with net-type color coding
+            // Wires — standard lab wire color convention
             const netColorMap = {
-                // High-voltage / AC nets — orange (drawn first to take priority)
-                '220vac': 0xff7700, '110vac': 0xff7700, 'vac': 0xff7700,
-                'rectified': 0xff5500, 'mains': 0xff7700, 'hv': 0xff7700,
-                // VCC family — red
-                vcc: 0xff3333, '5v': 0xff3333, '3v3': 0xff3333,
-                vin: 0xff3333, vdd: 0xff3333, 'power': 0xff3333,
-                // GND — near-black
-                gnd: 0x222222, ground: 0x222222,
-                // Control/signal — yellow
-                ctrl: 0xffdd33, control: 0xffdd33, relay: 0xffdd33,
-                // Buses
-                i2c: 0x33aa66, sda: 0x33aa66, scl: 0x33aa66,
-                spi: 0xaa33aa, mosi: 0xaa33aa, miso: 0xaa33aa, sck: 0xaa33aa,
-                uart: 0xcc8800, tx: 0xcc8800, rx: 0xcc8800,
+                // AC / HV — bright orange
+                '220vac': 0xff6600, '110vac': 0xff6600, 'vac': 0xff6600,
+                'rectified': 0xff4400, 'mains': 0xff6600, 'hv': 0xff6600,
+                // GND — black (standard)
+                gnd: 0x111111, ground: 0x111111,
+                // VCC family — red (standard)
+                vcc: 0xdd1111, '5v': 0xdd1111, '3v3': 0xdd1111,
+                vin: 0xdd1111, vdd: 0xdd1111, 'vbat': 0xdd1111,
+                // I2C — SDA=blue, SCL=yellow
+                sda: 0x2244ee, scl: 0xddcc00, i2c_sda: 0x2244ee, i2c_scl: 0xddcc00,
+                // SPI — purple family
+                mosi: 0x9933aa, miso: 0xcc44cc, sck: 0x7722aa, cs: 0xaa66cc,
+                // UART — TX=orange, RX=green
+                tx: 0xff8800, rx: 0x22cc44,
+                // Control / digital — bright green
+                ctrl: 0x22cc44, control: 0x22cc44, relay: 0x22cc44,
+                // Analog — purple
+                analog: 0x8833cc, adc: 0x8833cc, sensor: 0x9944dd,
+                // PWM — orange
                 pwm: 0xff6600,
-                data: 0x3366ff,
             };
-            const defaultNetColors = [0xff4444, 0x44cc88, 0x4488ff, 0xffcc44, 0xff44cc, 0x44ffcc, 0xff8833];
+            const defaultNetColors = [0x44aaff, 0x44ccaa, 0xff8844, 0xcc44aa, 0x88cc44, 0x4488ff];
             (currentCircuit.nets || []).forEach((net, ni) => {
                 const nl = (net.name || '').toLowerCase();
                 let wireColor = defaultNetColors[ni % defaultNetColors.length];
@@ -984,10 +1038,10 @@
                 for (const [key, col] of Object.entries(netColorMap)) {
                     if (nl.includes(key)) {
                         wireColor = col;
-                        if (['220vac', '110vac', 'vac', 'rectified', 'mains', 'hv',
-                             'vcc', '5v', '3v3', 'vin', 'vdd', 'power',
-                             'gnd', 'ground'].includes(key)) {
-                            wireRadius = 0.55;
+                        if (['220vac','110vac','vac','rectified','mains','hv',
+                             'vcc','5v','3v3','vin','vdd','vbat',
+                             'gnd','ground'].includes(key)) {
+                            wireRadius = 0.60;
                             isPower = true;
                         }
                         break;
