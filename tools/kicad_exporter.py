@@ -257,9 +257,9 @@ _TYPE_TO_FOOTPRINT: Dict[str, str] = {
     "mosfet_n":              "Package_TO_SOT_THT:TO-220-3_Vertical",
     "button":                "Button_Switch_THT:SW_PUSH_6mm",
     "switch":                "Button_Switch_THT:SW_SPDT_PCB",
-    "relay_module":          "Connector_PinHeader_2.54mm:PinHeader_1x05_P2.54mm_Vertical",
+    "relay_module":          "Relay_THT:Relay_SPDT_Omron_G5LE-1",
     "relay":                 "Relay_THT:Relay_SPDT_Omron_G5LE-1",
-    "fuse":                  "Fuseholder_Holder_3AG",
+    "fuse":                  "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
     "inductor":              "Inductor_THT:L_Axial_L5.3mm_D2.2mm_P10.16mm_Horizontal",
     "crystal":               "Crystal:Crystal_HC49-4H_Vertical",
     "arduino_uno":           "Module:Arduino_UNO_SMD",
@@ -269,31 +269,30 @@ _TYPE_TO_FOOTPRINT: Dict[str, str] = {
     "esp32":                 "Module:ESP32-WROOM-32",
     "esp8266":               "Module:NodeMCU-v1.0",
     "raspberry_pi_pico":     "Module:RPi_Pico",
-    "stm32":                 "Module:STM32_DevBoard",
+    "stm32":                 "Connector_PinHeader_2.54mm:PinHeader_2x20_P2.54mm_Vertical",
     "voltage_regulator":     "Package_TO_SOT_THT:TO-220-3_Vertical",
     "lm7805":                "Package_TO_SOT_THT:TO-220-3_Vertical",
     "lm317":                 "Package_TO_SOT_THT:TO-220-3_Vertical",
     "ams1117":               "Package_TO_SOT_THT:SOT-223-3_TabPin2",
-    "buck_converter":        "Module:DC-DC_Converter",
-    "boost_converter":       "Module:DC-DC_Converter",
-    "oled":                  "Display:OLED_SSD1306_128x64",
-    "lcd":                   "Display:LCD_16x2_I2C",
-    "hc_sr04":               "Sensor:HC-SR04",
-    "dht22":                 "Sensor:DHT22",
-    "dht11":                 "Sensor:DHT11",
-    "bmp280":                "Sensor:BMP280",
-    "mpu6050":               "Sensor:MPU-6050",
+    "buck_converter":        "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical",
+    "boost_converter":       "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical",
+    "oled":                  "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical",
+    "lcd":                   "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical",
+    "hc_sr04":               "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical",
+    "dht22":                 "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical",
+    "dht11":                 "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical",
+    "bmp280":                "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical",
+    "mpu6050":               "Connector_PinHeader_2.54mm:PinHeader_1x08_P2.54mm_Vertical",
     "ds18b20":               "Package_TO_SOT_THT:TO-92_Inline",
-    "l298n":                 "Module:L298N",
-    "drv8825":               "Module:DRV8825",
-    "a4988":                 "Module:A4988",
+    "l298n":                 "Package_DIP:DIP-16_W7.62mm",
+    "drv8825":               "Connector_PinHeader_2.54mm:PinHeader_2x8_P2.54mm_Vertical",
+    "a4988":                 "Connector_PinHeader_2.54mm:PinHeader_2x8_P2.54mm_Vertical",
     "servo":                 "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical",
     "motor":                 "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
     "buzzer":                "Buzzer_Beeper:Buzzer_12x9.5RM7.6",
     "connector":             "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical",
     "rtc":                   "Package_DIP:DIP-16_W7.62mm",
     "ds3231":                "Package_DIP:DIP-16_W7.62mm",
-    "mpu6050":               "Package_DIP:DIP-8_W7.62mm",
 }
 
 
@@ -371,6 +370,88 @@ def _mcu_pin_offsets(pin_names: List[str]) -> Dict[str, Tuple[float, float]]:
         offsets[name] = (_MCU_HALF_WIDTH, -half_h_r + i * _MCU_PIN_SPACING)
 
     return offsets
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Custom inline symbol generation for complex ICs (replaces Device:IC_Generic)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Pin names that conventionally go on the LEFT side of a component box
+_POWER_PIN_NAMES: frozenset = frozenset({
+    "GND", "5V", "3V3", "3.3V", "VIN", "VCC", "VDD",
+    "RST", "AREF", "SDA", "SCL", "TX", "TX0", "RX", "RX0",
+    "MOSI", "MISO", "SCK", "CS", "INT", "IRQ", "EN", "ENABLE",
+})
+
+
+def _make_custom_symbol(
+    sym_id: str,
+    display_name: str,
+    left_pins: List[str],
+    right_pins: List[str],
+) -> Tuple[str, Dict[str, Tuple[float, float]]]:
+    """
+    Generate a KiCad v6 inline symbol with named pins on left/right sides.
+    Returns (S-expr string, {pin_name: (dx_from_center, dy_from_center)}).
+    Offsets point to the external connection endpoint (where wires and labels attach).
+    """
+    PIN_LEN = 2.54
+    BOX_W   = _MCU_HALF_WIDTH          # 10.16 mm half-width
+    n_l     = len(left_pins)
+    n_r     = len(right_pins)
+    n_max   = max(n_l, n_r, 1)
+    half_h  = (n_max - 1) * _MCU_PIN_SPACING / 2.0
+    box_h   = half_h + _MCU_PIN_SPACING
+
+    # Sub-symbol name: KiCad expects just the symbol-name part (no "lib:" prefix)
+    sub = sym_id.split(":", 1)[-1].replace("-", "_").replace(".", "_").replace(" ", "_")
+
+    offsets: Dict[str, Tuple[float, float]] = {}
+    lines: List[str] = [
+        f'  (symbol "{sym_id}"',
+        f'    (in_bom yes) (on_board yes)',
+        f'    (property "Reference" "U" (at 0 {_fmt(-box_h - 2.54)} 0)',
+        f'      (effects (font (size 1.27 1.27))))',
+        f'    (property "Value" "{_esc(display_name)}" (at 0 {_fmt(box_h + 2.54)} 0)',
+        f'      (effects (font (size 1.27 1.27))))',
+        f'    (property "Footprint" "" (at 0 0 0)',
+        f'      (effects (font (size 1.27 1.27)) (hide yes)))',
+        f'    (property "Datasheet" "~" (at 0 0 0)',
+        f'      (effects (font (size 1.27 1.27)) (hide yes)))',
+        f'    (symbol "{sub}_0_1"',
+        f'      (rectangle (start {_fmt(-BOX_W)} {_fmt(-box_h)}) (end {_fmt(BOX_W)} {_fmt(box_h)})',
+        f'        (stroke (width 0.254) (type default)) (fill (type background)))',
+        f'    )',
+        f'    (symbol "{sub}_1_1"',
+    ]
+
+    half_l = ((n_l - 1) * _MCU_PIN_SPACING / 2.0) if n_l > 1 else 0.0
+    half_r = ((n_r - 1) * _MCU_PIN_SPACING / 2.0) if n_r > 1 else 0.0
+
+    for i, pname in enumerate(left_pins):
+        y = _snap(-half_l + i * _MCU_PIN_SPACING)
+        # angle=0: stub extends rightward into box. Connection point is at (-BOX_W-PIN_LEN, y).
+        conn_x = _snap(-BOX_W - PIN_LEN)
+        offsets[pname] = (conn_x, y)
+        lines += [
+            f'      (pin bidirectional line (at {_fmt(conn_x)} {_fmt(y)} 0) (length {_fmt(PIN_LEN)})',
+            f'        (name "{_esc(pname)}" (effects (font (size 1.016 1.016))))',
+            f'        (number "{_esc(pname)}" (effects (font (size 1.016 1.016)))))',
+        ]
+
+    for i, pname in enumerate(right_pins):
+        y = _snap(-half_r + i * _MCU_PIN_SPACING)
+        # angle=180: stub extends leftward into box. Connection point is at (BOX_W+PIN_LEN, y).
+        conn_x = _snap(BOX_W + PIN_LEN)
+        offsets[pname] = (conn_x, y)
+        lines += [
+            f'      (pin bidirectional line (at {_fmt(conn_x)} {_fmt(y)} 180) (length {_fmt(PIN_LEN)})',
+            f'        (name "{_esc(pname)}" (effects (font (size 1.016 1.016))))',
+            f'        (number "{_esc(pname)}" (effects (font (size 1.016 1.016)))))',
+        ]
+
+    lines += [f'    )', f'  )']
+    return "\n".join(lines), offsets
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -455,10 +536,48 @@ class KiCadExporter:
             for node in net.get("nodes", []):
                 node_to_net[node] = net["name"]
 
-        # Collect which lib symbols are needed
+        # ── Pre-pass: generate custom symbols for complex ICs ─────────────────
+        # Device:IC_Generic has only 6 fixed pins, which doesn't match real
+        # components. We generate an inline "Stratum:<cid>" symbol per instance
+        # with exactly the pins used in the netlist.
+        comp_sym: Dict[str, str] = {}
+        custom_sym_defs: Dict[str, str] = {}
+        custom_sym_offs: Dict[str, Dict[str, Tuple[float, float]]] = {}
+
+        for _comp in components:
+            _cid = _comp["id"]
+            _lid = _lib_id(_comp)
+            if _lid != "Device:IC_Generic":
+                comp_sym[_cid] = _lid
+                continue
+            _t      = (_comp.get("resolved_type") or _comp.get("type") or _cid).lower()
+            _sym_id = f"Stratum:{_cid}"
+            _all_pins: List[str] = []
+            for _n in nets:
+                for _nd in _n.get("nodes", []):
+                    _ps = _nd.split(".", 1)
+                    if len(_ps) == 2 and _ps[0] == _cid:
+                        _all_pins.append(_ps[1])
+            if not _all_pins:
+                comp_sym[_cid] = "Device:IC_Generic"
+                continue
+            _left  = [p for p in _all_pins
+                      if p.upper() in _POWER_PIN_NAMES or p.upper().startswith("A")]
+            _right = [p for p in _all_pins if p not in _left]
+            if not _right:
+                _mid   = len(_left) // 2
+                _right, _left = _left[_mid:], _left[:_mid]
+            _sexp, _offs = _make_custom_symbol(_sym_id, _t, _left, _right)
+            custom_sym_defs[_sym_id] = _sexp
+            custom_sym_offs[_sym_id] = _offs
+            comp_sym[_cid] = _sym_id
+
+        # Collect which lib symbols are needed (standard only; custom syms handled separately)
         needed_libs = set()
         for comp in components:
-            needed_libs.add(_lib_id(comp))
+            sym = comp_sym.get(comp["id"], _lib_id(comp))
+            if not sym.startswith("Stratum:"):
+                needed_libs.add(sym)
         # Always add power symbols
         has_vcc = any("vcc" in n["name"].lower() or "5v" in n["name"].lower()
                       or "3v3" in n["name"].lower() or "vdd" in n["name"].lower()
@@ -496,13 +615,15 @@ class KiCadExporter:
         for lib_id_key in sorted(needed_libs):
             if lib_id_key in lib_map:
                 lines.append(lib_map[lib_id_key])
+        for sym_sexp in custom_sym_defs.values():
+            lines.append(sym_sexp)
         lines.append(f'  )')
         lines.append(f'')
 
         # ── Component instances ──────────────────────────────────────────────
         pwr_index = 1
         for comp in components:
-            lid     = _lib_id(comp)
+            lid     = comp_sym.get(comp["id"], _lib_id(comp))
             cx, cy  = positions.get(comp["id"], (100.0, 100.0))
             ref     = comp.get("id", "U?")
             val     = comp.get("value", comp.get("name", lid.split(":")[-1]))
@@ -529,7 +650,7 @@ class KiCadExporter:
         placed_labels: set = set()  # avoid duplicating label at same position
 
         for comp in components:
-            lid    = _lib_id(comp)
+            lid    = comp_sym.get(comp["id"], _lib_id(comp))
             cx, cy = positions.get(comp["id"], (100.0, 100.0))
             cid    = comp["id"]
 
@@ -544,9 +665,10 @@ class KiCadExporter:
             if not comp_pins:
                 continue
 
-            # Get pin offsets
-            is_mcu = lid == "Device:IC_Generic"
-            if is_mcu:
+            # Get pin offsets: custom symbol → stored offsets; standard → table
+            if lid in custom_sym_offs:
+                pin_offs = custom_sym_offs[lid]
+            elif lid == "Device:IC_Generic":
                 pin_offs = _mcu_pin_offsets(list(comp_pins.keys()))
             else:
                 pin_offs = _PIN_OFFSETS.get(lid, {})
@@ -597,8 +719,10 @@ class KiCadExporter:
             if comp is None or comp_id not in positions:
                 return None
             cx, cy = positions[comp_id]
-            lid    = _lib_id(comp)
-            if lid == "Device:IC_Generic":
+            lid    = comp_sym.get(comp_id, _lib_id(comp))
+            if lid in custom_sym_offs:
+                offs = custom_sym_offs[lid]
+            elif lid == "Device:IC_Generic":
                 cpins: Dict[str, str] = {}
                 for n in nets:
                     for nd in n.get("nodes", []):

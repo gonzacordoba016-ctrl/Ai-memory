@@ -51,6 +51,21 @@ def _is_power_net(name: str) -> bool:
     return any(k in n for k in ("vcc", "gnd", "5v", "3v3", "vin", "vdd", "ground"))
 
 
+# Module/board-level parts that are mounted as SMD (no drill hole).
+# Represented as rectangular pads on F.Cu only.
+_SMD_TYPES: frozenset = frozenset({
+    "esp32", "esp8266", "esp32_wroom", "esp32_wrover",
+    "arduino_uno", "arduino_nano", "arduino_mega", "arduino_micro", "arduino_pro_mini",
+    "raspberry_pi_pico", "stm32",
+    "oled", "lcd",
+    "bmp280", "mpu6050", "ds3231", "rtc",
+    "hc_sr04", "dht22", "dht11",
+    "l298n", "drv8825", "a4988",
+    "buck_converter", "boost_converter",
+    "ams1117",
+})
+
+
 # ── Pad geometry per component type ──────────────────────────────────────────
 # Pads are described as (pad_number, dx_mm, dy_mm) relative to footprint origin.
 # Uses simple THT 2-pad layout for passives; multi-pin parts use a row.
@@ -269,16 +284,24 @@ def _emit_footprint(comp: Dict,
         f'    )',
     ]
 
+    is_smd = _comp_type(comp) in _SMD_TYPES
     for pad_num, dx, dy in pads:
         net_name = pad_net.get(pad_num)
         net_part = ""
         if net_name and net_name in net_index:
             net_part = f' (net {net_index[net_name]} "{net_name}")'
-        lines.append(
-            f'    (pad "{pad_num}" thru_hole circle (at {_fmt(dx)} {_fmt(dy)}) '
-            f'(size 1.7 1.7) (drill 0.8) (layers "*.Cu" "*.Mask"){net_part} '
-            f'(tstamp {_uid()}))'
-        )
+        if is_smd:
+            lines.append(
+                f'    (pad "{pad_num}" smd roundrect (at {_fmt(dx)} {_fmt(dy)}) '
+                f'(size 1.5 1.0) (layers "F.Cu" "F.Paste" "F.Mask") '
+                f'(roundrect_rratio 0.25){net_part} (tstamp {_uid()}))'
+            )
+        else:
+            lines.append(
+                f'    (pad "{pad_num}" thru_hole circle (at {_fmt(dx)} {_fmt(dy)}) '
+                f'(size 1.7 1.7) (drill 0.8) (layers "*.Cu" "*.Mask"){net_part} '
+                f'(tstamp {_uid()}))'
+            )
 
     lines.append('  )')
     return "\n".join(lines) + "\n"
