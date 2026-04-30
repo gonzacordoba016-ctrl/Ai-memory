@@ -5,6 +5,7 @@
 
 from typing import Dict, Any, List, Tuple, Optional
 from core.logger import get_logger
+from tools.component_types import _MCU_TYPES, _RELAY_TYPES, _ZONE_SENSOR_TYPES
 
 logger = get_logger(__name__)
 
@@ -12,13 +13,11 @@ logger = get_logger(__name__)
 _MM2PX = 3.7795275591
 
 # Functional groups for placement
-_MCU_TYPES   = {"arduino_uno", "arduino_nano", "arduino_mega", "esp32", "esp8266",
-                "stm32", "rp2040", "pico", "attiny", "mcu"}
+
 _SMALL_TYPES = {"resistor", "capacitor", "diode", "led", "led_rgb",
                 "1n4007", "1n5819", "1n4148", "varistor", "fuse"}
 _LARGE_TYPES = {"relay", "relay_module", "ssr", "motor_driver", "l298n", "drv8825",
                 "display", "oled", "lcd", "battery", "transformer", "smps"}
-_RELAY_TYPES = {"relay", "relay_module", "ssr"}
 
 # F3.2 — industrial footprint dimensions in mm (W × H)
 _FOOTPRINT: Dict[str, Tuple[float, float]] = {
@@ -154,12 +153,6 @@ _ZONE_HV_TYPES = {
 _ZONE_MCU_PWR_TYPES = _MCU_TYPES | {
     "voltage_regulator", "lm7805", "ams1117", "lm317", "regulator",
     "buck_converter", "boost_converter", "ldo", "dc_dc",
-}
-_ZONE_SENSOR_TYPES = {
-    "bmp280", "bme280", "bmp180", "bmp085", "dht22", "dht11", "am2302",
-    "si7021", "htu21d", "sht31", "sht30", "aht20", "mpu6050", "mpu9250",
-    "icm20600", "ds18b20", "ds18s20", "ina219", "ina260",
-    "hc_sr04", "ultrasonic", "ultrasonic_sensor", "lm35", "moisture_sensor",
 }
 
 

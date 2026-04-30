@@ -10,7 +10,7 @@ project_root = os.path.dirname(os.path.dirname(__file__))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-def test_complete_integration():
+def test_complete_integration(tmp_db):
     """Test de integración completa del sistema de circuitos."""
     print("\n=== TEST INTEGRACIÓN COMPLETA: Stratum Circuit System ===\n")
     

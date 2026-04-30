@@ -1205,4 +1205,68 @@ Capa 6 — Entrada (usa Capas 0-5)
 | `memory/vector_memory.py` ↔ `memory/memory_consolidator.py` | Posible circular: `vector_memory` importa `memory_consolidator` dentro de `store_memory()`; verificar si `memory_consolidator` importa `vector_memory` a nivel módulo | ⚠️ verificar — si ambos importan en top-level → `ImportError` |
 | `tools/tool_registry.py` | Capa 3 importa `memory/pdf_memory` (Capa 2) | Aceptado — dependency ascendente controlada |
 | `api/routers/websockets.py` | Importa `api.app_state` dentro de la función WS (lazy) para evitar circular con `api/server.py` | Intencional — no romper |
+
+## 19. FIXES MEDIO PRIORITY — v4.23.0 (2026-04-30)
+
+6 fixes de prioridad MEDIA de la auditoría. 56/56 tests passing post-apply.
+
+### Commits
+
+| Hash | Descripción |
+|------|-------------|
+| (pendiente push) | `fix(quality): 6 medium-priority audit fixes` |
+
+### Fix 1 — Connection leaks en `database/intelligence.py`
+
+6 métodos abrían conexión sin context manager, dejando handles abiertos si ocurría una excepción.
+
+| Método | Antes | Después |
+|--------|-------|---------|
+| `_init_tables` | `conn = self._conn()` + `conn.commit()` + `conn.close()` | `with self._conn() as conn:` |
+| `create_profile` | ídem | ídem |
+| `update_profile` | ídem + early-return con close manual | ídem — early-return sin close |
+| `create_source` | ídem | ídem |
+| `mark_indexed` | ídem | ídem |
+| `delete_source` | ídem | ídem |
+
+`sqlite3.Connection` como context manager hace auto-commit/rollback; la conexión es GC'd al salir del scope.
+
+### Fix 2 — `pytest.ini` — evitar recolección de venv y eval
+
+```ini
+testpaths = tests
+addopts = --ignore=venv --ignore=eval
+```
+
+Evita que pytest camine `venv/` (lento, falsos positivos) y `eval/` (scripts standalone que tocan DB de producción).
+
+### Fix 3 — `eval/` tests — fixture `tmp_db`
+
+- Creado `eval/conftest.py` con fixture `tmp_db` (parchea `database.circuit_design.DB_PATH` a DB temporal).
+- `test_full_integration.py::test_complete_integration` recibe `tmp_db` como parámetro — ya no escribe en DB de producción si se corre con `pytest eval/`.
+- `test_circuit_integration.py` no tiene funciones `test_*` → pytest no lo colecta; sigue siendo script standalone.
+
+### Fix 4 — `tools/component_types.py` — tabla de dispatch única
+
+Creado `tools/component_types.py` con definición canónica de:
+
+```python
+_MCU_TYPES       # idéntico en ambos renderers
+_RELAY_TYPES     # idéntico en ambos renderers
+_ZONE_SENSOR_TYPES  # unión de schematic (superset) + pcb (añade ina260, ultrasonic_sensor)
+```
+
+- `tools/schematic_renderer.py` y `tools/pcb_renderer.py` ahora importan desde ahí.
+- `tools/kicad_pcb_exporter.py` no importa estos sets directamente → sin impacto.
+
+### Fix 5 — Eliminar `package.json` / `package-lock.json`
+
+4 paquetes `@aethermind/*` sin referencias en ningún archivo Python, Dockerfile ni `railway.toml`. Eliminados con `git rm`.
+
+### Fix 6 — `requirements.txt` / `requirements-dev.txt`
+
+| Cambio | Detalle |
+|--------|---------|
+| `numpy>=1.24.0,<2.0.0` | Upper bound para evitar breaking changes de NumPy 2.x |
+| Creado `requirements-dev.txt` | `pytest>=8.0.0` y `pytest-asyncio>=0.23.0` movidos fuera de prod deps |
 | `agent/agent_controller.py` | `import asyncio` debe estar a nivel módulo (corregido en v4.11.0) — cualquier nuevo método que use `asyncio.*` lo requiere | Monitorear en nuevos métodos |

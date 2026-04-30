@@ -50,37 +50,35 @@ class IntelligenceDB:
 
     def _init_tables(self):
         try:
-            conn = self._conn()
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS ai_profiles (
-                    id            TEXT PRIMARY KEY,
-                    name          TEXT NOT NULL UNIQUE,
-                    description   TEXT DEFAULT '',
-                    system_prompt TEXT NOT NULL,
-                    model_fast    TEXT,
-                    model_smart   TEXT,
-                    active_sources TEXT DEFAULT '[]',
-                    is_default    INTEGER DEFAULT 0,
-                    user_id       TEXT DEFAULT 'default',
-                    created_at    TEXT,
-                    updated_at    TEXT
-                )
-            """)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS knowledge_sources (
-                    id          TEXT PRIMARY KEY,
-                    name        TEXT NOT NULL,
-                    type        TEXT NOT NULL,
-                    content     TEXT DEFAULT '',
-                    description TEXT DEFAULT '',
-                    indexed     INTEGER DEFAULT 0,
-                    index_date  TEXT,
-                    user_id     TEXT DEFAULT 'default',
-                    created_at  TEXT
-                )
-            """)
-            conn.commit()
-            conn.close()
+            with self._conn() as conn:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS ai_profiles (
+                        id            TEXT PRIMARY KEY,
+                        name          TEXT NOT NULL UNIQUE,
+                        description   TEXT DEFAULT '',
+                        system_prompt TEXT NOT NULL,
+                        model_fast    TEXT,
+                        model_smart   TEXT,
+                        active_sources TEXT DEFAULT '[]',
+                        is_default    INTEGER DEFAULT 0,
+                        user_id       TEXT DEFAULT 'default',
+                        created_at    TEXT,
+                        updated_at    TEXT
+                    )
+                """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS knowledge_sources (
+                        id          TEXT PRIMARY KEY,
+                        name        TEXT NOT NULL,
+                        type        TEXT NOT NULL,
+                        content     TEXT DEFAULT '',
+                        description TEXT DEFAULT '',
+                        indexed     INTEGER DEFAULT 0,
+                        index_date  TEXT,
+                        user_id     TEXT DEFAULT 'default',
+                        created_at  TEXT
+                    )
+                """)
             logger.info("[Intelligence] Tablas inicializadas")
         except Exception as e:
             logger.error(f"[Intelligence] Error inicializando tablas: {e}")
@@ -173,23 +171,20 @@ class IntelligenceDB:
     def create_profile(self, data: dict, user_id: str = "default") -> dict:
         now = datetime.now(timezone.utc).isoformat()
         pid = str(uuid.uuid4())
-        conn = self._conn()
-        conn.execute(
-            """INSERT INTO ai_profiles
-               (id, name, description, system_prompt, model_fast, model_smart,
-                active_sources, is_default, user_id, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)""",
-            (pid, data["name"], data.get("description", ""), data["system_prompt"],
-             data.get("model_fast"), data.get("model_smart"),
-             json.dumps(data.get("active_sources", [])), user_id, now, now)
-        )
-        conn.commit()
-        conn.close()
+        with self._conn() as conn:
+            conn.execute(
+                """INSERT INTO ai_profiles
+                   (id, name, description, system_prompt, model_fast, model_smart,
+                    active_sources, is_default, user_id, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)""",
+                (pid, data["name"], data.get("description", ""), data["system_prompt"],
+                 data.get("model_fast"), data.get("model_smart"),
+                 json.dumps(data.get("active_sources", [])), user_id, now, now)
+            )
         return self.get_profile(pid)
 
     def update_profile(self, profile_id: str, data: dict) -> dict | None:
         now = datetime.now(timezone.utc).isoformat()
-        conn = self._conn()
         fields, values = [], []
         for key in ("name", "description", "system_prompt", "model_fast", "model_smart"):
             if key in data:
@@ -199,13 +194,11 @@ class IntelligenceDB:
             fields.append("active_sources = ?")
             values.append(json.dumps(data["active_sources"]))
         if not fields:
-            conn.close()
             return self.get_profile(profile_id)
         fields.append("updated_at = ?")
         values.extend([now, profile_id])
-        conn.execute(f"UPDATE ai_profiles SET {', '.join(fields)} WHERE id = ?", values)
-        conn.commit()
-        conn.close()
+        with self._conn() as conn:
+            conn.execute(f"UPDATE ai_profiles SET {', '.join(fields)} WHERE id = ?", values)
         return self.get_profile(profile_id)
 
     def activate_profile(self, profile_id: str, user_id: str = "default") -> bool:
@@ -272,34 +265,28 @@ class IntelligenceDB:
     def create_source(self, data: dict, user_id: str = "default") -> dict:
         now = datetime.now(timezone.utc).isoformat()
         sid = str(uuid.uuid4())
-        conn = self._conn()
-        conn.execute(
-            """INSERT INTO knowledge_sources
-               (id, name, type, content, description, indexed, user_id, created_at)
-               VALUES (?, ?, ?, ?, ?, 0, ?, ?)""",
-            (sid, data["name"], data["type"],
-             data.get("content", ""), data.get("description", ""), user_id, now)
-        )
-        conn.commit()
-        conn.close()
+        with self._conn() as conn:
+            conn.execute(
+                """INSERT INTO knowledge_sources
+                   (id, name, type, content, description, indexed, user_id, created_at)
+                   VALUES (?, ?, ?, ?, ?, 0, ?, ?)""",
+                (sid, data["name"], data["type"],
+                 data.get("content", ""), data.get("description", ""), user_id, now)
+            )
         return self.get_source(sid)
 
     def mark_indexed(self, source_id: str):
         now = datetime.now(timezone.utc).isoformat()
-        conn = self._conn()
-        conn.execute(
-            "UPDATE knowledge_sources SET indexed = 1, index_date = ? WHERE id = ?",
-            (now, source_id)
-        )
-        conn.commit()
-        conn.close()
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE knowledge_sources SET indexed = 1, index_date = ? WHERE id = ?",
+                (now, source_id)
+            )
 
     def delete_source(self, source_id: str) -> bool:
         try:
-            conn = self._conn()
-            conn.execute("DELETE FROM knowledge_sources WHERE id = ?", (source_id,))
-            conn.commit()
-            conn.close()
+            with self._conn() as conn:
+                conn.execute("DELETE FROM knowledge_sources WHERE id = ?", (source_id,))
             return True
         except Exception as e:
             logger.error(f"[Intelligence] Error eliminando fuente: {e}")
