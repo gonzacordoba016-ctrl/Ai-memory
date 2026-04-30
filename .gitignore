@@ -96,3 +96,5 @@ agent_files/firmware/**/*.map
 !.env.example
 
 .aider*
+# Added by code-review-graph
+.code-review-graph/
