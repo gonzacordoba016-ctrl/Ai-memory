@@ -39,11 +39,12 @@ from datetime import datetime, timezone
 import httpx
 import sqlite3
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from api.auth import get_current_user
 
 try:
     from slowapi import _rate_limit_exceeded_handler
@@ -89,11 +90,14 @@ except Exception as e:
 _routers_loaded: list[str] = []
 _routers_failed: list[str] = []
 
-def _include(name: str, import_path: str, mod_attr: str = "router"):
+_AUTH_DEP = [Depends(get_current_user)]
+
+def _include(name: str, import_path: str, mod_attr: str = "router", protected: bool = False):
     try:
         import importlib
         mod = importlib.import_module(import_path)
-        app.include_router(getattr(mod, mod_attr))
+        deps = _AUTH_DEP if protected else []
+        app.include_router(getattr(mod, mod_attr), dependencies=deps)
         _routers_loaded.append(name)
     except Exception as e:
         msg = f"Router '{name}' failed: {e}"
@@ -101,22 +105,25 @@ def _include(name: str, import_path: str, mod_attr: str = "router"):
         _startup_errors.append(msg)
         _routers_failed.append(name)
 
+# public: auth (login/register), circuits-public (share links), websockets (own auth)
 _include("auth",             "api.routers.auth")
-_include("memory",           "api.routers.memory")
-_include("hardware",         "api.routers.hardware")
-_include("hardware_bridge",  "api.routers.hardware_bridge")
-_include("knowledge",        "api.routers.knowledge")
-_include("circuits",         "api.routers.circuits")
 _include("circuits-public",  "api.routers.circuits", "_public_router")
 _include("websockets",       "api.routers.websockets")
-_include("intelligence",     "api.routers.intelligence")
-_include("push",             "api.routers.push")
-_include("schematics",       "api.routers.schematics")
-_include("stock",            "api.routers.stock")
-_include("decisions",        "api.routers.decisions")
-_include("calc",             "api.routers.calc")
-_include("projects",         "api.routers.projects")
-_include("hardware_state",   "api.routers.hardware_state")
+# already protected at router level — redundant dep is harmless
+_include("memory",           "api.routers.memory",          protected=True)
+_include("circuits",         "api.routers.circuits",        protected=True)
+_include("knowledge",        "api.routers.knowledge",       protected=True)
+_include("projects",         "api.routers.projects",        protected=True)
+# newly protected
+_include("hardware",         "api.routers.hardware",        protected=True)
+_include("hardware_bridge",  "api.routers.hardware_bridge", protected=True)
+_include("intelligence",     "api.routers.intelligence",    protected=True)
+_include("push",             "api.routers.push",            protected=True)
+_include("schematics",       "api.routers.schematics",      protected=True)
+_include("stock",            "api.routers.stock",           protected=True)
+_include("decisions",        "api.routers.decisions",       protected=True)
+_include("calc",             "api.routers.calc",            protected=True)
+_include("hardware_state",   "api.routers.hardware_state",  protected=True)
 
 _log.info(f"[STARTUP] Routers OK: {_routers_loaded}")
 if _routers_failed:

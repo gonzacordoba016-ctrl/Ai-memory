@@ -103,11 +103,14 @@ class AgentController:
 
         # 3. Orquestador async
         await _phase("routing")
-        orch_result = await self.orchestrator.run(
-            query    = user_input,
-            context  = self._build_base_context(),
-            history  = self.state.get_history(),
-            on_phase = _phase,
+        orch_result = await asyncio.wait_for(
+            self.orchestrator.run(
+                query    = user_input,
+                context  = self._build_base_context(),
+                history  = self.state.get_history(),
+                on_phase = _phase,
+            ),
+            timeout=90.0,
         )
         agents_used = orch_result["agents_used"]
         sub_context = orch_result["combined_context"]

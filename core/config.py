@@ -93,6 +93,8 @@ def validate_config():
         errors.append("OPENROUTER_API_KEY no configurada")
     if not LLM_MODEL:
         errors.append("OLLAMA_MODEL / OPENROUTER_MODEL no configurado")
+    if MULTI_USER and not JWT_SECRET:
+        errors.append("JWT_SECRET requerido cuando MULTI_USER=true")
     if errors:
         raise EnvironmentError(
             "Configuración inválida:\n" + "\n".join(f"  - {e}" for e in errors)
@@ -131,7 +133,7 @@ QDRANT_URL = _env("QDRANT_URL", "")
 MULTI_USER = _env("MULTI_USER", "false").lower() == "true"
 
 # Clave secreta para firmar tokens JWT. Cambiar en producción.
-JWT_SECRET    = _env("JWT_SECRET", "stratum-dev-secret-change-in-production")
+JWT_SECRET    = _env("JWT_SECRET", "")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_MINUTES = int(_env("JWT_EXPIRE_MINUTES", "1440"))  # 24h por defecto
 

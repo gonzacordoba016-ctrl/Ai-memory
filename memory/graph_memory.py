@@ -58,7 +58,9 @@ class GraphMemory:
         path = Path(GRAPH_DB_PATH)
         path.parent.mkdir(parents=True, exist_ok=True)
         data = nx.node_link_data(self.graph)
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(path)
 
     def add_relation(self, subject: str, predicate: str, obj: str, source: str = "conversation"):
         subject = subject.strip().lower()
