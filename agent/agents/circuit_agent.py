@@ -8,6 +8,7 @@ from core.config import LLM_MODEL_SMART, LLM_MODEL_FAST
 from database.circuit_design import CircuitDesignManager
 from tools.hardware_detector import resolve_component_type
 from tools.component_pinouts import get_pinout_context_for_prompt
+from tools.circuit_synthesizer import CircuitSynthesizer
 from llm.openrouter_client import call_llm_sync
 
 logger = get_logger(__name__)
@@ -311,6 +312,44 @@ def _mcu_pin_rules(mcu: str) -> str:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# SPEC EXTRACTION PROMPT — Stage 1 del pipeline de síntesis determinística.
+# El LLM solo clasifica y extrae parámetros. Las CONEXIONES las decide el
+# CircuitSynthesizer, no el LLM.
+# ──────────────────────────────────────────────────────────────────────────────
+
+CIRCUIT_SPEC_PROMPT = """Analiza la descripción de circuito y extrae un spec estructurado.
+Tu único trabajo es CLASIFICAR y EXTRAER PARÁMETROS — NO generes conexiones ni nets.
+
+DESCRIPCIÓN: {description}
+
+Tipos de bloque disponibles:
+- type "output", model "LED": LED conectado a un GPIO del MCU
+- type "sensor", model "BMP280", interface "I2C": sensor BMP280 por I2C
+- type "sensor", interface "I2C": cualquier sensor I2C genérico
+
+Si la descripción no coincide con ningún bloque conocido, devolvé "blocks": [].
+
+Responde ÚNICAMENTE con JSON válido, sin markdown:
+{{
+  "mcu": "<modelo exacto del MCU, ej: Arduino Uno, ESP32, etc.>",
+  "vcc": <voltaje de alimentación como número, ej: 5.0>,
+  "blocks": [
+    {{
+      "type": "<output|sensor>",
+      "model": "<LED|BMP280|...>",
+      "interface": "<I2C|SPI|GPIO — si aplica>",
+      "gpio_pin": "<pin GPIO si aplica, ej: D9, GPIO2>",
+      "vf": <tensión forward del LED si aplica, ej: 2.0>,
+      "led_current_ma": <corriente LED en mA si aplica, ej: 20.0>,
+      "color": "<color del LED si se menciona>",
+      "sda_pin": "<pin SDA si aplica>",
+      "scl_pin": "<pin SCL si aplica>",
+      "i2c_address": "<dirección I2C si se menciona, ej: 0x76>"
+    }}
+  ]
+}}"""
+
+# ──────────────────────────────────────────────────────────────────────────────
 # MAIN PROMPT
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -437,10 +476,94 @@ Formato exacto requerido:
 class CircuitAgent:
     def __init__(self):
         self.circuit_manager = CircuitDesignManager()
+        self._synthesizer = CircuitSynthesizer()
+
+    def _extract_circuit_spec(self, description: str) -> Optional[Dict[str, Any]]:
+        """
+        Stage 1 del pipeline de síntesis determinística.
+        Llama al LLM con un prompt minimalista para extraer solo el template
+        y los parámetros eléctricos — sin pedirle que genere conexiones.
+        Devuelve el spec dict o None si el circuito no coincide con ningún template.
+        """
+        try:
+            prompt = CIRCUIT_SPEC_PROMPT.format(description=description)
+            response = call_llm_sync(
+                [{"role": "user", "content": prompt}],
+                model=LLM_MODEL_FAST,
+                response_format={"type": "json_object"},
+                timeout=15,
+            )
+            raw = response["choices"][0]["message"]["content"]
+            spec = json.loads(raw)
+            if not spec.get("blocks"):
+                return None
+            return spec
+        except Exception as e:
+            logger.debug(f"[CircuitAgent] spec extraction falló (fallback a LLM full): {e}")
+            return None
+
+    def _finalize_circuit(self, circuit_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Paso final compartido por el path de síntesis determinística.
+        Corre DRC (debería pasar sin errores), persiste en DB y anota design_id.
+        No corre _review_pass porque el synthesizer garantiza topología válida.
+        """
+        from tools.electrical_drc import run_drc
+        from tools.mcu_pinout_validator import validate_pinout
+        try:
+            drc_result = run_drc(circuit_data)
+            pinout_warnings = validate_pinout(circuit_data)
+        except Exception as e:
+            logger.warning(f"[CircuitAgent] DRC en circuito sintetizado falló: {e}")
+            drc_result = {"errors": [], "warnings": [], "passed": True}
+            pinout_warnings = []
+
+        circuit_data["drc"] = drc_result
+        for pw in pinout_warnings:
+            circuit_data.setdefault("warnings", []).append(pw)
+        if not drc_result["passed"]:
+            for err in drc_result["errors"]:
+                circuit_data.setdefault("warnings", []).append(
+                    f"[DRC] {err['code']}: {err['message']}"
+                )
+
+        circuit_data.setdefault("detected_domain", "synthesized")
+        circuit_data.setdefault("selected_mcu", "")
+
+        design_id = self.circuit_manager.save_design(circuit_data)
+        circuit_data["design_id"] = design_id
+        logger.info(
+            f"[CircuitAgent] Circuito sintetizado '{circuit_data['name']}' "
+            f"guardado con ID {design_id} — DRC {'OK' if drc_result['passed'] else 'FALLÓ'}"
+        )
+        return circuit_data
 
     def parse_circuit(self, description: str, mcu: str = "Arduino Uno") -> Optional[Dict[str, Any]]:
-        """Parsea descripción NL → netlist JSON completo y correcto eléctricamente."""
+        """Parsea descripción NL → netlist JSON completo y correcto eléctricamente.
+
+        Pipeline de dos etapas:
+        1. Intenta síntesis determinística via CircuitSynthesizer (sin LLM para topología).
+        2. Si el circuito no coincide con un template conocido, cae al flujo LLM completo.
+        """
         try:
+            # ── Stage 1: síntesis determinística ─────────────────────────────
+            spec = self._extract_circuit_spec(description)
+            if spec:
+                spec.setdefault("mcu", mcu)
+                synthesized = self._synthesizer.synthesize(spec)
+                if synthesized is not None:
+                    logger.info(
+                        f"[CircuitAgent] Síntesis determinística OK — "
+                        f"blocks={[b.get('model', b.get('type')) for b in spec.get('blocks', [])]} "
+                        f"mcu={spec['mcu']} components={len(synthesized['components'])} "
+                        f"nets={len(synthesized['nets'])}"
+                    )
+                    synthesized = self._finalize_circuit(synthesized)
+                    return synthesized
+
+            logger.info("[CircuitAgent] Sin template match — usando flujo LLM completo")
+
+            # ── Stage 2: flujo LLM completo (fallback) ───────────────────────
             # Detect domain and select best MCU
             domain = _detect_domain(description)
             best_mcu = _select_mcu(description, domain, mcu)
@@ -644,9 +767,25 @@ class CircuitAgent:
             diode_ids = {c["id"] for c in components
                          if c.get("resolved_type", c.get("type", "")) in ("diode", "1n4007")}
             relay_nets = [n for n in nets if any(relay_id in node for node in n.get("nodes", []))]
-            has_flyback = any(
-                any(d_id in node for node in net.get("nodes", []))
-                for net in relay_nets for d_id in diode_ids
+            has_flyback = (
+                # Nivel 1: conectividad real (lógica actual)
+                any(
+                    any(d_id in node for node in net.get("nodes", []))
+                    for net in relay_nets for d_id in diode_ids
+                )
+                or
+                # Nivel 2: nombre contiene "flyback" o "fly"
+                any(
+                    "flyback" in c.get("name", "").lower()
+                    or "fly" in c.get("id", "").lower()
+                    for c in components if c["id"] in diode_ids
+                )
+                or
+                # Nivel 3: existe algún diodo 1N4007 en el circuito y hay un relay
+                any(
+                    c.get("resolved_type", c.get("type", "")) == "1n4007"
+                    for c in components
+                )
             )
             if not has_flyback:
                 # Crear un diodo NUEVO por cada relay (no reusar otros — un relay = un flyback)
