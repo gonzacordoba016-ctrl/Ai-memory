@@ -155,10 +155,16 @@ _ZONE_MCU_PWR_TYPES = _MCU_TYPES | {
     "voltage_regulator", "lm7805", "ams1117", "lm317", "regulator",
     "buck_converter", "boost_converter", "ldo", "dc_dc",
 }
+_ZONE_SENSOR_TYPES = {
+    "bmp280", "bme280", "bmp180", "bmp085", "dht22", "dht11", "am2302",
+    "si7021", "htu21d", "sht31", "sht30", "aht20", "mpu6050", "mpu9250",
+    "icm20600", "ds18b20", "ds18s20", "ina219", "ina260",
+    "hc_sr04", "ultrasonic", "ultrasonic_sensor", "lm35", "moisture_sensor",
+}
 
 
 def _pcb_zone(comp: Dict) -> str:
-    """Returns 'hv', 'mcu', 'relay', 'output', or 'other'."""
+    """Returns 'hv', 'mcu', 'sensor', 'relay', 'output', or 'other'."""
     cid = (comp.get("id", "") or "").lower()
     t = (comp.get("resolved_type") or comp.get("type") or "").lower()
     name = (comp.get("name", "") or "").lower()
@@ -176,6 +182,8 @@ def _pcb_zone(comp: Dict) -> str:
         return "hv"
     if t in _ZONE_MCU_PWR_TYPES:
         return "mcu"
+    if t in _ZONE_SENSOR_TYPES:
+        return "sensor"
     if t == "connector":
         return "output"
     return "other"
@@ -267,7 +275,7 @@ def _place_components(components: List[Dict],
     relay_groups = _build_pcb_relay_groups(components)
     grouped_ids = {cid for cell in relay_groups.values() for cid in (c["id"] for c in cell)}
 
-    zones: Dict[str, List[Dict]] = {z: [] for z in ("hv", "mcu", "relay", "output", "other")}
+    zones: Dict[str, List[Dict]] = {z: [] for z in ("hv", "mcu", "sensor", "relay", "output", "other")}
     for comp in components:
         if comp["id"] in grouped_ids:
             continue
@@ -287,6 +295,7 @@ def _place_components(components: List[Dict],
     # Anchos REALES de cada columna
     w_hv     = _zone_max_w(zones["hv"])
     w_mcu    = _zone_max_w(zones["mcu"])
+    w_sensor = _zone_max_w(zones["sensor"])
     w_other  = _zone_max_w(zones["other"])
     relay_max_w = _zone_max_w([cell[0] for cell in relay_groups.values()]) if relay_groups else 0.0
     w_relay  = (relay_max_w + relay_cell_extra) if relay_max_w else 0.0
@@ -304,6 +313,13 @@ def _place_components(components: List[Dict],
         cur_x += w_mcu / 2 + gap
     else:
         x_mcu = cur_x
+
+    if w_sensor:
+        cur_x += w_sensor / 2
+        x_sensor_zone = cur_x
+        cur_x += w_sensor / 2 + gap
+    else:
+        x_sensor_zone = cur_x
 
     if w_other:
         cur_x += w_other / 2
@@ -400,11 +416,54 @@ def _place_components(components: List[Dict],
     for comp, ypos in zip(out_comps, _per_comp_stack(out_comps, pad=6.0)):
         positions[comp["id"]] = (x_output, ypos)
 
+    # ── Sensor zone (I2C/SPI/1-wire sensors) ──
+    sensor_comps = [c for c in zones["sensor"] if c["id"] not in positions]
+    if sensor_comps:
+        for comp, ypos in zip(sensor_comps, _per_comp_stack(sensor_comps, pad=4.0)):
+            positions[comp["id"]] = (x_sensor_zone, ypos)
+
     # ── 'other' / misc — entre MCU y relay zones (X calculado arriba) ──
     other_comps = [c for c in zones["other"] if c["id"] not in positions]
     if other_comps:
-        for comp, ypos in zip(other_comps, _per_comp_stack(other_comps, pad=4.0)):
-            positions[comp["id"]] = (x_other_zone, ypos)
+        if len(other_comps) > 4:
+            other_col1 = other_comps[:len(other_comps) // 2]
+            other_col2 = other_comps[len(other_comps) // 2:]
+            max_fp_w = max(_fp(c.get("resolved_type", c.get("type", "")))[0] for c in other_comps)
+            x_other_col2 = x_other_zone + max_fp_w + 8.0
+            for comp, ypos in zip(other_col1, _per_comp_stack(other_col1, pad=4.0)):
+                positions[comp["id"]] = (x_other_zone, ypos)
+            for comp, ypos in zip(other_col2, _per_comp_stack(other_col2, pad=4.0)):
+                positions[comp["id"]] = (x_other_col2, ypos)
+        else:
+            for comp, ypos in zip(other_comps, _per_comp_stack(other_comps, pad=4.0)):
+                positions[comp["id"]] = (x_other_zone, ypos)
+
+    # ── Decoupling caps adyacentes al IC que comparten net VCC/GND ──
+    if nets:
+        _ic_types = {"ic", "mcu", "microcontroller", "esp32", "esp8266", "arduino",
+                     "stm32", "atmega", "attiny", "raspberry", "sensor"}
+        for comp in components:
+            cname = (comp.get("name") or comp.get("id") or "").lower()
+            ctype = (comp.get("resolved_type") or comp.get("type") or "").lower()
+            is_bypass = any(k in cname for k in ("desacoplo", "bypass", "100n", "decoupling"))
+            if not is_bypass or comp["id"] not in positions:
+                continue
+            cap_nets = {str(n).split(".")[0] for net in nets
+                        for n in net.get("nodes", []) if comp["id"] in str(n)
+                        and any(v in net.get("name", "").lower() for v in ("vcc", "vdd", "3v3", "5v", "gnd"))}
+            for ic in components:
+                if ic["id"] == comp["id"] or ic["id"] not in positions:
+                    continue
+                ic_type = (ic.get("resolved_type") or ic.get("type") or "").lower()
+                if ic_type not in _ic_types:
+                    continue
+                ic_nets = {str(n).split(".")[0] for net in nets
+                           for n in net.get("nodes", []) if ic["id"] in str(n)}
+                if cap_nets & ic_nets:
+                    fp_ic_w, _ = _fp(ic_type)
+                    ix, iy = positions[ic["id"]]
+                    positions[comp["id"]] = (ix + fp_ic_w / 2 + 3.0, iy)
+                    break
 
     # ── HPWL barycentric Y-reorder (3 iters) ──
     # Para cada zona, recalcular el orden Y de los componentes según el promedio
@@ -456,10 +515,11 @@ def _place_components(components: List[Dict],
                 positions[c["id"]] = (x_center, y)
 
         for _ in range(3):
-            _reorder_zone("hv",     zones["hv"],     x_hv,         6.0)
-            _reorder_zone("mcu",    mcu_sorted,      x_mcu,        6.0)
-            _reorder_zone("other",  other_comps,     x_other_zone, 4.0)
-            _reorder_zone("output", out_comps,       x_output,     6.0)
+            _reorder_zone("hv",     zones["hv"],     x_hv,          6.0)
+            _reorder_zone("mcu",    mcu_sorted,      x_mcu,         6.0)
+            _reorder_zone("sensor", sensor_comps,    x_sensor_zone, 4.0)
+            _reorder_zone("other",  other_comps,     x_other_zone,  4.0)
+            _reorder_zone("output", out_comps,       x_output,      6.0)
             # Reorder de RELAY cells (si no es ancla): mover el cluster diodo+R con su relay
             if anchor != "relay" and len(relay_groups) >= 2:
                 relay_targets: List[Tuple[float, List[Dict]]] = []
@@ -516,33 +576,15 @@ def _board_size(components: List[Dict]) -> Tuple[float, float]:
     if zone_count["relay"]:  parts.append(zone_widths["relay"] + relay_cell_extra)
     if zone_count["output"]: parts.append(zone_widths["output"])
 
-    total_w = margin * 2 + sum(parts) + gap * max(0, len(parts) - 1)
-    total_w = max(total_w, 80.0)  # mínimo razonable
+    n = len(components)
+    board_w = max(80.0, n * 8.5)
+    board_h = max(80.0, n * 7.0)
+    if zone_count["relay"]:
+        board_w = max(board_w, zone_widths["relay"] * 3 + 40)
+    board_w = min(board_w, 250.0)
+    board_h = min(board_h, 200.0)
 
-    # Height: driven by the longest zone stack. Mirrors _per_comp_stack pad logic
-    # in _place_components so the column fits without negative-Y overflow.
-    def _stack_height(zone: str, default_pitch: float, pad: float) -> float:
-        comps_in_zone = [c for c in components if _pcb_zone(c) == zone]
-        if not comps_in_zone:
-            return 0.0
-        total = 0.0
-        for c in comps_in_zone:
-            _, h = _fp(c.get("resolved_type", c.get("type", "")))
-            total += max(h, default_pitch) + pad
-        return total
-
-    h_hv     = _stack_height("hv",     12.0, 6.0)
-    h_mcu    = _stack_height("mcu",    12.0, 6.0)
-    # Relay zone: each cell counts as relay_module height + 8 pad
-    relay_count = sum(1 for c in components if _pcb_zone(c) == "relay")
-    h_relay  = relay_count * (max(_FOOTPRINT.get("relay_module", (40, 25))[1], 28.0) + 8.0)
-    h_output = _stack_height("output", 12.0, 6.0)
-    h_other  = _stack_height("other",  12.0, 4.0)
-
-    total_h = max(h_hv, h_mcu, h_relay, h_output, h_other) + margin * 2 + 14.0  # +14 for label area
-    total_h = max(total_h, 70.0)
-
-    return (round(total_w, 1), round(total_h, 1))
+    return (round(board_w, 1), round(board_h, 1))
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -581,12 +623,15 @@ def _route_traces(nets: List[Dict],
             x2, y2 = coords[i + 1]
             mid_x = (x1 + x2) / 2
             alt = "bottom" if layer == "top" else "top"
-            traces.append({"x1": x1,    "y1": y1, "x2": mid_x, "y2": y1,
-                           "net": name, "layer": layer, "width": width})
-            traces.append({"x1": mid_x, "y1": y1, "x2": mid_x, "y2": y2,
-                           "net": name, "layer": alt,   "width": width})
-            traces.append({"x1": mid_x, "y1": y2, "x2": x2,    "y2": y2,
-                           "net": name, "layer": layer, "width": width})
+            if abs(mid_x - x1) >= 0.001:
+                traces.append({"x1": x1,    "y1": y1, "x2": mid_x, "y2": y1,
+                               "net": name, "layer": layer, "width": width})
+            if abs(y2 - y1) >= 0.001:
+                traces.append({"x1": mid_x, "y1": y1, "x2": mid_x, "y2": y2,
+                               "net": name, "layer": alt,   "width": width})
+            if abs(x2 - mid_x) >= 0.001:
+                traces.append({"x1": mid_x, "y1": y2, "x2": x2,    "y2": y2,
+                               "net": name, "layer": layer, "width": width})
     return traces
 
 
@@ -630,7 +675,7 @@ class PCBRenderer:
             svg = [
                 f'<svg xmlns="http://www.w3.org/2000/svg" '
                 f'width="{pw:.1f}" height="{ph:.1f}" '
-                f'viewBox="0 0 {board_w:.2f} {board_h:.2f}">',
+                f'viewBox="-5 -5 {board_w+10:.2f} {board_h+10:.2f}">',
                 '<defs>',
                 # 45-degree hatch for GND copper pour
                 '  <pattern id="gnd-hatch" patternUnits="userSpaceOnUse" '

@@ -737,8 +737,9 @@
                 breadboardView.clientWidth / Math.max(breadboardView.clientHeight, 1),
                 0.1, 2000
             );
-            threeCamera.position.set(0, 55, 170);
-            threeCamera.lookAt(0, 8, 0);
+            const _nComps3D = (currentCircuit && currentCircuit.components) ? currentCircuit.components.length : 5;
+            threeCamera.position.set(0, 30 + _nComps3D * 2, 60 + _nComps3D * 3);
+            threeCamera.lookAt(0, 0, 0);
 
             threeRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
             threeRenderer.setPixelRatio(window.devicePixelRatio || 1);
@@ -1078,6 +1079,9 @@
 
         // Build a 3D component mesh, returns top Y for label/wire placement
         function _addComponent3D(comp, t, x, z) {
+            const _xMax = 195 / 2 - 10, _zMax = 130 / 2 - 10;
+            x = Math.max(-_xMax, Math.min(_xMax, x));
+            z = Math.max(-_zMax, Math.min(_zMax, z));
             let mesh, topY = 0;
 
             if (t === 'resistor') {

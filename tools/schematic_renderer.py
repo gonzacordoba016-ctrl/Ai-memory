@@ -255,7 +255,7 @@ def _layout_components(components: List[Dict], width: int, height: int,
 
     mcu_sorted = sorted(
         zones["mcu"],
-        key=lambda c: 1 if (c.get("resolved_type") or c.get("type") or "").lower() in _MCU_TYPES else 0,
+        key=lambda c: 0 if (c.get("resolved_type") or c.get("type") or "").lower() in _MCU_TYPES else 1,
     )
     has_ac      = bool(zones["ac"])
     has_mcu     = bool(mcu_sorted)
@@ -305,7 +305,7 @@ def _layout_components(components: List[Dict], width: int, height: int,
             return []
         if n == 1:
             return [y_top + y_height // 2]
-        spacing = max(95, min(150, y_height // n))
+        spacing = max(60, y_height // n)
         total = (n - 1) * spacing
         start = y_top + (y_height - total) // 2
         return [start + i * spacing for i in range(n)]
@@ -478,20 +478,20 @@ class SchematicRenderer:
             n_ac = sum(1 for c in components if _classify_zone(c) == "ac")
             n_mcu = sum(1 for c in components if _classify_zone(c) == "mcu")
             n_other = sum(1 for c in components if _classify_zone(c) == "other")
+            n_sensor = sum(1 for c in components if _classify_zone(c) == "sensor")
             n_output = sum(1 for c in components if _classify_zone(c) == "output")
-            active_zones = sum(1 for v in (n_ac, n_mcu, n_other, n_relays, n_output) if v > 0)
-            # SLOTs (debe coincidir con _layout_components): AC=240 MCU=240 OTHER=220 RELAY=360 OUTPUT=200
+            active_zones = sum(1 for v in (n_ac, n_mcu, n_sensor, n_other, n_relays, n_output) if v > 0)
+            # SLOTs (debe coincidir con _layout_components): AC=240 MCU=240 SENSOR=220 OTHER=200 RELAY=360 OUTPUT=200
             slots_w = 240 * (1 if n_ac else 0) + 240 * (1 if n_mcu else 0) \
-                    + 220 * (1 if n_other else 0) + 360 * (1 if n_relays else 0) \
-                    + 200 * (1 if n_output else 0)
+                    + 220 * (1 if n_sensor else 0) + 200 * (1 if n_other else 0) \
+                    + 360 * (1 if n_relays else 0) + 200 * (1 if n_output else 0)
             gap_w = 60 * max(0, active_zones - 1)
-            margin_w = 160  # 80 left + 80 right (legend + title)
-
+            # cur = x_margin(80) + slots_w + gap_w; canvas_w = cur + 80
             if width is None:
-                width  = max(1100, slots_w + gap_w + margin_w)
+                width = slots_w + gap_w + 160
             if height is None:
-                max_stack = max(n_relays, n_ac, n_mcu, n_output, n_other, 5)
-                height = max(700, max_stack * 130 + 240)
+                n_comps_max_zona = max(n_ac, n_mcu, n_sensor, n_other, n_relays, n_output, 1)
+                height = max(890, n_comps_max_zona * 110 + 180)
 
             dwg = svgwrite.Drawing(size=('100%', '100%'),
                                    viewBox=f"0 0 {width} {height}")
@@ -501,7 +501,7 @@ class SchematicRenderer:
             positions  = _layout_components(components, width, height - 90, saved, nets)
             # F2.4 — galvanic isolation barrier between AC and control zones
             self._draw_galvanic_barrier(dwg, components, positions, width, height)
-            self._draw_connections(dwg, nets, positions)
+            self._draw_connections(dwg, nets, positions, width, height)
             # Power rail symbols
             self._draw_power_rails(dwg, nets, positions)
             for comp in components:
@@ -692,7 +692,7 @@ class SchematicRenderer:
 
     # ── Net connections (F2.1 — net labels for distant nodes) ──────────────
 
-    _LABEL_DISTANCE_THRESHOLD = 220  # px — beyond this, use net labels instead of wires
+    _LABEL_DISTANCE_THRESHOLD = 220  # fallback — overridden by dynamic threshold in _draw_connections
 
     def _draw_net_label(self, dwg, name: str, pos: Tuple[int, int],
                         color: str, direction: str = "right"):
@@ -733,7 +733,7 @@ class SchematicRenderer:
                              font_family="monospace", text_anchor="middle",
                              font_weight="bold"))
 
-    def _draw_connections(self, dwg, nets, positions):
+    def _draw_connections(self, dwg, nets, positions, canvas_w=None, canvas_h=None):
         """Draw wires or net labels for each net."""
         for net in nets:
             try:
@@ -751,8 +751,8 @@ class SchematicRenderer:
                 ys = [c[1] for c in coords]
                 span_x = max(xs) - min(xs)
                 span_y = max(ys) - min(ys)
-                use_labels = (span_x > self._LABEL_DISTANCE_THRESHOLD
-                              or span_y > self._LABEL_DISTANCE_THRESHOLD)
+                threshold = (canvas_w * 0.35) if canvas_w else self._LABEL_DISTANCE_THRESHOLD
+                use_labels = span_x > threshold or span_y > ((canvas_h * 0.4) if canvas_h else threshold)
                 if use_labels:
                     avg_x = sum(xs) / len(xs)
                     for cx, cy in coords:
@@ -765,8 +765,10 @@ class SchematicRenderer:
                                              color, direction=direction)
                         dwg.add(dwg.circle(center=(cx, cy), r=3, fill=color))
                 else:
-                    for i in range(len(coords) - 1):
-                        path = _route_orthogonal(coords[i], coords[i + 1])
+                    cx_c = sum(x for x, y in coords) / len(coords)
+                    cy_c = sum(y for x, y in coords) / len(coords)
+                    for coord in coords:
+                        path = _route_orthogonal((cx_c, cy_c), coord)
                         for j in range(len(path) - 1):
                             dwg.add(dwg.line(
                                 start=path[j], end=path[j + 1],
@@ -956,8 +958,11 @@ class SchematicRenderer:
             "connector_ac":          self._sym_connector_ac,
             "iec_connector":         self._sym_connector_ac,
         }
-        draw_fn = dispatch.get(t, self._sym_generic)
-        draw_fn(dwg, x, y, comp)
+        draw_fn = dispatch.get(t)
+        if draw_fn is not None:
+            draw_fn(dwg, x, y, comp)
+        elif not _kicad.render(dwg, x, y, t):
+            self._sym_generic(dwg, x, y, comp)
 
         # Reference above component
         ref = comp.get("id","?")
