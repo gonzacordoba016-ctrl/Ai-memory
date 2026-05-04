@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11.9-slim
 
 WORKDIR /app
 
@@ -24,15 +24,18 @@ RUN pip install --no-cache-dir \
 
 # Pre-descargar el modelo de embeddings durante el build (evita cold-start lento).
 # || true → no falla el build si hay problema de red; el modelo se descarga al primer embed().
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')" || true
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')" || echo "WARNING: model download failed, will download on first embed()"
 
-# Copiar código fuente (cache bust: 2026-04-13)
+# Copiar código fuente
 COPY . .
 
 # Crear directorios necesarios
 RUN mkdir -p database memory_db agent_files/knowledge agent_files/firmware api/static tools/plugins
 
 EXPOSE 8000
+
+RUN adduser --disabled-password --gecos "" appuser
+USER appuser
 
 # Railway inyecta PORT como variable de entorno
 CMD ["python", "run.py", "serve", "--no-reload"]

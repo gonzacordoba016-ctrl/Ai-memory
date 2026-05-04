@@ -98,3 +98,20 @@ agent_files/firmware/**/*.map
 .aider*
 # Added by code-review-graph
 .code-review-graph/
+
+# Herramientas de desarrollo local
+pyrightconfig.json
+instruc.txt
+guide-test.py
+.cursor/
+.kiro/
+.opencode.json
+.cursorrules
+.mcp.json
+.claude/settings.json
+.claude/skills/
+
+# Datos y carpetas locales
+data/*.db
+imagen/
+agent/keywords/
