@@ -587,6 +587,11 @@ class CircuitSynthesizer:
         if model in model_map:
             return model_map[model]
 
+        # Fallback: match by type when model is absent (e.g. {"type": "dht22"})
+        btype_key = btype.replace("-", "").replace("_", "").replace(" ", "")
+        if btype_key in model_map:
+            return model_map[btype_key]
+
         if btype == "sensor" and iface == "i2c":
             return self._add_i2c_sensor_block
         if btype == "sensor" and iface == "spi":
