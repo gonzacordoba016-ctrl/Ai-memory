@@ -8,7 +8,7 @@ from core.config import LLM_MODEL_SMART, LLM_MODEL_FAST
 from database.circuit_design import CircuitDesignManager
 from tools.hardware_detector import resolve_component_type
 from tools.component_pinouts import get_pinout_context_for_prompt
-from tools.circuit_synthesizer import CircuitSynthesizer
+from tools.circuit_synthesizer import CircuitSynthesizer, BLOCK_TYPE_ALIASES
 from llm.openrouter_client import call_llm_sync
 
 logger = get_logger(__name__)
@@ -325,6 +325,10 @@ DESCRIPCIÓN: {description}
 Tipos de bloque disponibles:
 - type "output", model "LED": LED conectado a un GPIO del MCU
 - type "sensor", model "BMP280", interface "I2C": sensor BMP280 por I2C
+- type "sensor", model "DHT22": sensor temperatura+humedad GPIO single-wire
+- type "sensor", model "moisture_sensor": sensor humedad de suelo analógico (ADC)
+- type "sensor", model "OLED", interface "I2C": display OLED I2C SSD1306
+- type "relay": módulo relay para control de carga/bomba/válvula
 - type "sensor", interface "I2C": cualquier sensor I2C genérico
 
 Si la descripción no coincide con ningún bloque conocido, devolvé "blocks": [].
@@ -478,6 +482,161 @@ class CircuitAgent:
         self.circuit_manager = CircuitDesignManager()
         self._synthesizer = CircuitSynthesizer()
 
+    # ──────────────────────────────────────────────────────────────────────────
+    # PIPELINE POR CAPAS
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def _capa1_validate_spec(
+        self, spec: Dict[str, Any]
+    ) -> tuple:
+        """
+        CAPA 1 — Validación de spec antes del synthesizer.
+        Verifica que cada bloque tenga handler conocido.
+        Intenta resolver via BLOCK_TYPE_ALIASES si no mapea directamente.
+        Retorna (spec_validado, n_mapeados, n_ignorados).
+        """
+        valid_blocks = []
+        mapped = 0
+        ignored = 0
+        for block in spec.get("blocks", []):
+            handler = self._synthesizer._find_handler(block)
+            if handler is not None:
+                valid_blocks.append(block)
+            else:
+                model_raw = block.get("model", "").lower().strip()
+                alias = BLOCK_TYPE_ALIASES.get(model_raw)
+                if alias:
+                    # Remap block para que el synthesizer lo resuelva correctamente
+                    remapped = {**block, "model": alias}
+                    valid_blocks.append(remapped)
+                    mapped += 1
+                    logger.info(
+                        "[CircuitAgent] CAPA1: bloque '%s' mapeado → '%s'",
+                        model_raw, alias,
+                    )
+                else:
+                    label = block.get("model", block.get("type", "desconocido"))
+                    logger.warning(
+                        "[CircuitAgent] CAPA1: bloque '%s' sin handler ni alias — ignorado",
+                        label,
+                    )
+                    ignored += 1
+        spec = {**spec, "blocks": valid_blocks}
+        return spec, mapped, ignored
+
+    def _capa2_drc_with_retry(
+        self, circuit_data: Dict[str, Any]
+    ) -> tuple:
+        """
+        CAPA 2 — DRC eléctrico con hasta 2 intentos de auto-fix.
+        Retorna (circuit_data, drc_result, intentos_usados).
+        """
+        from tools.electrical_drc import run_drc
+        from tools.mcu_pinout_validator import validate_pinout
+
+        attempts = 0
+        drc_result = {"errors": [], "warnings": [], "passed": True}
+        for attempt in range(3):
+            attempts = attempt + 1
+            try:
+                drc_result = run_drc(circuit_data)
+            except Exception as e:
+                logger.warning("[CircuitAgent] CAPA2: DRC falló (intento %d): %s", attempts, e)
+                break
+            if drc_result.get("passed"):
+                break
+            if attempt < 2:
+                # Auto-fix: remueve nodos duplicados y conecta flotantes a GND
+                self._validate_circuit(circuit_data)
+                logger.info(
+                    "[CircuitAgent] CAPA2: %d errores DRC — auto-fix intento %d",
+                    len(drc_result.get("errors", [])), attempt + 1,
+                )
+
+        pinout_warnings = []
+        try:
+            pinout_warnings = validate_pinout(circuit_data)
+        except Exception:
+            pass
+
+        circuit_data["drc"] = drc_result
+        for pw in pinout_warnings:
+            circuit_data.setdefault("warnings", []).append(pw)
+        if not drc_result["passed"]:
+            for err in drc_result.get("errors", []):
+                circuit_data.setdefault("warnings", []).append(
+                    f"[DRC] {err['code']}: {err['message']}"
+                )
+        return circuit_data, drc_result, attempts
+
+    def _compute_schematic_score(
+        self, circuit_data: Dict[str, Any], drc_result: Dict[str, Any]
+    ) -> int:
+        """CAPA 4 — Score esquemático 0-100."""
+        score = 0
+        components = circuit_data.get("components", [])
+        nets = circuit_data.get("nets", [])
+
+        # +30 si todos los comps caben en el viewBox (proxy: <= 50 componentes)
+        if len(components) <= 50:
+            score += 30
+
+        # +30 si wire_count > 5 (nets con >1 nodo)
+        wire_count = sum(1 for n in nets if len(n.get("nodes", [])) > 1)
+        if wire_count > 5:
+            score += 30
+
+        # +20 si MCU tiene zona distinta al resto (siempre U1 en zona propia)
+        has_mcu = any(
+            (c.get("resolved_type") or c.get("type") or "").lower() in (
+                "microcontroller", "arduino_uno", "arduino_nano", "arduino_mega",
+                "esp32", "esp8266", "stm32",
+            )
+            for c in components
+        )
+        if has_mcu:
+            score += 20
+
+        # +20 si DRC passed
+        if drc_result.get("passed"):
+            score += 20
+
+        return score
+
+    def _compute_pcb_score(
+        self, circuit_data: Dict[str, Any], drc_result: Dict[str, Any]
+    ) -> int:
+        """CAPA 4 — Score PCB 0-100."""
+        score = 0
+        components = circuit_data.get("components", [])
+
+        # +40 si ocupación estimada > 35% (proxy: circuito con >= 4 componentes)
+        if len(components) >= 4:
+            score += 40
+
+        # +30 si x_variance estimada > 20mm (proxy: múltiples zonas distintas)
+        zone_types = set()
+        for c in components:
+            ctype = (c.get("resolved_type") or c.get("type") or "").lower()
+            if ctype in ("microcontroller", "arduino_uno", "esp32", "esp8266"):
+                zone_types.add("mcu")
+            elif ctype in ("relay", "relay_module"):
+                zone_types.add("relay")
+            elif "sensor" in ctype:
+                zone_types.add("sensor")
+            elif ctype in ("led", "connector"):
+                zone_types.add("output")
+            else:
+                zone_types.add("other")
+        if len(zone_types) >= 2:
+            score += 30
+
+        # +30 si DRC passed
+        if drc_result.get("passed"):
+            score += 30
+
+        return score
+
     def _extract_circuit_spec(self, description: str) -> Optional[Dict[str, Any]]:
         """
         Stage 1 del pipeline de síntesis determinística.
@@ -502,39 +661,65 @@ class CircuitAgent:
             logger.debug(f"[CircuitAgent] spec extraction falló (fallback a LLM full): {e}")
             return None
 
-    def _finalize_circuit(self, circuit_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _finalize_circuit(
+        self,
+        circuit_data: Dict[str, Any],
+        pipeline_log: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
         """
-        Paso final compartido por el path de síntesis determinística.
-        Corre DRC (debería pasar sin errores), persiste en DB y anota design_id.
-        No corre _review_pass porque el synthesizer garantiza topología válida.
+        Paso final del path de síntesis determinística.
+        CAPA 2: DRC con hasta 2 reintentos de auto-fix.
+        CAPA 4: calcula scores de calidad.
+        Persiste en DB y anota design_id.
         """
-        from tools.electrical_drc import run_drc
-        from tools.mcu_pinout_validator import validate_pinout
-        try:
-            drc_result = run_drc(circuit_data)
-            pinout_warnings = validate_pinout(circuit_data)
-        except Exception as e:
-            logger.warning(f"[CircuitAgent] DRC en circuito sintetizado falló: {e}")
-            drc_result = {"errors": [], "warnings": [], "passed": True}
-            pinout_warnings = []
+        pipeline_log = pipeline_log or []
 
-        circuit_data["drc"] = drc_result
-        for pw in pinout_warnings:
-            circuit_data.setdefault("warnings", []).append(pw)
-        if not drc_result["passed"]:
-            for err in drc_result["errors"]:
-                circuit_data.setdefault("warnings", []).append(
-                    f"[DRC] {err['code']}: {err['message']}"
-                )
+        # CAPA 2 — síntesis con retry DRC
+        circuit_data, drc_result, attempts = self._capa2_drc_with_retry(circuit_data)
+        n_comps = len(circuit_data.get("components", []))
+        n_nets     = len(circuit_data.get("nets", []))
+        drc_status = "DRC OK" if drc_result["passed"] else f"{len(drc_result['errors'])} errores"
+        pipeline_log.append(
+            f"⚙️ Sintetizando... → {n_comps} componentes, {n_nets} nets "
+            f"({drc_status}, {attempts} intento{'s' if attempts > 1 else ''})"
+        )
+
+        # CAPA 3 — verificación esquemático
+        sch_issues = []
+        wire_count = sum(
+            1 for n in circuit_data.get("nets", [])
+            if len(n.get("nodes", [])) > 1
+        )
+        if len(circuit_data.get("components", [])) > 50:
+            sch_issues.append("componentes > 50 — puede haber recorte en viewBox")
+        if wire_count <= 5:
+            sch_issues.append(f"wire_count={wire_count} (se esperan >5 wires visibles)")
+
+        sch_score = self._compute_schematic_score(circuit_data, drc_result)
+        sch_status = f"score {sch_score}/100"
+        if sch_issues:
+            sch_status += " — " + "; ".join(sch_issues)
+        pipeline_log.append(f"📐 Esquemático... → {sch_status}")
+
+        # CAPA 3 — verificación PCB
+        pcb_score = self._compute_pcb_score(circuit_data, drc_result)
+        pipeline_log.append(f"🗺️ PCB... → score {pcb_score}/100")
+
+        # CAPA 4 — scores al circuito
+        circuit_data["pipeline_scores"] = {"schematic": sch_score, "pcb": pcb_score}
 
         circuit_data.setdefault("detected_domain", "synthesized")
         circuit_data.setdefault("selected_mcu", "")
 
         design_id = self.circuit_manager.save_design(circuit_data)
         circuit_data["design_id"] = design_id
+        pipeline_log.append(f"✅ Listo — Circuit ID {design_id}")
+        circuit_data["pipeline_log"] = pipeline_log
+
         logger.info(
             f"[CircuitAgent] Circuito sintetizado '{circuit_data['name']}' "
-            f"guardado con ID {design_id} — DRC {'OK' if drc_result['passed'] else 'FALLÓ'}"
+            f"guardado con ID {design_id} — DRC {'OK' if drc_result['passed'] else 'FALLÓ'} "
+            f"sch={sch_score}/100 pcb={pcb_score}/100"
         )
         return circuit_data
 
@@ -546,10 +731,22 @@ class CircuitAgent:
         2. Si el circuito no coincide con un template conocido, cae al flujo LLM completo.
         """
         try:
+            pipeline_log: List[str] = []
+
             # ── Stage 1: síntesis determinística ─────────────────────────────
             spec = self._extract_circuit_spec(description)
             if spec:
                 spec.setdefault("mcu", mcu)
+
+                # CAPA 1 — validación de spec con alias resolution
+                spec, capa1_mapped, capa1_ignored = self._capa1_validate_spec(spec)
+                n_blocks = len(spec.get("blocks", []))
+                pipeline_log.append(
+                    f"🔍 Interpretando... → spec con {n_blocks} bloques"
+                    + (f" ({capa1_mapped} mapeados)" if capa1_mapped else "")
+                    + (f" ({capa1_ignored} ignorados)" if capa1_ignored else "")
+                )
+
                 synthesized = self._synthesizer.synthesize(spec)
                 if synthesized is not None:
                     logger.info(
@@ -558,7 +755,7 @@ class CircuitAgent:
                         f"mcu={spec['mcu']} components={len(synthesized['components'])} "
                         f"nets={len(synthesized['nets'])}"
                     )
-                    synthesized = self._finalize_circuit(synthesized)
+                    synthesized = self._finalize_circuit(synthesized, pipeline_log)
                     return synthesized
 
             logger.info("[CircuitAgent] Sin template match — usando flujo LLM completo")
@@ -696,9 +893,25 @@ class CircuitAgent:
             circuit_data["detected_domain"] = domain
             circuit_data["selected_mcu"] = best_mcu
 
+            # CAPA 4 — scores para el path LLM
+            sch_score = self._compute_schematic_score(circuit_data, drc_result)
+            pcb_score = self._compute_pcb_score(circuit_data, drc_result)
+            circuit_data["pipeline_scores"] = {"schematic": sch_score, "pcb": pcb_score}
+
+            n_comps = len(circuit_data.get("components", []))
+            n_nets  = len(circuit_data.get("nets", []))
+            llm_log = [
+                f"🔍 Interpretando... → flujo LLM completo (dominio: {domain})",
+                f"⚙️ Sintetizando... → {n_comps} componentes, {n_nets} nets",
+                f"📐 Esquemático... → score {sch_score}/100",
+                f"🗺️ PCB... → score {pcb_score}/100",
+            ]
+
             # Save to DB
             design_id = self.circuit_manager.save_design(circuit_data)
             circuit_data["design_id"] = design_id
+            llm_log.append(f"✅ Listo — Circuit ID {design_id}")
+            circuit_data["pipeline_log"] = llm_log
             logger.info(f"Circuito '{circuit_data['name']}' guardado con ID {design_id} (dominio: {domain})")
             return circuit_data
 

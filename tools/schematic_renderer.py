@@ -331,9 +331,23 @@ def _layout_components(components: List[Dict], width: int, height: int,
 
     # ── 'other' / misc (passive clusters, displays, etc.) ──
     other_comps = [c for c in zones["other"] if c["id"] not in positions]
+    other_col2_ids: set = set()
+    x_other_col2: int = x_other_c + SLOT_OTHER + GAP
     if other_comps:
-        for comp, ypos in zip(other_comps, _stack_y_positions(len(other_comps))):
-            positions[comp["id"]] = (x_other_c, ypos)
+        active_zone_count = sum(
+            1 for v in (has_ac, has_mcu, has_sensor, has_relay, has_output) if v
+        )
+        if active_zone_count < 3 and len(other_comps) >= 2:
+            other_col1 = other_comps[::2]
+            other_col2 = other_comps[1::2]
+            other_col2_ids = {c["id"] for c in other_col2}
+            for comp, ypos in zip(other_col1, _stack_y_positions(len(other_col1))):
+                positions[comp["id"]] = (x_other_c, ypos)
+            for comp, ypos in zip(other_col2, _stack_y_positions(len(other_col2))):
+                positions[comp["id"]] = (x_other_col2, ypos)
+        else:
+            for comp, ypos in zip(other_comps, _stack_y_positions(len(other_comps))):
+                positions[comp["id"]] = (x_other_c, ypos)
 
     # ── HPWL barycentric Y-reorder (3 iters) ──
     # Reordena cada zona Y según el promedio de Y de los componentes con los
@@ -400,6 +414,13 @@ def _layout_components(components: List[Dict], width: int, height: int,
                         positions[cell[1]["id"]] = (x_relay_c - 75, cy - 18)
                     if len(cell) > 2:
                         positions[cell[2]["id"]] = (x_relay_c - 140, cy)
+
+    # Restaurar X de sub-columna 2 de "other" tras el reordenamiento HPWL
+    if other_col2_ids:
+        for cid in other_col2_ids:
+            if cid in positions:
+                _, y = positions[cid]
+                positions[cid] = (x_other_col2, y)
 
     return positions
 

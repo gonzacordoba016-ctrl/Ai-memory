@@ -8,9 +8,12 @@ Sin LLM para topología → cero nets duplicadas, cero flotantes, protecciones g
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 # ─── Tablas de VCC por MCU ───────────────────────────────────────────────────
@@ -62,6 +65,22 @@ _GND_SUFFIX_RE = re.compile(r'_GND$|_GROUND$', re.IGNORECASE)
 _VCC_GENERIC_NAMES: frozenset = frozenset({
     "VCC", "VDD", "POWER", "SUPPLY", "VCC_LOCAL", "VDD_LOCAL",
 })
+
+# Mapeo de descripciones en lenguaje natural → tipos de bloque conocidos.
+# Usado por _find_handler cuando el LLM emite nombres no normalizados.
+BLOCK_TYPE_ALIASES: Dict[str, str] = {
+    "sensor de humedad de suelo": "moisture_sensor",
+    "sensor de temperatura":      "dht22",
+    "sensor de presion":          "bmp280",
+    "sensor de presión":          "bmp280",
+    "pantalla":                   "oled",
+    "display":                    "oled",
+    "motor paso a paso":          "stepper",
+    "valvula":                    "relay",
+    "válvula":                    "relay",
+    "bomba":                      "relay",
+    "ventilador":                 "relay",
+}
 
 
 # ─── Primitivas de construcción ──────────────────────────────────────────────
@@ -448,19 +467,25 @@ class CircuitSynthesizer:
     # ── Dispatch ──────────────────────────────────────────────────────────────
 
     def _find_handler(self, block: Dict[str, Any]) -> Optional[Callable]:
-        model = block.get("model", "").lower().replace("-", "").replace(" ", "")
-        iface = block.get("interface", "").lower()
-        btype = block.get("type", "").lower()
+        model     = block.get("model", "").lower().replace("-", "").replace(" ", "")
+        model_raw = block.get("model", "").lower().strip()
+        iface     = block.get("interface", "").lower()
+        btype     = block.get("type", "").lower()
 
         model_map: Dict[str, Callable] = {
-            "bmp280":    self._add_i2c_sensor_block,
-            "sht31":     self._add_i2c_sensor_block,
-            "mpu6050":   self._add_i2c_sensor_block,
-            "oled":      self._add_i2c_sensor_block,
-            "led":       self._add_led_block,
-            "relay":     self._add_relay_block,
-            "srd05vdc":  self._add_relay_block,
-            "srd5vdc":   self._add_relay_block,
+            "bmp280":         self._add_i2c_sensor_block,
+            "sht31":          self._add_i2c_sensor_block,
+            "mpu6050":        self._add_i2c_sensor_block,
+            "oled":           self._add_i2c_sensor_block,
+            "dht22":          self._add_dht22_block,
+            "dht11":          self._add_dht22_block,
+            "moisturesensor": self._add_moisture_sensor_block,
+            "fc28":           self._add_moisture_sensor_block,
+            "yl69":           self._add_moisture_sensor_block,
+            "led":            self._add_led_block,
+            "relay":          self._add_relay_block,
+            "srd05vdc":       self._add_relay_block,
+            "srd5vdc":        self._add_relay_block,
         }
         if model in model_map:
             return model_map[model]
@@ -476,6 +501,29 @@ class CircuitSynthesizer:
         if btype in ("relay", "switch", "actuator"):
             return self._add_relay_block
 
+        # Intentar resolver via BLOCK_TYPE_ALIASES antes de marcar como sin handler
+        alias_target = BLOCK_TYPE_ALIASES.get(model_raw)
+        if alias_target:
+            mapped_model = alias_target.replace("-", "").replace(" ", "")
+            if mapped_model in model_map:
+                logger.warning(
+                    "[CircuitSynthesizer] '%s' resuelto via alias → '%s'",
+                    model_raw, alias_target,
+                )
+                return model_map[mapped_model]
+            logger.warning(
+                "[CircuitSynthesizer] Alias '%s'→'%s' encontrado pero sin handler. "
+                "Sugerencia: implementar _add_%s_block",
+                model_raw, alias_target, alias_target.replace(" ", "_"),
+            )
+            return None
+
+        label = block.get("model", block.get("type", "desconocido"))
+        logger.warning(
+            "[CircuitSynthesizer] Bloque '%s' sin handler. "
+            "Sugerencia: agregar a BLOCK_TYPE_ALIASES o implementar _add_%s_block",
+            label, label.lower().replace(" ", "_"),
+        )
         return None
 
     # ── Block handlers ────────────────────────────────────────────────────────
@@ -614,6 +662,51 @@ class CircuitSynthesizer:
         b.connect(f"UART{uid}_TX",   f"{u_id}.RX")   # MCU TX → device RX
         b.connect(f"UART{uid}_RX",   f"{u_id}.TX")   # MCU RX → device TX
         b.connect("GND", f"{u_id}.GND", f"{c_id}.2")
+
+    def _add_dht22_block(
+        self,
+        b: CircuitBuilder,
+        block: Dict[str, Any],
+        ctx: _SynthesisContext,
+    ) -> None:
+        """DHT22/DHT11 temperatura+humedad. GPIO single-bus + pull-up 4.7kΩ."""
+        model = block.get("model", "DHT22")
+        gpio  = ctx.pin_allocator.allocate("GPIO_OUTPUT", block.get("gpio_pin"))
+        u_id  = ctx.next_id("U")
+        r_id  = ctx.next_id("R")
+        c_id  = ctx.next_id("C")
+
+        b.add_component(u_id, f"{model} Temp/Humidity", "sensor_i2c", current_ma=2.5)
+        b.add_component(r_id, f"Pull-up {model} DATA 4.7kΩ", "resistor",
+                        value="4700", unit="Ω", current_ma=1.0)
+        b.add_component(c_id, f"Desacoplo {model} 100nF", "capacitor",
+                        value="100", unit="nF")
+
+        data_net = f"{u_id}_DATA"
+        b.connect(ctx.vcc_net, f"{u_id}.VCC", f"{r_id}.1", f"{c_id}.1")
+        b.connect(data_net,    f"U1.{gpio}", f"{r_id}.2", f"{u_id}.DATA")
+        b.connect("GND",       f"{u_id}.GND", f"{c_id}.2")
+
+    def _add_moisture_sensor_block(
+        self,
+        b: CircuitBuilder,
+        block: Dict[str, Any],
+        ctx: _SynthesisContext,
+    ) -> None:
+        """FC-28/YL-69 sensor de humedad de suelo. Salida analógica → ADC."""
+        model   = block.get("model", "FC-28")
+        adc_pin = ctx.pin_allocator.allocate("ADC_INPUT", block.get("gpio_pin"))
+        u_id    = ctx.next_id("U")
+        c_id    = ctx.next_id("C")
+
+        b.add_component(u_id, f"{model} Soil Moisture", "sensor_i2c", current_ma=5.0)
+        b.add_component(c_id, f"Desacoplo {model} 100nF", "capacitor",
+                        value="100", unit="nF")
+
+        aout_net = f"{u_id}_AOUT"
+        b.connect(ctx.vcc_net, f"{u_id}.VCC", f"{c_id}.1")
+        b.connect(aout_net,    f"U1.{adc_pin}", f"{u_id}.AOUT")
+        b.connect("GND",       f"{u_id}.GND", f"{c_id}.2")
 
     def _add_relay_block(
         self,
