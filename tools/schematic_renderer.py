@@ -486,7 +486,17 @@ class SchematicRenderer:
             if width is None:
                 width = slots_w + gap_w + 160
             if height is None:
-                n_comps_max_zona = max(n_ac, n_mcu, n_sensor, n_other, n_relays, n_output, 1)
+                # Mirror the 2-column split condition in _layout_components:
+                # if active non-other zones < 3, "other" splits into 2 columns → half height
+                active_excl_other = sum(
+                    1 for v in (n_ac, n_mcu, n_sensor, n_relays, n_output) if v > 0
+                )
+                n_other_eff = (
+                    math.ceil(n_other / 2)
+                    if active_excl_other < 3 and n_other >= 2
+                    else n_other
+                )
+                n_comps_max_zona = max(n_ac, n_mcu, n_sensor, n_other_eff, n_relays, n_output, 1)
                 height = max(890, n_comps_max_zona * 110 + 180)
 
             dwg = svgwrite.Drawing(size=('100%', '100%'),
