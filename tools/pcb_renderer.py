@@ -654,6 +654,14 @@ class PCBRenderer:
             nets       = circuit_data.get("nets", [])
             board_w, board_h = _board_size(components)
             positions  = _place_components(components, board_w, board_h, nets)
+
+            # Tight board: shrink to actual component spread + margin
+            if positions:
+                max_x = max(p[0] for p in positions.values()) + 12.0
+                max_y = max(p[1] for p in positions.values()) + 12.0
+                board_w = min(board_w, max(50.0, max_x))
+                board_h = min(board_h, max(50.0, max_y))
+
             traces     = _route_traces(nets, positions)
 
             # DRC error component IDs for highlighting
@@ -1022,6 +1030,14 @@ class PCBRenderer:
             nets       = circuit_data.get("nets", [])
             board_w, board_h = _board_size(components)
             positions  = _place_components(components, board_w, board_h, nets)
+
+            # Tight board: shrink to actual component spread + margin
+            if positions:
+                max_x = max(p[0] for p in positions.values()) + 12.0
+                max_y = max(p[1] for p in positions.values()) + 12.0
+                board_w = min(board_w, max(50.0, max_x))
+                board_h = min(board_h, max(50.0, max_y))
+
             traces     = _route_traces(nets, positions)
 
             top_traces = [t for t in traces if t["layer"] == "top"]

@@ -547,11 +547,12 @@
                 const svgText = await res.text();
                 pcbView.innerHTML = '';
                 const wrapper = document.createElement('div');
-                wrapper.style.cssText = 'width:100%;height:100%;overflow:auto;background:#1a4a1a;';
+                wrapper.style.cssText = 'width:100%;height:100%;overflow:hidden;background:#1a4a1a;';
                 wrapper.innerHTML = svgText;
                 const svgEl = wrapper.querySelector('svg');
                 if (svgEl) {
-                    svgEl.style.cssText = 'display:block;max-width:100%;height:auto;';
+                    svgEl.style.cssText = 'display:block;width:100%;height:100%;cursor:grab;';
+                    _initSVGPanZoom(svgEl);
                 }
                 pcbView.appendChild(wrapper);
                 pcbView.dataset.loaded = marker;
@@ -738,7 +739,7 @@
                 0.1, 2000
             );
             const _nComps3D = (currentCircuit && currentCircuit.components) ? currentCircuit.components.length : 5;
-            threeCamera.position.set(0, 30 + _nComps3D * 2, 60 + _nComps3D * 3);
+            threeCamera.position.set(0, 15 + _nComps3D * 1.0, 30 + _nComps3D * 1.5);
             threeCamera.lookAt(0, 0, 0);
 
             threeRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
