@@ -6,6 +6,7 @@ import math
 from core.logger import get_logger
 from tools.kicad_sym_renderer import KiCadSymRenderer as _KSR
 from tools.component_types import _MCU_TYPES, _RELAY_TYPES, _ZONE_SENSOR_TYPES
+from tools.design_rules import get_sheet_size, snap_to_grid, MARGIN_MM, TITLE_BLOCK_H
 
 _kicad = _KSR()
 
@@ -425,6 +426,75 @@ def _layout_components(components: List[Dict], width: int, height: int,
     return positions
 
 
+_PX_PER_MM = 4.0  # 1mm = 4 SVG user units (pixel scale)
+
+
+def _compute_positions(
+    components: List[Dict], nets: List[Dict], sheet: Dict
+) -> Dict[str, Tuple[float, float]]:
+    """
+    Returns {comp_id: (x, y)} grid-snapped positions in SVG px.
+    Canvas size is derived from active zones (never smaller than sheet × _PX_PER_MM).
+    No SVG generated. Zone order follows design_rules.ZONE_ORDER.
+    """
+    n_ac     = sum(1 for c in components if _classify_zone(c) == "ac")
+    n_mcu    = sum(1 for c in components if _classify_zone(c) == "mcu")
+    n_sensor = sum(1 for c in components if _classify_zone(c) == "sensor")
+    n_other  = sum(1 for c in components if _classify_zone(c) == "other")
+    n_relay  = sum(1 for c in components
+                   if (c.get("resolved_type") or c.get("type") or "").lower()
+                   in ("relay", "relay_module", "ssr") or c.get("id", "").lower().startswith("rl"))
+    n_output = sum(1 for c in components if _classify_zone(c) == "output")
+    active   = sum(1 for v in (n_ac, n_mcu, n_sensor, n_other, n_relay, n_output) if v > 0)
+
+    slots_w = (240 * bool(n_ac) + 240 * bool(n_mcu) + 220 * bool(n_sensor)
+               + 200 * bool(n_other) + 360 * bool(n_relay) + 200 * bool(n_output))
+    gap_w   = 60 * max(0, active - 1)
+    w_px    = max(int(sheet["w"] * _PX_PER_MM), slots_w + gap_w + 160)
+
+    active_excl_other = sum(1 for v in (n_ac, n_mcu, n_sensor, n_relay, n_output) if v > 0)
+    n_other_eff = (math.ceil(n_other / 2)
+                   if active_excl_other < 3 and n_other >= 2 else n_other)
+    n_max_zone  = max(n_ac, n_mcu, n_sensor, n_other_eff, n_relay, n_output, 1)
+    h_px        = max(int(sheet["h"] * _PX_PER_MM), n_max_zone * 110 + 180)
+
+    grid_px = sheet["grid"] * _PX_PER_MM
+    raw = _layout_components(components, w_px, h_px - 90, {}, nets)
+    return {cid: snap_to_grid(x, y, grid_px) for cid, (x, y) in raw.items()}
+
+
+def _validate_positions(
+    positions: Dict[str, Tuple[float, float]], sheet: Dict
+) -> Dict[str, Tuple[float, float]]:
+    """
+    Clamps out-of-bounds positions into usable area and nudges overlaps < 15mm.
+    """
+    x_min   = MARGIN_MM * _PX_PER_MM
+    x_max   = (sheet["w"] - MARGIN_MM) * _PX_PER_MM
+    y_min   = MARGIN_MM * _PX_PER_MM
+    y_max   = (sheet["h"] - TITLE_BLOCK_H - MARGIN_MM) * _PX_PER_MM
+    grid_px = sheet["grid"] * _PX_PER_MM
+    min_sep = 15.0 * _PX_PER_MM
+
+    result: Dict[str, Tuple[float, float]] = {}
+    for cid, (x, y) in positions.items():
+        result[cid] = snap_to_grid(
+            max(x_min, min(x_max, x)),
+            max(y_min, min(y_max, y)),
+            grid_px,
+        )
+
+    ids = list(result.keys())
+    for i, a in enumerate(ids):
+        for b in ids[i + 1:]:
+            ax, ay = result[a]
+            bx, by = result[b]
+            if abs(ax - bx) < min_sep and abs(ay - by) < min_sep:
+                result[b] = snap_to_grid(bx, min(by + min_sep, y_max), grid_px)
+
+    return result
+
+
 def _route_orthogonal(p1: Tuple[int, int], p2: Tuple[int, int]) -> List[Tuple[int, int]]:
     x1, y1 = p1
     x2, y2 = p2
@@ -459,70 +529,57 @@ class SchematicRenderer:
         try:
             components = circuit_data.get("components", [])
             nets       = circuit_data.get("nets", [])
+            sheet      = get_sheet_size(len(components))
 
-            # Dynamic canvas: ancho = suma de slots de zonas activas, altura =
-            # stack vertical más alto. Sin huecos horizontales innecesarios.
-            n = len(components)
-            n_relays = sum(
-                1 for c in components
-                if (c.get("resolved_type") or c.get("type") or "").lower()
-                in ("relay", "relay_module", "ssr")
-                or c.get("id", "").lower().startswith("rl")
-            )
-            # Detectar zonas activas para dimensionar el canvas (debe coincidir
-            # con la lógica de _layout_components: AC, MCU, OTHER, RELAY, OUTPUT)
-            n_ac = sum(1 for c in components if _classify_zone(c) == "ac")
-            n_mcu = sum(1 for c in components if _classify_zone(c) == "mcu")
-            n_other = sum(1 for c in components if _classify_zone(c) == "other")
-            n_sensor = sum(1 for c in components if _classify_zone(c) == "sensor")
-            n_output = sum(1 for c in components if _classify_zone(c) == "output")
-            active_zones = sum(1 for v in (n_ac, n_mcu, n_sensor, n_other, n_relays, n_output) if v > 0)
-            # SLOTs (debe coincidir con _layout_components): AC=240 MCU=240 SENSOR=220 OTHER=200 RELAY=360 OUTPUT=200
-            slots_w = 240 * (1 if n_ac else 0) + 240 * (1 if n_mcu else 0) \
-                    + 220 * (1 if n_sensor else 0) + 200 * (1 if n_other else 0) \
-                    + 360 * (1 if n_relays else 0) + 200 * (1 if n_output else 0)
-            gap_w = 60 * max(0, active_zones - 1)
-            # cur = x_margin(80) + slots_w + gap_w; canvas_w = cur + 80
-            if width is None:
-                width = slots_w + gap_w + 160
-            if height is None:
-                # Mirror the 2-column split condition in _layout_components:
-                # if active non-other zones < 3, "other" splits into 2 columns → half height
-                active_excl_other = sum(
-                    1 for v in (n_ac, n_mcu, n_sensor, n_relays, n_output) if v > 0
-                )
-                n_other_eff = (
-                    math.ceil(n_other / 2)
-                    if active_excl_other < 3 and n_other >= 2
-                    else n_other
-                )
-                n_comps_max_zona = max(n_ac, n_mcu, n_sensor, n_other_eff, n_relays, n_output, 1)
-                height = max(890, n_comps_max_zona * 110 + 180)
+            positions = _compute_positions(components, nets, sheet)
+
+            # Honor manually saved positions (override computed placement)
+            saved   = circuit_data.get("positions", {})
+            grid_px = sheet["grid"] * _PX_PER_MM
+            for comp_id, pos in saved.items():
+                if isinstance(pos, dict) and "x" in pos and "y" in pos:
+                    positions[comp_id] = snap_to_grid(
+                        float(pos["x"]), float(pos["y"]), grid_px
+                    )
+
+            positions = _validate_positions(positions, sheet)
+
+            # Canvas: at least sheet-sized, expanding to fit all positions
+            xs   = [x for x, _ in positions.values()] or [0]
+            ys   = [y for _, y in positions.values()] or [0]
+            w_px = max(int(sheet["w"] * _PX_PER_MM), int(max(xs)) + 160)
+            h_px = max(int(sheet["h"] * _PX_PER_MM), int(max(ys)) + 180)
 
             dwg = svgwrite.Drawing(size=('100%', '100%'),
-                                   viewBox=f"0 0 {width} {height}")
-            self._draw_background(dwg, width, height)
-            self._draw_title_block(dwg, circuit_data, width, height)
-            saved      = circuit_data.get("positions", {})
-            positions  = _layout_components(components, width, height - 90, saved, nets)
-            # F2.4 — galvanic isolation barrier between AC and control zones
-            self._draw_galvanic_barrier(dwg, components, positions, width, height)
-            self._draw_connections(dwg, nets, positions, width, height)
-            # Power rail symbols
-            self._draw_power_rails(dwg, nets, positions)
-            for comp in components:
-                pos = positions.get(comp["id"], (width // 2, height // 2))
-                self._draw_component(dwg, comp, pos)
-            self._draw_legend(dwg, nets, width, height)
-            self._draw_annotations(dwg, circuit_data, width, height)
+                                   viewBox=f"0 0 {w_px} {h_px}")
+            self._draw_background(dwg, w_px, h_px)
+            self._draw_title_block(dwg, circuit_data, w_px, h_px)
+            self._draw_schematic(dwg, circuit_data, components, nets, positions, sheet)
             return dwg.tostring()
         except Exception as e:
             logger.error(f"Error renderizando esquemático: {e}")
             err = svgwrite.Drawing(size=(800, 100))
-            err.add(err.rect(insert=(0,0), size=(800,100), fill="#fafafa"))
-            err.add(err.text(f"Error: {e}", insert=(10,50), fill="red",
+            err.add(err.rect(insert=(0, 0), size=(800, 100), fill="#fafafa"))
+            err.add(err.text(f"Error: {e}", insert=(10, 50), fill="red",
                              font_size=16, font_family="monospace"))
             return err.tostring()
+
+    def _draw_schematic(self, dwg, circuit_data: Dict, components: List[Dict],
+                        nets: List[Dict], positions: Dict[str, Tuple],
+                        sheet: Dict) -> None:
+        """Draws all schematic elements. Receives pre-computed positions."""
+        xs   = [x for x, _ in positions.values()] or [0]
+        ys   = [y for _, y in positions.values()] or [0]
+        w_px = max(int(sheet["w"] * _PX_PER_MM), int(max(xs)) + 160)
+        h_px = max(int(sheet["h"] * _PX_PER_MM), int(max(ys)) + 180)
+        self._draw_galvanic_barrier(dwg, components, positions, w_px, h_px)
+        self._draw_connections(dwg, nets, positions, w_px, h_px)
+        self._draw_power_rails(dwg, nets, positions)
+        for comp in components:
+            pos = positions.get(comp["id"], (w_px // 2, h_px // 2))
+            self._draw_component(dwg, comp, pos)
+        self._draw_legend(dwg, nets, w_px, h_px)
+        self._draw_annotations(dwg, circuit_data, w_px, h_px)
 
     # ── Background ──────────────────────────────────────────────────────────
 

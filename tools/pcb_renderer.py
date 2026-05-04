@@ -6,6 +6,7 @@
 from typing import Dict, Any, List, Tuple, Optional
 from core.logger import get_logger
 from tools.component_types import _MCU_TYPES, _RELAY_TYPES, _ZONE_SENSOR_TYPES
+from tools.design_rules import get_sheet_size, PCB_CLEARANCE
 
 logger = get_logger(__name__)
 
@@ -549,8 +550,8 @@ def _board_size(components: List[Dict]) -> Tuple[float, float]:
         return (60.0, 50.0)
 
     # Per-zone widest footprint = zone column requirement
-    zone_widths: Dict[str, float] = {z: 0.0 for z in ("hv", "mcu", "relay", "output", "other")}
-    zone_count:  Dict[str, int]   = {z: 0   for z in ("hv", "mcu", "relay", "output", "other")}
+    zone_widths: Dict[str, float] = {z: 0.0 for z in ("hv", "mcu", "sensor", "relay", "output", "other")}
+    zone_count:  Dict[str, int]   = {z: 0   for z in ("hv", "mcu", "sensor", "relay", "output", "other")}
 
     for c in components:
         z = _pcb_zone(c)
@@ -578,6 +579,31 @@ def _board_size(components: List[Dict]) -> Tuple[float, float]:
     board_h = min(board_h, 200.0)
 
     return (round(board_w, 1), round(board_h, 1))
+
+
+def _compute_pcb_placement(
+    components: List[Dict], nets: List[Dict], sheet: Dict
+) -> Dict[str, Tuple[float, float]]:
+    """
+    Returns {comp_id: (x_mm, y_mm)} using real footprint sizes.
+    Respects PCB_CLEARANCE from design_rules. No drawing.
+    Groups decoupling caps near the IC they decouple.
+    Zone order: ZONE_ORDER from design_rules.
+    """
+    board_w, board_h = _board_size(components)
+    return _place_components(components, board_w, board_h, nets)
+
+
+def _compute_pcb_routing(
+    components: List[Dict], nets: List[Dict],
+    placement: Dict[str, Tuple[float, float]], sheet: Dict
+) -> List[Dict]:
+    """
+    Returns trace segments with length > 0.001mm.
+    [{"net": name, "x1": x, "y1": y, "x2": x, "y2": y, "width": w, "layer": layer}]
+    No drawing.
+    """
+    return _route_traces(nets, placement)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -652,17 +678,18 @@ class PCBRenderer:
         try:
             components = circuit_data.get("components", [])
             nets       = circuit_data.get("nets", [])
-            board_w, board_h = _board_size(components)
-            positions  = _place_components(components, board_w, board_h, nets)
+            sheet      = get_sheet_size(len(components))
+            placement  = _compute_pcb_placement(components, nets, sheet)
+            routing    = _compute_pcb_routing(components, nets, placement, sheet)
+            positions  = placement  # alias for drawing code
+            traces     = routing    # alias for drawing code
 
-            # Tight board: shrink to actual component spread + margin
+            board_w, board_h = _board_size(components)
             if positions:
                 max_x = max(p[0] for p in positions.values()) + 12.0
                 max_y = max(p[1] for p in positions.values()) + 12.0
                 board_w = min(board_w, max(50.0, max_x))
                 board_h = min(board_h, max(50.0, max_y))
-
-            traces     = _route_traces(nets, positions)
 
             # DRC error component IDs for highlighting
             drc = circuit_data.get("drc", {})
@@ -711,249 +738,8 @@ class PCBRenderer:
                 *self._edge_cuts_corners(board_w, board_h),
             ]
 
-            # ── F3.3 — HV/LV separation line ─────────────────────────────────
-            # Drawn between the HV zone (rightmost HV component) and the MCU zone
-            # (leftmost MCU component), with a 3mm clearance band.
-            hv_xs = [
-                positions[c["id"]][0] + _fp(c.get("resolved_type", c.get("type", "")))[0] / 2
-                for c in components
-                if c["id"] in positions and _pcb_zone(c) == "hv"
-            ]
-            mcu_xs = [
-                positions[c["id"]][0] - _fp(c.get("resolved_type", c.get("type", "")))[0] / 2
-                for c in components
-                if c["id"] in positions and _pcb_zone(c) == "mcu"
-            ]
-            if hv_xs and mcu_xs:
-                sep_x = (max(hv_xs) + min(mcu_xs)) / 2
-                # Clearance band (semi-transparent red)
-                svg.append(
-                    f'<rect x="{sep_x-1.5:.3f}" y="2" width="3" height="{board_h-4:.2f}" '
-                    f'fill="#aa0000" fill-opacity="0.10" stroke="none"/>'
-                )
-                # Dashed warning line
-                svg.append(
-                    f'<line x1="{sep_x:.3f}" y1="2" x2="{sep_x:.3f}" y2="{board_h-2:.2f}" '
-                    f'stroke="#ff3300" stroke-width="0.4" stroke-dasharray="1.5,0.8"/>'
-                )
-                # Zone labels
-                svg.append(
-                    f'<text x="{sep_x-2.5:.3f}" y="6" font-size="2.2" fill="#ff6633" '
-                    f'text-anchor="end" font-family="monospace" font-weight="bold">HV ZONE</text>'
-                )
-                svg.append(
-                    f'<text x="{sep_x+2.5:.3f}" y="6" font-size="2.2" fill="#66ff66" '
-                    f'text-anchor="start" font-family="monospace" font-weight="bold">LV ZONE</text>'
-                )
-                svg.append(
-                    f'<text x="{sep_x:.3f}" y="{board_h-3:.2f}" font-size="1.6" fill="#ffaa66" '
-                    f'text-anchor="middle" font-family="monospace">⚠ 3mm clearance</text>'
-                )
-
-            # ── GND flood fill (diagonal hatch pattern, bottom copper) ─────────
-            svg.append('<!-- GND copper pour -->')
-            gnd_nets = [n for n in nets
-                        if any(v in n.get("name","").lower() for v in ("gnd","ground"))]
-            if gnd_nets:
-                gnd_ids = {node.split(".")[0] for net in gnd_nets
-                           for node in net.get("nodes", [])}
-                for cid in gnd_ids:
-                    if cid not in positions:
-                        continue
-                    cx_, cy_ = positions[cid]
-                    ct_ = next((c.get("resolved_type", c.get("type",""))
-                                for c in components if c["id"] == cid), "")
-                    w_, h_ = _fp(ct_)
-                    pour = 2.5  # 2.5mm pour clearance
-                    svg.append(
-                        f'<rect x="{cx_-w_/2-pour:.3f}" y="{cy_-h_/2-pour:.3f}" '
-                        f'width="{w_+pour*2:.3f}" height="{h_+pour*2:.3f}" '
-                        f'fill="url(#gnd-hatch)" rx="0.6"/>'
-                    )
-
-            # ── Bottom copper traces (drawn first — painter's algorithm) ──────
-            svg.append('<!-- Bottom copper -->')
-            via_positions: set = set()
-            for tr in [t for t in traces if t["layer"] == "bottom"]:
-                col = _trace_color("bottom", tr["net"])
-                svg.append(
-                    f'<line x1="{tr["x1"]:.3f}" y1="{tr["y1"]:.3f}" '
-                    f'x2="{tr["x2"]:.3f}" y2="{tr["y2"]:.3f}" '
-                    f'stroke="{col}" stroke-width="{tr["width"]:.2f}" '
-                    f'stroke-linecap="round" opacity="0.80"/>'
-                )
-
-            # ── Top copper traces ─────────────────────────────────────────────
-            svg.append('<!-- Top copper -->')
-            for tr in [t for t in traces if t["layer"] == "top"]:
-                col = _trace_color("top", tr["net"])
-                svg.append(
-                    f'<line x1="{tr["x1"]:.3f}" y1="{tr["y1"]:.3f}" '
-                    f'x2="{tr["x2"]:.3f}" y2="{tr["y2"]:.3f}" '
-                    f'stroke="{col}" stroke-width="{tr["width"]:.2f}" '
-                    f'stroke-linecap="round"/>'
-                )
-                via_positions.add((round(tr["x1"], 1), round(tr["y1"], 1)))
-
-            # ── Vias (radial gradient + drill hole) ───────────────────────────
-            svg.append('<!-- Vias -->')
-            for vx, vy in list(via_positions)[:55]:
-                svg.append(
-                    f'<circle cx="{vx:.2f}" cy="{vy:.2f}" r="0.7" '
-                    f'fill="url(#via-grad)" stroke="#c8a000" stroke-width="0.08"/>'
-                )
-                svg.append(
-                    f'<circle cx="{vx:.2f}" cy="{vy:.2f}" r="0.32" fill="#0a1a0a"/>'
-                )
-
-            # ── Components ───────────────────────────────────────────────────
-            svg.append('<!-- Components -->')
-            for comp in components:
-                cid    = comp["id"]
-                ctype  = comp.get("resolved_type", comp.get("type", "generic")).lower()
-                cx, cy = positions.get(cid, (board_w / 2, board_h / 2))
-                w, h   = _fp(ctype)
-                hw, hh = w / 2, h / 2
-
-                is_drc_error = cid in drc_error_comps
-                body_color   = _body_color(ctype)
-                border_color = "#ff3333" if is_drc_error else "#daa520"
-                border_w     = 0.5 if is_drc_error else 0.2
-
-                # ── Courtyard (dashed yellow rect, 0.5mm clearance per side) ───
-                cy_off = 0.5
-                svg.append(
-                    f'<rect x="{cx-hw-cy_off:.3f}" y="{cy-hh-cy_off:.3f}" '
-                    f'width="{w+cy_off*2:.3f}" height="{h+cy_off*2:.3f}" '
-                    f'fill="none" stroke="#ffcc00" stroke-width="0.15" '
-                    f'stroke-dasharray="0.6,0.4"/>'
-                )
-
-                # ── Silkscreen component outline (white, dashed) ──────────────
-                svg.append(
-                    f'<rect x="{cx-hw:.3f}" y="{cy-hh:.3f}" width="{w:.3f}" height="{h:.3f}" '
-                    f'fill="none" stroke="white" stroke-width="0.12" '
-                    f'stroke-dasharray="1,0.5" opacity="0.6"/>'
-                )
-
-                # ── Component body fill ───────────────────────────────────────
-                svg.append(
-                    f'<rect x="{cx-hw:.3f}" y="{cy-hh:.3f}" width="{w:.3f}" height="{h:.3f}" '
-                    f'fill="{body_color}" stroke="{border_color}" stroke-width="{border_w:.2f}" rx="0.5"'
-                    + (' filter="url(#glow)"' if is_drc_error else '') + '/>'
-                )
-
-                # ── Pin 1 corner chamfer ──────────────────────────────────────
-                svg.append(
-                    f'<polygon points="{cx-hw:.2f},{cy-hh:.2f} {cx-hw+1.8:.2f},{cy-hh:.2f} '
-                    f'{cx-hw:.2f},{cy-hh+1.8:.2f}" fill="#daa520" fill-opacity="0.8"/>'
-                )
-
-                # ── Pads ──────────────────────────────────────────────────────
-                if ctype in _MCU_TYPES or ctype in _LARGE_TYPES:
-                    # SMD pads along left/right sides
-                    n_pins = max(2, min(8, int(h / 2.5)))
-                    pad_pitch = h / (n_pins + 1)
-                    for side_x in [cx - hw, cx + hw]:
-                        for i in range(1, n_pins + 1):
-                            py_ = cy - hh + i * pad_pitch
-                            svg.append(
-                                f'<rect x="{side_x-0.5:.3f}" y="{py_-0.7:.3f}" '
-                                f'width="1.0" height="1.4" class="pad-smd" rx="0.2"/>'
-                            )
-                else:
-                    # THT annular ring pads (copper ring + drill hole)
-                    is_gnd_comp = any(
-                        any(n.split(".")[0] == cid for n in net.get("nodes", []))
-                        and "gnd" in net.get("name", "").lower()
-                        for net in nets
-                    )
-                    pad_r_outer = 0.9
-                    pad_r_inner = 0.4  # drill
-                    pad_color   = "#b87333" if is_gnd_comp else "#daa520"
-                    for px_, py_ in [(cx - w*0.3, cy), (cx + w*0.3, cy)]:
-                        # Annular ring (filled circle)
-                        svg.append(
-                            f'<circle cx="{px_:.3f}" cy="{py_:.3f}" r="{pad_r_outer:.2f}" '
-                            f'fill="{pad_color}" stroke="#111" stroke-width="0.1"/>'
-                        )
-                        # Drill hole
-                        svg.append(
-                            f'<circle cx="{px_:.3f}" cy="{py_:.3f}" r="{pad_r_inner:.2f}" '
-                            f'fill="#0a1a0a"/>'
-                        )
-
-                # ── Silkscreen ref label ───────────────────────────────────────
-                fs = max(1.2, min(2.5, w * 0.30))
-                svg.append(
-                    f'<text x="{cx:.3f}" y="{cy-hh-0.6:.3f}" '
-                    f'font-size="{fs:.2f}" fill="white" text-anchor="middle" '
-                    f'font-family="monospace" class="silkscreen">{cid}</text>'
-                )
-
-                # ── Component name on silkscreen ───────────────────────────────
-                comp_name = (comp.get("name","") or "")[:10]
-                if comp_name:
-                    fs2 = max(0.9, min(1.8, w * 0.22))
-                    svg.append(
-                        f'<text x="{cx:.3f}" y="{cy+0.5:.3f}" '
-                        f'font-size="{fs2:.2f}" fill="white" fill-opacity="0.7" '
-                        f'text-anchor="middle" dominant-baseline="middle" '
-                        f'font-family="monospace">{comp_name}</text>'
-                    )
-
-                # ── DRC error badge ───────────────────────────────────────────
-                if is_drc_error:
-                    svg.append(
-                        f'<rect x="{cx+hw-3:.3f}" y="{cy-hh:.3f}" width="3" height="2.2" '
-                        f'fill="#ff3333" rx="0.4"/>'
-                    )
-                    svg.append(
-                        f'<text x="{cx+hw-1.5:.3f}" y="{cy-hh+1.6:.3f}" '
-                        f'font-size="1.4" fill="white" text-anchor="middle" '
-                        f'font-weight="bold">!</text>'
-                    )
-
-            # ── Legend ───────────────────────────────────────────────────────
-            svg.append('<!-- Legend -->')
-            legend_x = board_w - 38.0
-            legend_y = 3.0
-            svg.append(
-                f'<rect x="{legend_x:.2f}" y="{legend_y:.2f}" width="36" height="18" '
-                f'fill="#0d1a0d" fill-opacity="0.85" stroke="#336633" stroke-width="0.2" rx="1"/>'
-            )
-            legend_items = [
-                ("#daa520", "Top copper (señales)"),
-                ("#b87333", "Bottom copper (GND/VCC)"),
-                ("#888888", "Vias"),
-            ]
-            for i, (color, label) in enumerate(legend_items):
-                ly = legend_y + 3.5 + i * 4.5
-                svg.append(f'<line x1="{legend_x+2:.2f}" y1="{ly:.2f}" x2="{legend_x+8:.2f}" y2="{ly:.2f}" '
-                           f'stroke="{color}" stroke-width="1"/>')
-                svg.append(f'<text x="{legend_x+10:.2f}" y="{ly+0.6:.2f}" font-size="2" '
-                           f'fill="#88cc88" font-family="monospace">{label}</text>')
-
-            # ── DRC summary strip ─────────────────────────────────────────────
-            n_err = len(drc.get("errors", []))
-            drc_color = "#ff4444" if n_err else "#44ff44"
-            drc_text  = f"DRC: {n_err} error(es)" if n_err else "DRC: OK"
-            svg.append(
-                f'<rect x="1" y="{board_h-4:.2f}" width="30" height="3" '
-                f'fill="{drc_color}" fill-opacity="0.2" rx="0.5"/>'
-            )
-            svg.append(
-                f'<text x="2" y="{board_h-2:.2f}" font-size="1.8" fill="{drc_color}" '
-                f'font-family="monospace">{drc_text}</text>'
-            )
-
-            # ── Board info ────────────────────────────────────────────────────
-            svg.append(
-                f'<text x="{board_w/2:.2f}" y="{board_h-0.8:.2f}" '
-                f'font-size="1.4" fill="#88cc88" text-anchor="middle" font-family="monospace">'
-                f'Stratum PCB · {circuit_data.get("name","")[:35]} · '
-                f'{board_w:.0f}×{board_h:.0f}mm · {len(components)} comps</text>'
-            )
+            self._draw_pcb(svg, circuit_data, components, positions, traces,
+                           board_w, board_h, drc_error_comps)
             svg.append('</svg>')
             return "\n".join(svg)
 
@@ -961,6 +747,226 @@ class PCBRenderer:
             logger.error(f"Error generando PCB SVG: {e}")
             return (f'<svg xmlns="http://www.w3.org/2000/svg" width="400" height="100">'
                     f'<text x="10" y="50" fill="red" font-size="12">Error: {e}</text></svg>')
+
+    def _draw_pcb(self, svg: List[str], circuit_data: Dict,
+                  components: List[Dict], positions: Dict[str, Tuple[float, float]],
+                  traces: List[Dict], board_w: float, board_h: float,
+                  drc_error_comps: set) -> None:
+        """Draws all PCB layers. Receives pre-computed placement and routing — no layout decisions."""
+        # ── F3.3 — HV/LV separation line ─────────────────────────────────────
+        hv_xs = [
+            positions[c["id"]][0] + _fp(c.get("resolved_type", c.get("type", "")))[0] / 2
+            for c in components
+            if c["id"] in positions and _pcb_zone(c) == "hv"
+        ]
+        mcu_xs = [
+            positions[c["id"]][0] - _fp(c.get("resolved_type", c.get("type", "")))[0] / 2
+            for c in components
+            if c["id"] in positions and _pcb_zone(c) == "mcu"
+        ]
+        if hv_xs and mcu_xs:
+            sep_x = (max(hv_xs) + min(mcu_xs)) / 2
+            svg.append(
+                f'<rect x="{sep_x-1.5:.3f}" y="2" width="3" height="{board_h-4:.2f}" '
+                f'fill="#aa0000" fill-opacity="0.10" stroke="none"/>'
+            )
+            svg.append(
+                f'<line x1="{sep_x:.3f}" y1="2" x2="{sep_x:.3f}" y2="{board_h-2:.2f}" '
+                f'stroke="#ff3300" stroke-width="0.4" stroke-dasharray="1.5,0.8"/>'
+            )
+            svg.append(
+                f'<text x="{sep_x-2.5:.3f}" y="6" font-size="2.2" fill="#ff6633" '
+                f'text-anchor="end" font-family="monospace" font-weight="bold">HV ZONE</text>'
+            )
+            svg.append(
+                f'<text x="{sep_x+2.5:.3f}" y="6" font-size="2.2" fill="#66ff66" '
+                f'text-anchor="start" font-family="monospace" font-weight="bold">LV ZONE</text>'
+            )
+            svg.append(
+                f'<text x="{sep_x:.3f}" y="{board_h-3:.2f}" font-size="1.6" fill="#ffaa66" '
+                f'text-anchor="middle" font-family="monospace">⚠ 3mm clearance</text>'
+            )
+
+        # ── GND flood fill ────────────────────────────────────────────────────
+        nets = circuit_data.get("nets", [])
+        svg.append('<!-- GND copper pour -->')
+        gnd_nets = [n for n in nets
+                    if any(v in n.get("name", "").lower() for v in ("gnd", "ground"))]
+        if gnd_nets:
+            gnd_ids = {node.split(".")[0] for net in gnd_nets
+                       for node in net.get("nodes", [])}
+            for cid in gnd_ids:
+                if cid not in positions:
+                    continue
+                cx_, cy_ = positions[cid]
+                ct_ = next((c.get("resolved_type", c.get("type", ""))
+                            for c in components if c["id"] == cid), "")
+                w_, h_ = _fp(ct_)
+                pour = 2.5
+                svg.append(
+                    f'<rect x="{cx_-w_/2-pour:.3f}" y="{cy_-h_/2-pour:.3f}" '
+                    f'width="{w_+pour*2:.3f}" height="{h_+pour*2:.3f}" '
+                    f'fill="url(#gnd-hatch)" rx="0.6"/>'
+                )
+
+        # ── Bottom copper traces ──────────────────────────────────────────────
+        svg.append('<!-- Bottom copper -->')
+        via_positions: set = set()
+        for tr in [t for t in traces if t["layer"] == "bottom"]:
+            col = _trace_color("bottom", tr["net"])
+            svg.append(
+                f'<line x1="{tr["x1"]:.3f}" y1="{tr["y1"]:.3f}" '
+                f'x2="{tr["x2"]:.3f}" y2="{tr["y2"]:.3f}" '
+                f'stroke="{col}" stroke-width="{tr["width"]:.2f}" '
+                f'stroke-linecap="round" opacity="0.80"/>'
+            )
+
+        # ── Top copper traces ─────────────────────────────────────────────────
+        svg.append('<!-- Top copper -->')
+        for tr in [t for t in traces if t["layer"] == "top"]:
+            col = _trace_color("top", tr["net"])
+            svg.append(
+                f'<line x1="{tr["x1"]:.3f}" y1="{tr["y1"]:.3f}" '
+                f'x2="{tr["x2"]:.3f}" y2="{tr["y2"]:.3f}" '
+                f'stroke="{col}" stroke-width="{tr["width"]:.2f}" '
+                f'stroke-linecap="round"/>'
+            )
+            via_positions.add((round(tr["x1"], 1), round(tr["y1"], 1)))
+
+        # ── Vias ──────────────────────────────────────────────────────────────
+        svg.append('<!-- Vias -->')
+        for vx, vy in list(via_positions)[:55]:
+            svg.append(
+                f'<circle cx="{vx:.2f}" cy="{vy:.2f}" r="0.7" '
+                f'fill="url(#via-grad)" stroke="#c8a000" stroke-width="0.08"/>'
+            )
+            svg.append(f'<circle cx="{vx:.2f}" cy="{vy:.2f}" r="0.32" fill="#0a1a0a"/>')
+
+        # ── Components: footprints, pads, courtyard, silkscreen ───────────────
+        svg.append('<!-- Components -->')
+        for comp in components:
+            cid    = comp["id"]
+            ctype  = comp.get("resolved_type", comp.get("type", "generic")).lower()
+            cx, cy = positions.get(cid, (board_w / 2, board_h / 2))
+            w, h   = _fp(ctype)
+            hw, hh = w / 2, h / 2
+
+            is_drc_error = cid in drc_error_comps
+            body_color   = _body_color(ctype)
+            border_color = "#ff3333" if is_drc_error else "#daa520"
+            border_w     = 0.5 if is_drc_error else 0.2
+
+            cy_off = 0.5
+            svg.append(
+                f'<rect x="{cx-hw-cy_off:.3f}" y="{cy-hh-cy_off:.3f}" '
+                f'width="{w+cy_off*2:.3f}" height="{h+cy_off*2:.3f}" '
+                f'fill="none" stroke="#ffcc00" stroke-width="0.15" stroke-dasharray="0.6,0.4"/>'
+            )
+            svg.append(
+                f'<rect x="{cx-hw:.3f}" y="{cy-hh:.3f}" width="{w:.3f}" height="{h:.3f}" '
+                f'fill="none" stroke="white" stroke-width="0.12" stroke-dasharray="1,0.5" opacity="0.6"/>'
+            )
+            svg.append(
+                f'<rect x="{cx-hw:.3f}" y="{cy-hh:.3f}" width="{w:.3f}" height="{h:.3f}" '
+                f'fill="{body_color}" stroke="{border_color}" stroke-width="{border_w:.2f}" rx="0.5"'
+                + (' filter="url(#glow)"' if is_drc_error else '') + '/>'
+            )
+            svg.append(
+                f'<polygon points="{cx-hw:.2f},{cy-hh:.2f} {cx-hw+1.8:.2f},{cy-hh:.2f} '
+                f'{cx-hw:.2f},{cy-hh+1.8:.2f}" fill="#daa520" fill-opacity="0.8"/>'
+            )
+
+            if ctype in _MCU_TYPES or ctype in _LARGE_TYPES:
+                n_pins    = max(2, min(8, int(h / 2.5)))
+                pad_pitch = h / (n_pins + 1)
+                for side_x in [cx - hw, cx + hw]:
+                    for i in range(1, n_pins + 1):
+                        py_ = cy - hh + i * pad_pitch
+                        svg.append(
+                            f'<rect x="{side_x-0.5:.3f}" y="{py_-0.7:.3f}" '
+                            f'width="1.0" height="1.4" class="pad-smd" rx="0.2"/>'
+                        )
+            else:
+                is_gnd_comp = any(
+                    any(n.split(".")[0] == cid for n in net.get("nodes", []))
+                    and "gnd" in net.get("name", "").lower()
+                    for net in nets
+                )
+                pad_r_outer = 0.9
+                pad_r_inner = 0.4
+                pad_color   = "#b87333" if is_gnd_comp else "#daa520"
+                for px_, py_ in [(cx - w * 0.3, cy), (cx + w * 0.3, cy)]:
+                    svg.append(
+                        f'<circle cx="{px_:.3f}" cy="{py_:.3f}" r="{pad_r_outer:.2f}" '
+                        f'fill="{pad_color}" stroke="#111" stroke-width="0.1"/>'
+                    )
+                    svg.append(
+                        f'<circle cx="{px_:.3f}" cy="{py_:.3f}" r="{pad_r_inner:.2f}" fill="#0a1a0a"/>'
+                    )
+
+            fs = max(1.2, min(2.5, w * 0.30))
+            svg.append(
+                f'<text x="{cx:.3f}" y="{cy-hh-0.6:.3f}" '
+                f'font-size="{fs:.2f}" fill="white" text-anchor="middle" '
+                f'font-family="monospace" class="silkscreen">{cid}</text>'
+            )
+            comp_name = (comp.get("name", "") or "")[:10]
+            if comp_name:
+                fs2 = max(0.9, min(1.8, w * 0.22))
+                svg.append(
+                    f'<text x="{cx:.3f}" y="{cy+0.5:.3f}" '
+                    f'font-size="{fs2:.2f}" fill="white" fill-opacity="0.7" '
+                    f'text-anchor="middle" dominant-baseline="middle" '
+                    f'font-family="monospace">{comp_name}</text>'
+                )
+            if is_drc_error:
+                svg.append(
+                    f'<rect x="{cx+hw-3:.3f}" y="{cy-hh:.3f}" width="3" height="2.2" '
+                    f'fill="#ff3333" rx="0.4"/>'
+                )
+                svg.append(
+                    f'<text x="{cx+hw-1.5:.3f}" y="{cy-hh+1.6:.3f}" '
+                    f'font-size="1.4" fill="white" text-anchor="middle" font-weight="bold">!</text>'
+                )
+
+        # ── Legend ────────────────────────────────────────────────────────────
+        drc = circuit_data.get("drc", {})
+        svg.append('<!-- Legend -->')
+        legend_x = board_w - 38.0
+        legend_y = 3.0
+        svg.append(
+            f'<rect x="{legend_x:.2f}" y="{legend_y:.2f}" width="36" height="18" '
+            f'fill="#0d1a0d" fill-opacity="0.85" stroke="#336633" stroke-width="0.2" rx="1"/>'
+        )
+        for i, (color, label) in enumerate([
+            ("#daa520", "Top copper (señales)"),
+            ("#b87333", "Bottom copper (GND/VCC)"),
+            ("#888888", "Vias"),
+        ]):
+            ly = legend_y + 3.5 + i * 4.5
+            svg.append(f'<line x1="{legend_x+2:.2f}" y1="{ly:.2f}" x2="{legend_x+8:.2f}" y2="{ly:.2f}" '
+                       f'stroke="{color}" stroke-width="1"/>')
+            svg.append(f'<text x="{legend_x+10:.2f}" y="{ly+0.6:.2f}" font-size="2" '
+                       f'fill="#88cc88" font-family="monospace">{label}</text>')
+
+        # ── DRC summary ───────────────────────────────────────────────────────
+        n_err     = len(drc.get("errors", []))
+        drc_color = "#ff4444" if n_err else "#44ff44"
+        drc_text  = f"DRC: {n_err} error(es)" if n_err else "DRC: OK"
+        svg.append(
+            f'<rect x="1" y="{board_h-4:.2f}" width="30" height="3" '
+            f'fill="{drc_color}" fill-opacity="0.2" rx="0.5"/>'
+        )
+        svg.append(
+            f'<text x="2" y="{board_h-2:.2f}" font-size="1.8" fill="{drc_color}" '
+            f'font-family="monospace">{drc_text}</text>'
+        )
+        svg.append(
+            f'<text x="{board_w/2:.2f}" y="{board_h-0.8:.2f}" '
+            f'font-size="1.4" fill="#88cc88" text-anchor="middle" font-family="monospace">'
+            f'Stratum PCB · {circuit_data.get("name","")[:35]} · '
+            f'{board_w:.0f}×{board_h:.0f}mm · {len(components)} comps</text>'
+        )
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 

@@ -399,6 +399,100 @@ class _SynthesisContext:
 
 # ─── CircuitSynthesizer ──────────────────────────────────────────────────────
 
+def _build_placement_hints(
+    components: List[Dict], nets: List[Dict]
+) -> Dict[str, Any]:
+    """
+    Infers placement hints from synthesized components and nets.
+    Renderers must use these as priority over their own zone classifier.
+    """
+    from tools.component_types import _MCU_TYPES, _RELAY_TYPES
+
+    _ZONE_RULES: Dict[str, set] = {
+        "mcu":    _MCU_TYPES | {"microcontroller"},
+        "sensor": {"bmp280", "dht22", "dht11", "sht31", "mpu6050", "ultrasonic",
+                   "pir", "moisture_sensor", "fc28", "photoresistor", "adc"},
+        "relay":  _RELAY_TYPES | {"ssr"},
+        "power":  {"capacitor", "regulator", "ldo", "dc_dc", "diode",
+                   "1n4007", "1n5819", "1n4148", "fuse", "transformer",
+                   "bridge_rectifier", "smps"},
+        "output": {"led", "led_rgb", "display", "oled", "lcd", "buzzer", "connector"},
+    }
+
+    # ── Zone hints ─────────────────────────────────────────────────────────
+    zone_hints: Dict[str, str] = {}
+    for comp in components:
+        t   = (comp.get("resolved_type") or comp.get("type") or "").lower()
+        cid = comp["id"]
+        for zone, types in _ZONE_RULES.items():
+            if t in types:
+                zone_hints[cid] = zone
+                break
+        else:
+            lo = cid.lower()
+            if lo.startswith("rl"):  zone_hints[cid] = "relay"
+            elif lo.startswith("u"): zone_hints[cid] = "mcu"
+            elif lo.startswith("j"): zone_hints[cid] = "output"
+
+    # ── Net-adjacency map ──────────────────────────────────────────────────
+    comp_nets: Dict[str, set] = {c["id"]: set() for c in components}
+    for net in nets:
+        for node in net.get("nodes", []):
+            cid = str(node).split(".")[0]
+            if cid in comp_nets:
+                comp_nets[cid].add(net.get("name", ""))
+
+    ic_ids    = [c["id"] for c in components if zone_hints.get(c["id"]) in ("mcu", "sensor")]
+    relay_ids = [c["id"] for c in components if zone_hints.get(c["id"]) == "relay"]
+
+    # ── Adjacency hints ────────────────────────────────────────────────────
+    adjacency: List[Dict] = []
+    for comp in components:
+        t    = (comp.get("resolved_type") or comp.get("type") or "").lower()
+        name = (comp.get("name") or "").lower()
+        cid  = comp["id"]
+
+        is_decoupling = t == "capacitor" and any(
+            k in name for k in ("100n", "100nf", "bypass", "decoupling", "desacoplo")
+        )
+        is_flyback = t in ("diode", "1n4007", "1n5819", "1n4148") and cid.lower().startswith("d")
+
+        if is_decoupling and ic_ids:
+            best = max(ic_ids,
+                       key=lambda ic: len(comp_nets.get(cid, set()) & comp_nets.get(ic, set())),
+                       default=None)
+            if best:
+                adjacency.append({"comp": cid, "near": best, "reason": "decoupling"})
+
+        if is_flyback and relay_ids:
+            for rid in relay_ids:
+                if comp_nets.get(cid, set()) & comp_nets.get(rid, set()):
+                    adjacency.append({"comp": cid, "near": rid, "reason": "flyback"})
+                    break
+
+    # ── Groups ─────────────────────────────────────────────────────────────
+    groups: List[Dict] = []
+
+    i2c_nets = {n.get("name", "") for n in nets
+                if any(v in n.get("name", "").lower() for v in ("sda", "scl", "i2c"))}
+    i2c_comps = [c["id"] for c in components
+                 if comp_nets.get(c["id"], set()) & i2c_nets]
+    if len(i2c_comps) >= 2:
+        groups.append({"name": "i2c_bus", "components": i2c_comps})
+
+    power_comps = [c["id"] for c in components if zone_hints.get(c["id"]) == "power"]
+    if power_comps:
+        groups.append({"name": "power", "components": power_comps})
+
+    adj_comps = {a["comp"] for a in adjacency}
+    relay_out = [c["id"] for c in components
+                 if zone_hints.get(c["id"]) in ("relay", "output") and c["id"] not in adj_comps]
+    if relay_out:
+        groups.append({"name": "outputs", "components": relay_out})
+
+    return {"groups": groups, "adjacency": adjacency, "zone_hints": zone_hints}
+
+
 class CircuitSynthesizer:
     """
     Síntesis determinística de netlists por composición de bloques.
@@ -462,6 +556,9 @@ class CircuitSynthesizer:
 
         self.validate_structure(result)
         self.validate_electrical_constraints(result)
+        result["placement_hints"] = _build_placement_hints(
+            result.get("components", []), result.get("nets", [])
+        )
         return result
 
     # ── Dispatch ──────────────────────────────────────────────────────────────
