@@ -5,7 +5,12 @@ from typing import Dict, Any, List, Tuple, Optional
 import math
 from core.logger import get_logger
 from tools.kicad_sym_renderer import KiCadSymRenderer as _KSR
-from tools.component_types import _MCU_TYPES, _RELAY_TYPES, _ZONE_SENSOR_TYPES
+from tools.component_types import (
+    _MCU_TYPES,
+    _RELAY_TYPES,
+    _ZONE_SENSOR_TYPES,
+    _ZONE_DISPLAY_TYPES,
+)
 from tools.design_rules import get_sheet_size, snap_to_grid, MARGIN_MM, TITLE_BLOCK_H
 
 _kicad = _KSR()
@@ -112,6 +117,11 @@ def _classify_zone(comp: Dict) -> str:
     # Output connectors (J2..JN typically)
     if t == "connector":
         return "output"
+
+    if t in _ZONE_DISPLAY_TYPES:
+        return "output"
+    if t in _ZONE_SENSOR_TYPES:
+        return "sensor"
 
     return "other"
 
@@ -814,7 +824,7 @@ class SchematicRenderer:
                 ys = [c[1] for c in coords]
                 span_x = max(xs) - min(xs)
                 span_y = max(ys) - min(ys)
-                threshold = (canvas_w * 0.35) if canvas_w else self._LABEL_DISTANCE_THRESHOLD
+                threshold = (canvas_w * 0.55) if canvas_w else self._LABEL_DISTANCE_THRESHOLD
                 use_labels = span_x > threshold or span_y > ((canvas_h * 0.4) if canvas_h else threshold)
                 if use_labels:
                     avg_x = sum(xs) / len(xs)

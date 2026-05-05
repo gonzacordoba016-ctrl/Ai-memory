@@ -26,4 +26,12 @@ _ZONE_SENSOR_TYPES = {
     "gas_sensor", "mq2", "mq135",
     "ultrasonic", "hc_sr04", "ultrasonic_sensor",
     "ir_sensor", "color_sensor",
+    # Generic interface types emitted by CircuitSynthesizer
+    "sensor_i2c", "sensor_spi", "sensor_1wire",
+    "uart_device",
+}
+
+_ZONE_DISPLAY_TYPES = {
+    "oled", "lcd", "display", "tft", "ssd1306",
+    "oled_display", "lcd_display",
 }

@@ -710,13 +710,14 @@ class CircuitSynthesizer:
         Pull-ups 4.7kΩ solo se agregan la primera vez (bus I2C compartido).
         Cada sensor tiene su propio capacitor de desacoplo 100nF.
         """
-        model    = block.get("model", "Sensor I2C")
+        ctype    = block.get("type") or "sensor_i2c"
+        model    = block.get("model") or ctype
         i2c_addr = block.get("i2c_address", block.get("address", "0x76"))
 
         u_id = ctx.next_id("U")
         c_id = ctx.next_id("C")
 
-        b.add_component(u_id, f"{model} Sensor", "sensor_i2c",
+        b.add_component(u_id, f"{model.upper()} Sensor", ctype,
                         i2c_address=i2c_addr, current_ma=1.5)
         b.add_component(c_id, f"Desacoplo {model} 100nF", "capacitor",
                         value="100", unit="nF")
@@ -739,11 +740,12 @@ class CircuitSynthesizer:
         Sensor SPI genérico.
         MOSI/MISO/SCK compartidos. CS exclusivo por dispositivo.
         """
-        model = block.get("model", "Sensor SPI")
+        ctype = block.get("type") or "sensor_spi"
+        model = block.get("model") or ctype
         u_id  = ctx.next_id("U")
         c_id  = ctx.next_id("C")
 
-        b.add_component(u_id, f"{model}", "sensor_spi", current_ma=2.0)
+        b.add_component(u_id, f"{model.upper()} Sensor", ctype, current_ma=2.0)
         b.add_component(c_id, f"Desacoplo {model} 100nF", "capacitor",
                         value="100", unit="nF")
 
@@ -788,13 +790,14 @@ class CircuitSynthesizer:
         ctx: _SynthesisContext,
     ) -> None:
         """DHT22/DHT11 temperatura+humedad. GPIO single-bus + pull-up 4.7kΩ."""
-        model = block.get("model", "DHT22")
+        ctype = block.get("type") or "dht22"
+        model = block.get("model") or ctype
         gpio  = ctx.pin_allocator.allocate("GPIO_OUTPUT", block.get("gpio_pin"))
         u_id  = ctx.next_id("U")
         r_id  = ctx.next_id("R")
         c_id  = ctx.next_id("C")
 
-        b.add_component(u_id, f"{model} Temp/Humidity", "sensor_i2c", current_ma=2.5)
+        b.add_component(u_id, f"{model.upper()} Temp/Humidity", ctype, current_ma=2.5)
         b.add_component(r_id, f"Pull-up {model} DATA 4.7kΩ", "resistor",
                         value="4700", unit="Ω", current_ma=1.0)
         b.add_component(c_id, f"Desacoplo {model} 100nF", "capacitor",
@@ -812,12 +815,13 @@ class CircuitSynthesizer:
         ctx: _SynthesisContext,
     ) -> None:
         """FC-28/YL-69 sensor de humedad de suelo. Salida analógica → ADC."""
-        model   = block.get("model", "FC-28")
+        ctype   = block.get("type") or "moisture_sensor"
+        model   = block.get("model") or ctype
         adc_pin = ctx.pin_allocator.allocate("ADC_INPUT", block.get("gpio_pin"))
         u_id    = ctx.next_id("U")
         c_id    = ctx.next_id("C")
 
-        b.add_component(u_id, f"{model} Soil Moisture", "sensor_i2c", current_ma=5.0)
+        b.add_component(u_id, f"{model.upper()} Soil Moisture", ctype, current_ma=5.0)
         b.add_component(c_id, f"Desacoplo {model} 100nF", "capacitor",
                         value="100", unit="nF")
 

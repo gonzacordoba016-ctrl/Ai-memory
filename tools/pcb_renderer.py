@@ -5,7 +5,12 @@
 
 from typing import Dict, Any, List, Tuple, Optional
 from core.logger import get_logger
-from tools.component_types import _MCU_TYPES, _RELAY_TYPES, _ZONE_SENSOR_TYPES
+from tools.component_types import (
+    _MCU_TYPES,
+    _RELAY_TYPES,
+    _ZONE_SENSOR_TYPES,
+    _ZONE_DISPLAY_TYPES,
+)
 from tools.design_rules import get_sheet_size, PCB_CLEARANCE
 
 logger = get_logger(__name__)
@@ -178,6 +183,8 @@ def _pcb_zone(comp: Dict) -> str:
         return "mcu"
     if t in _ZONE_SENSOR_TYPES:
         return "sensor"
+    if t in _ZONE_DISPLAY_TYPES:
+        return "output"
     if t == "connector":
         return "output"
     return "other"
@@ -591,7 +598,28 @@ def _compute_pcb_placement(
     Zone order: ZONE_ORDER from design_rules.
     """
     board_w, board_h = _board_size(components)
-    return _place_components(components, board_w, board_h, nets)
+    positions = _place_components(components, board_w, board_h, nets)
+
+    # Overlap check: si la bbox (x±w/2, y±h/2) de un componente nuevo se superpone
+    # con cualquiera ya colocado, se baja Y en footprint_h + 3mm hasta despejar.
+    by_id = {c["id"]: c for c in components}
+    placed: List[Tuple[float, float, float, float]] = []
+    for cid in list(positions.keys()):
+        comp = by_id.get(cid)
+        if not comp:
+            continue
+        ctype = (comp.get("resolved_type") or comp.get("type") or "").lower()
+        fp_w, fp_h = _fp(ctype)
+        x, y = positions[cid]
+        while any(
+            abs(x - px) < (fp_w + pw) / 2 and abs(y - py) < (fp_h + ph) / 2
+            for px, py, pw, ph in placed
+        ):
+            y += fp_h + 3.0
+        positions[cid] = (x, y)
+        placed.append((x, y, fp_w, fp_h))
+
+    return positions
 
 
 def _compute_pcb_routing(
