@@ -11,7 +11,13 @@ from database.design_decisions import get_decisions_db
 
 router = APIRouter(prefix="/api/schematics", tags=["schematics"])
 
-_circuit_db = CircuitDesignDB()
+_circuit_db = None
+
+def _get_circuit_db():
+    global _circuit_db
+    if _circuit_db is None:
+        _circuit_db = CircuitDesignDB()
+    return _circuit_db
 
 
 @router.post("/import")
@@ -69,7 +75,7 @@ async def import_schematic(
             "imported":    True,
         }
 
-        circuit_id = _circuit_db.save_design({
+        circuit_id = _get_circuit_db().save_design({
             "name":        name,
             "description": parsed["description"],
             "components":  components_list,
@@ -108,7 +114,7 @@ async def parse_plc_ladder(body: dict):
     # Guardar en memoria como circuito de tipo PLC
     if result["rung_count"] > 0:
         name = body.get("name", "PLC Program")
-        circuit_id = _circuit_db.save_design({
+        circuit_id = _get_circuit_db().save_design({
             "name":        name,
             "description": f"Lógica Ladder — {result['rung_count']} rungs",
             "components":  [{"id": v, "type": "PLC_Variable", "value": "", "ref": v}

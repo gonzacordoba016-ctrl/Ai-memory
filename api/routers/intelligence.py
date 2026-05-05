@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from typing import Optional, List
 
-from database.intelligence import intelligence_db
+from database.intelligence import get_intelligence_db
 from core.logger import logger
 
 router = APIRouter(tags=["intelligence"])
@@ -43,12 +43,12 @@ class SourceCreate(BaseModel):
 @router.get("/api/intelligence/active")
 async def get_active():
     """Retorna el perfil activo y sus fuentes habilitadas."""
-    profile = intelligence_db.get_active_profile()
+    profile = get_intelligence_db().get_active_profile()
     if not profile:
         return {"profile": None, "sources": []}
     sources = []
     if profile.get("active_sources"):
-        all_sources = {s["id"]: s for s in intelligence_db.list_sources()}
+        all_sources = {s["id"]: s for s in get_intelligence_db().list_sources()}
         sources = [all_sources[sid] for sid in profile["active_sources"] if sid in all_sources]
     return {"profile": profile, "sources": sources}
 
@@ -57,13 +57,13 @@ async def get_active():
 
 @router.get("/api/intelligence/profiles")
 async def list_profiles():
-    return {"profiles": intelligence_db.list_profiles()}
+    return {"profiles": get_intelligence_db().list_profiles()}
 
 
 @router.post("/api/intelligence/profiles")
 async def create_profile(body: ProfileCreate):
     try:
-        profile = intelligence_db.create_profile(body.dict())
+        profile = get_intelligence_db().create_profile(body.dict())
         logger.info(f"[Intelligence] Perfil creado: {body.name}")
         return {"profile": profile}
     except Exception as e:
@@ -73,7 +73,7 @@ async def create_profile(body: ProfileCreate):
 @router.put("/api/intelligence/profiles/{profile_id}")
 async def update_profile(profile_id: str, body: ProfileUpdate):
     data = {k: v for k, v in body.dict().items() if v is not None}
-    profile = intelligence_db.update_profile(profile_id, data)
+    profile = get_intelligence_db().update_profile(profile_id, data)
     if not profile:
         raise HTTPException(404, "Perfil no encontrado")
     return {"profile": profile}
@@ -81,9 +81,9 @@ async def update_profile(profile_id: str, body: ProfileUpdate):
 
 @router.post("/api/intelligence/profiles/{profile_id}/activate")
 async def activate_profile(profile_id: str):
-    if not intelligence_db.get_profile(profile_id):
+    if not get_intelligence_db().get_profile(profile_id):
         raise HTTPException(404, "Perfil no encontrado")
-    ok = intelligence_db.activate_profile(profile_id)
+    ok = get_intelligence_db().activate_profile(profile_id)
     if not ok:
         raise HTTPException(500, "Error activando perfil")
     logger.info(f"[Intelligence] Perfil activado: {profile_id}")
@@ -92,7 +92,7 @@ async def activate_profile(profile_id: str):
 
 @router.delete("/api/intelligence/profiles/{profile_id}")
 async def delete_profile(profile_id: str):
-    if not intelligence_db.delete_profile(profile_id):
+    if not get_intelligence_db().delete_profile(profile_id):
         raise HTTPException(400, "No se puede eliminar este perfil (es de sistema o el único existente)")
     return {"ok": True}
 
@@ -101,12 +101,12 @@ async def delete_profile(profile_id: str):
 
 @router.get("/api/intelligence/sources")
 async def list_sources():
-    return {"sources": intelligence_db.list_sources()}
+    return {"sources": get_intelligence_db().list_sources()}
 
 
 @router.post("/api/intelligence/sources")
 async def create_source(body: SourceCreate):
-    source = intelligence_db.create_source(body.dict())
+    source = get_intelligence_db().create_source(body.dict())
     logger.info(f"[Intelligence] Fuente creada: {body.name} ({body.type})")
     return {"source": source}
 
@@ -114,7 +114,7 @@ async def create_source(body: SourceCreate):
 @router.post("/api/intelligence/sources/{source_id}/index")
 async def index_source(source_id: str):
     """Vectoriza el contenido de la fuente en Qdrant."""
-    source = intelligence_db.get_source(source_id)
+    source = get_intelligence_db().get_source(source_id)
     if not source:
         raise HTTPException(404, "Fuente no encontrada")
     if not source.get("content", "").strip():
@@ -136,7 +136,7 @@ async def index_source(source_id: str):
                     "indexed_at": datetime.now(timezone.utc).isoformat(),
                 }
             )
-        intelligence_db.mark_indexed(source_id)
+        get_intelligence_db().mark_indexed(source_id)
         logger.info(f"[Intelligence] Fuente indexada: {source['name']} — {len(chunks)} chunks")
         return {"ok": True, "chunks": len(chunks)}
     except Exception as e:
@@ -146,6 +146,6 @@ async def index_source(source_id: str):
 
 @router.delete("/api/intelligence/sources/{source_id}")
 async def delete_source(source_id: str):
-    if not intelligence_db.delete_source(source_id):
+    if not get_intelligence_db().delete_source(source_id):
         raise HTTPException(404, "Fuente no encontrada")
     return {"ok": True}

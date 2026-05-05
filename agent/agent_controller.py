@@ -199,9 +199,9 @@ class AgentController:
         ai_system_prompt = None
         source_context   = ""
         try:
-            from database.intelligence import intelligence_db
+            from database.intelligence import get_intelligence_db
             from memory.vector_memory import search_in_sources
-            profile = intelligence_db.get_active_profile()
+            profile = get_intelligence_db().get_active_profile()
             if profile:
                 ai_system_prompt = profile.get("system_prompt")
                 active_sources   = profile.get("active_sources", [])

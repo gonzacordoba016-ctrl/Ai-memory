@@ -313,4 +313,12 @@ class IntelligenceDB:
         return d
 
 
-intelligence_db = IntelligenceDB()
+_intelligence_db = None
+
+def get_intelligence_db() -> IntelligenceDB:
+    global _intelligence_db
+    if _intelligence_db is None:
+        _intelligence_db = IntelligenceDB()
+    return _intelligence_db
+
+intelligence_db = None  # kept for backward compat; use get_intelligence_db()
