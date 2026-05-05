@@ -130,6 +130,55 @@ if _routers_failed:
     _log.warning(f"[STARTUP] Routers FAILED: {_routers_failed}")
 
 
+# ── Lazy DB init — corre en el primer request, no en startup ──────────
+# El startup event en Railway puede correr ANTES de que el volumen esté
+# montado. Diferir al primer request garantiza que el volumen ya existe.
+
+_db_init_done = False
+_db_init_lock: "asyncio.Lock | None" = None
+
+
+async def _ensure_db_initialized():
+    global _db_init_done, _db_init_lock
+    if _db_init_done:
+        return
+    if _db_init_lock is None:
+        _db_init_lock = asyncio.Lock()
+    async with _db_init_lock:
+        if _db_init_done:
+            return
+        for _attempt in range(15):
+            try:
+                import sqlite3 as _sqlite3
+                from core.config import SQL_DB_PATH
+                _c = _sqlite3.connect(SQL_DB_PATH, timeout=2)
+                _c.execute("PRAGMA journal_mode=WAL")
+                _c.close()
+                _log.info(f"[Server] Volumen DB listo (intento {_attempt + 1})")
+                break
+            except Exception as _e:
+                _log.warning(f"[Server] DB no disponible aún (intento {_attempt + 1}): {_e}")
+                await asyncio.sleep(1.0)
+        try:
+            from database.design_decisions import get_decisions_db
+            from database.component_stock import get_stock_db
+            from database.intelligence import get_intelligence_db
+            get_decisions_db()
+            get_stock_db()
+            get_intelligence_db()
+            _log.info("[Server] Tablas design_decisions, component_stock e intelligence inicializadas.")
+        except Exception as e:
+            _startup_errors.append(f"DB init failed: {e}")
+            _log.error(f"[Server] DB init error: {e}")
+        _db_init_done = True
+
+
+@app.middleware("http")
+async def lazy_db_init(request: Request, call_next):
+    await _ensure_db_initialized()
+    return await call_next(request)
+
+
 # ── Lifecycle ─────────────────────────────────────────────────────────
 
 @app.on_event("startup")
@@ -144,37 +193,6 @@ async def startup_event():
         hardware_bridge.set_event_loop(asyncio.get_running_loop())
     except Exception as e:
         _startup_errors.append(f"hardware_bridge.set_event_loop failed: {e}")
-
-    # Esperar a que el volumen de Railway esté montado antes de tocar SQLite
-    _db_ready = False
-    for _attempt in range(10):
-        try:
-            import sqlite3 as _sqlite3
-            from core.config import SQL_DB_PATH
-            _c = _sqlite3.connect(SQL_DB_PATH, timeout=2)
-            _c.execute("PRAGMA journal_mode=WAL")
-            _c.close()
-            _db_ready = True
-            _log.info(f"[Server] Volumen DB listo (intento {_attempt + 1})")
-            break
-        except Exception as _e:
-            _log.warning(f"[Server] DB no disponible aún (intento {_attempt + 1}): {_e}")
-            await asyncio.sleep(1.0)
-    if not _db_ready:
-        _startup_errors.append("DB volume not ready after 10s — DBs will init lazily on first request")
-
-    # Inicializar tablas SQLite (ligero, rápido)
-    try:
-        from database.design_decisions import get_decisions_db
-        from database.component_stock import get_stock_db
-        from database.intelligence import get_intelligence_db
-        get_decisions_db()
-        get_stock_db()
-        get_intelligence_db()
-        _log.info("[Server] Tablas design_decisions, component_stock e intelligence inicializadas.")
-    except Exception as e:
-        _startup_errors.append(f"DB init failed: {e}")
-        _log.error(f"[Server] DB init error: {e}")
 
     # Job worker
     try:
