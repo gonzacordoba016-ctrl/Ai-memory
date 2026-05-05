@@ -10,10 +10,11 @@ from datetime import datetime, timezone
 import httpx
 
 from core.logger import logger
+from database import get_db_path
 
 FCM_SERVER_KEY = os.getenv("FIREBASE_SERVER_KEY")
 FCM_URL        = "https://fcm.googleapis.com/fcm/send"
-DB_PATH        = os.getenv("MEMORY_DB_PATH", "./database/memory.db")
+DB_PATH        = get_db_path("memory.db")
 
 
 # ── Tabla de tokens ───────────────────────────────────────────────────────────

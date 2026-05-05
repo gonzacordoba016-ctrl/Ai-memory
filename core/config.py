@@ -2,6 +2,7 @@
 
 import os
 import logging
+from database import get_db_path
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +119,7 @@ MEMORY_DECAY_RATE = float(_env("MEMORY_DECAY_RATE", "0.01"))
 # ==========================
 
 VECTOR_DB_PATH = _env("VECTOR_DB_PATH", "./memory_db")
-SQL_DB_PATH    = _env("MEMORY_DB_PATH", "./database/memory.db")
+SQL_DB_PATH    = get_db_path("memory.db")
 GRAPH_DB_PATH  = _env("GRAPH_DB_PATH",  "./database/graph_memory.json")
 
 # Qdrant: si QDRANT_URL está definido se usa server mode, si no path local

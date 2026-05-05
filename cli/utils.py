@@ -3,6 +3,7 @@
 import os
 import sys
 from pathlib import Path
+from database import get_db_path
 
 _WIN = sys.platform == "win32"
 
@@ -20,7 +21,7 @@ def step(msg): print(f"\n{_c(msg, 1)}")
 
 def _get_paths() -> dict:
     return {
-        "sql_db":    Path(os.getenv("MEMORY_DB_PATH", "./database/memory.db")),
+        "sql_db":    Path(get_db_path("memory.db")),
         "vector_db": Path(os.getenv("VECTOR_DB_PATH", "./memory_db")),
         "graph_db":  Path(os.getenv("GRAPH_DB_PATH",  "./database/graph_memory.json")),
         "knowledge": Path("./agent_files/knowledge"),

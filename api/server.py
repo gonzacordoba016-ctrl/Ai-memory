@@ -8,6 +8,7 @@ load_dotenv(override=True)  # .env local tiene prioridad; Railway no usa .env
 import os
 import sys
 import logging
+from database import get_db_path
 
 # Logger de servidor — centraliza todos los mensajes de startup/runtime
 _log = logging.getLogger("stratum.server")
@@ -17,7 +18,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 _provider = os.getenv("LLM_PROVIDER", "ollama")
 _key = os.getenv("OPENROUTER_API_KEY", "")
 _log.info(f"[STARTUP] LLM_PROVIDER={_provider} | key prefix={_key[:15]}... | model={os.getenv('OPENROUTER_MODEL', os.getenv('OLLAMA_MODEL', '?'))}")
-_log.info(f"[STARTUP] PORT={os.getenv('PORT', '8000')} | MEMORY_DB={os.getenv('MEMORY_DB_PATH', './database/memory.db')}")
+_log.info(f"[STARTUP] PORT={os.getenv('PORT', '8000')} | MEMORY_DB={get_db_path('memory.db')}")
 
 # Coleccionamos errores de startup para reportarlos en /api/health
 _startup_errors: list[str] = []

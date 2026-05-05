@@ -8,6 +8,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from database import get_db_path
 
 EVAL_PREFIX = "EVAL_ISOLATION_K92x"
 PASS = "\033[92m[PASS]\033[0m"
@@ -35,7 +36,7 @@ def cleanup_eval_data():
         pass
 
     try:
-        db_path = os.getenv("MEMORY_DB_PATH", "./database/memory.db")
+        db_path = get_db_path("memory.db")
         conn = sqlite3.connect(db_path)
         conn.execute("DELETE FROM facts WHERE key LIKE 'eval_%'")
         conn.execute("DELETE FROM hardware_devices WHERE device_name LIKE 'EVAL_%'")
