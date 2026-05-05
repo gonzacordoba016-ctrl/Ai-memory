@@ -1,26 +1,21 @@
 # database/sql_memory.py
 
 import sqlite3
-import os
 import threading
 import uuid as _uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
-from core.config import SQL_DB_PATH
-
-DB_PATH = SQL_DB_PATH
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-
+from database import get_db_path
 
 
 class SQLMemory:
 
-    def __init__(self, db_path: str = DB_PATH):
-        self.db_path = db_path
+    def __init__(self, db_path: str = None):
+        self.db_path = db_path or get_db_path("memory.db")
         self._facts_seq = 0
         self._lock = threading.RLock()
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
+        self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._init_db()

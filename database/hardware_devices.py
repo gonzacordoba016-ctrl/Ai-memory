@@ -2,18 +2,14 @@
 # Tabla: hardware_devices — CRUD de dispositivos físicos.
 
 import sqlite3
-import os
 from core.logger import logger
-from core.config import SQL_DB_PATH
-
-DB_PATH = SQL_DB_PATH
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+from database import get_db_path
 
 
 class HardwareDevicesDB:
 
     def __init__(self):
-        self.db_path = DB_PATH
+        self.db_path = get_db_path("memory.db")
         self._init_table()
 
     def _get_conn(self):

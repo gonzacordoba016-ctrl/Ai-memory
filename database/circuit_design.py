@@ -3,7 +3,6 @@
 import secrets
 import sqlite3
 import json as _json
-import os
 import pathlib
 import threading
 from contextlib import contextmanager
@@ -11,10 +10,7 @@ from typing import Dict, Any, List, Optional
 from core.logger import get_logger
 
 logger = get_logger(__name__)
-from core.config import SQL_DB_PATH
-
-DB_PATH = SQL_DB_PATH
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+from database import get_db_path
 
 
 # Librería de componentes — cargada desde data/component_library.json
@@ -30,9 +26,10 @@ COMPONENT_ALIASES: dict = _lib_data["aliases"]
 
 class CircuitDesignManager:
     def __init__(self):
-        self.db_path = DB_PATH
+        _path = get_db_path("memory.db")
+        self.db_path = _path
         self._lock = threading.RLock()
-        self._conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        self._conn = sqlite3.connect(_path, check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._init_db()

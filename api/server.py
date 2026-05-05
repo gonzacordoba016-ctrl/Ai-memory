@@ -150,8 +150,8 @@ async def _ensure_db_initialized():
         for _attempt in range(15):
             try:
                 import sqlite3 as _sqlite3
-                from core.config import SQL_DB_PATH
-                _c = _sqlite3.connect(SQL_DB_PATH, timeout=2)
+                from database import get_db_path
+                _c = _sqlite3.connect(get_db_path("memory.db"), timeout=2)
                 _c.execute("PRAGMA journal_mode=WAL")
                 _c.close()
                 _log.info(f"[Server] Volumen DB listo (intento {_attempt + 1})")
@@ -267,16 +267,16 @@ async def health_root():
 @app.get("/api/health")
 async def health():
     try:
-        from core.config import SQL_DB_PATH, OLLAMA_BASE_URL
+        from core.config import OLLAMA_BASE_URL
     except Exception:
-        SQL_DB_PATH = "./database/memory.db"
         OLLAMA_BASE_URL = "http://localhost:11434"
 
+    from database import get_db_path
     checks: dict = {}
 
     # SQLite
     try:
-        conn = sqlite3.connect(SQL_DB_PATH, timeout=2)
+        conn = sqlite3.connect(get_db_path("memory.db"), timeout=2)
         conn.execute("SELECT 1")
         conn.close()
         checks["sqlite"] = "ok"

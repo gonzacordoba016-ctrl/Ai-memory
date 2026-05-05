@@ -1,20 +1,16 @@
 # database/design_decisions.py
 # Memoria de decisiones de diseño — por qué se eligió cada componente/topología
 
-import os
 import sqlite3
 import json
 from datetime import datetime, timezone
-from core.config import SQL_DB_PATH
-
-DB_PATH = SQL_DB_PATH
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+from database import get_db_path
 
 
 class DesignDecisionsDB:
 
-    def __init__(self, db_path: str = DB_PATH):
-        self.db_path = db_path
+    def __init__(self, db_path: str = None):
+        self.db_path = db_path or get_db_path("memory.db")
         self._init_db()
 
     def _conn(self):

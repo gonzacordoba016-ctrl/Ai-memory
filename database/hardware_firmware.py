@@ -2,18 +2,14 @@
 # Tabla: firmware_history — historial de programación de dispositivos.
 
 import sqlite3
-import os
 from core.logger import logger
-from core.config import SQL_DB_PATH
-
-DB_PATH = SQL_DB_PATH
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+from database import get_db_path
 
 
 class HardwareFirmwareDB:
 
     def __init__(self):
-        self.db_path = DB_PATH
+        self.db_path = get_db_path("memory.db")
         self._init_table()
 
     def _get_conn(self):

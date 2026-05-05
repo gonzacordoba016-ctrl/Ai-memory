@@ -7,9 +7,7 @@ import uuid
 from datetime import datetime, timezone
 
 from core.logger import logger
-from core.config import SQL_DB_PATH
-
-DB_PATH = SQL_DB_PATH
+from database import get_db_path
 
 DEFAULT_PROFILES = [
     {
@@ -46,7 +44,7 @@ class IntelligenceDB:
         self._seed_defaults()
 
     def _conn(self) -> sqlite3.Connection:
-        return sqlite3.connect(DB_PATH)
+        return sqlite3.connect(get_db_path("memory.db"))
 
     def _init_tables(self):
         try:
