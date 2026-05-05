@@ -80,6 +80,10 @@ BLOCK_TYPE_ALIASES: Dict[str, str] = {
     "válvula":                    "relay",
     "bomba":                      "relay",
     "ventilador":                 "relay",
+    "lora":                       "sx1276",
+    "modulo lora":                "sx1276",
+    "driver motor":               "l298n",
+    "puente h":                   "l298n",
 }
 
 
@@ -583,6 +587,9 @@ class CircuitSynthesizer:
             "relay":          self._add_relay_block,
             "srd05vdc":       self._add_relay_block,
             "srd5vdc":        self._add_relay_block,
+            "sx1276":         self._add_sx1276_block,
+            "lora":           self._add_sx1276_block,
+            "l298n":          self._add_l298n_block,
         }
         if model in model_map:
             return model_map[model]
@@ -839,6 +846,65 @@ class CircuitSynthesizer:
         # Contactos de salida (carga)
         b.connect(f"{label}_COM", f"{rl_id}.COM")
         b.connect(f"{label}_NO",  f"{rl_id}.NO")
+
+    def _add_sx1276_block(
+        self,
+        b: CircuitBuilder,
+        block: Dict[str, Any],
+        ctx: _SynthesisContext,
+    ) -> None:
+        """SX1276 LoRa SPI. CS=GPIO5, IRQ=GPIO4, RST=GPIO14. VCC 3.3V/120mA."""
+        model = block.get("model", "SX1276")
+        u_id  = ctx.next_id("U")
+        c_id  = ctx.next_id("C")
+
+        b.add_component(u_id, f"{model} LoRa", "lora_module", current_ma=2.0)
+        b.add_component(c_id, f"Desacoplo {model} 100nF", "capacitor",
+                        value="100", unit="nF")
+
+        cs_net = ctx.get_or_create_spi_bus(b, block)
+
+        irq_pin = block.get("irq_pin", "GPIO4")
+        rst_pin = block.get("rst_pin", "GPIO14")
+
+        b.connect("VCC_3V3",   f"{u_id}.VCC", f"{c_id}.1")
+        b.connect("SPI_MOSI",  f"{u_id}.MOSI")
+        b.connect("SPI_MISO",  f"{u_id}.MISO")
+        b.connect("SPI_SCK",   f"{u_id}.SCK")
+        b.connect(cs_net,      f"{u_id}.NSS")
+        b.connect(f"U1.{irq_pin}", f"{u_id}.DIO0")
+        b.connect(f"U1.{rst_pin}", f"{u_id}.RST")
+        b.connect("GND", f"{u_id}.GND", f"{c_id}.2")
+
+    def _add_l298n_block(
+        self,
+        b: CircuitBuilder,
+        block: Dict[str, Any],
+        ctx: _SynthesisContext,
+    ) -> None:
+        """L298N dual H-bridge. IN1-IN4 GPIO, ENA/ENB PWM. Motor VCC separado."""
+        model = block.get("model", "L298N")
+        u_id  = ctx.next_id("U")
+        c_id  = ctx.next_id("C")
+
+        b.add_component(u_id, f"{model} Motor Driver", "motor_driver", current_ma=36000.0)
+        b.add_component(c_id, f"Desacoplo {model} lógica 100nF", "capacitor",
+                        value="100", unit="nF")
+
+        in1 = ctx.pin_allocator.allocate("GPIO_OUTPUT", block.get("in1_pin"))
+        in2 = ctx.pin_allocator.allocate("GPIO_OUTPUT", block.get("in2_pin"))
+        in3 = ctx.pin_allocator.allocate("GPIO_OUTPUT", block.get("in3_pin"))
+        in4 = ctx.pin_allocator.allocate("GPIO_OUTPUT", block.get("in4_pin"))
+
+        b.connect("VCC_MOTOR",  f"{u_id}.VCC_MOTOR")
+        b.connect("VCC_5V",     f"{u_id}.VCC_LOGIC", f"{c_id}.1")
+        b.connect(f"U1.{in1}", f"{u_id}.IN1")
+        b.connect(f"U1.{in2}", f"{u_id}.IN2")
+        b.connect(f"U1.{in3}", f"{u_id}.IN3")
+        b.connect(f"U1.{in4}", f"{u_id}.IN4")
+        # ENA/ENB tied HIGH (always-enabled); PWM speed control via firmware
+        b.connect("VCC_5V",    f"{u_id}.ENA", f"{u_id}.ENB")
+        b.connect("GND", f"{u_id}.GND", f"{c_id}.2")
 
     # ── Subcircuit helpers ────────────────────────────────────────────────────
 

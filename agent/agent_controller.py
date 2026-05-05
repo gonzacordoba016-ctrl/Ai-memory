@@ -110,7 +110,7 @@ class AgentController:
                 history  = self.state.get_history(),
                 on_phase = _phase,
             ),
-            timeout=90.0,
+            timeout=180.0,
         )
         agents_used = orch_result["agents_used"]
         sub_context = orch_result["combined_context"]
