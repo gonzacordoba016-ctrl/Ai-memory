@@ -919,6 +919,12 @@ class CircuitAgent:
             _preview = repr(content[:400]) if 'content' in locals() else 'N/A'
             logger.error(f"[CircuitAgent] JSONDecodeError: {e} | content={_preview}")
             return None
+        except ValueError as e:
+            # Violaciones de validate_structure / validate_electrical_constraints.
+            # Re-raise para que el orchestrator surface el detalle al usuario en
+            # lugar del genérico "No se pudo generar el circuito".
+            logger.error(f"[CircuitAgent] Validación falló: {e}")
+            raise
         except Exception as e:
             logger.exception(f"[CircuitAgent] Error parseando circuito: {e}")
             return None

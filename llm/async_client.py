@@ -17,6 +17,18 @@ from core.logger import logger
 _client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0))
 
 
+def _get_client() -> httpx.AsyncClient:
+    """
+    Devuelve el cliente compartido. Si fue cerrado (race en shutdown / hot-reload),
+    instancia uno nuevo en lugar de propagar 'TCPTransport closed=True'.
+    """
+    global _client
+    if _client.is_closed:
+        logger.warning("[AsyncLLM] httpx client cerrado — re-instanciando")
+        _client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0))
+    return _client
+
+
 async def call_llm_async(
     messages:    list[dict[str, Any]],
     temperature: float = 0.7,
@@ -39,7 +51,7 @@ async def call_llm_async(
         payload["tools"]       = tools
         payload["tool_choice"] = "auto"
 
-    response = await _client.post(
+    response = await _get_client().post(
         get_llm_api(),
         headers=get_llm_headers(agent_id, agent_name),
         json=payload,
@@ -113,7 +125,7 @@ async def stream_llm_async(
     """
     full_text = ""
     try:
-        async with _client.stream(
+        async with _get_client().stream(
             "POST",
             get_llm_api(),
             headers=get_llm_headers(agent_id, agent_name),

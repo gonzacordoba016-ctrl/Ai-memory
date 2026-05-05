@@ -525,7 +525,14 @@ class CircuitSynthesizer:
             return None
 
         vcc_pin = _MCU_VCC_PIN.get(_mcu_key(mcu), "5V")
-        vcc = float(spec.get("vcc", 3.3 if "3" in vcc_pin else 5.0))
+        # Si el MCU es conocido, forzamos su VCC nativo y descartamos cualquier
+        # override del spec. Otros rieles (5V para L298N/relays, 12V, etc.) viven
+        # como nets aparte y no afectan a la validación del MCU.
+        mcu_constraints = _MCU_ELECTRICAL_CONSTRAINTS.get(_mcu_key(mcu))
+        if mcu_constraints:
+            vcc = float(mcu_constraints.supported_vcc[0])
+        else:
+            vcc = float(spec.get("vcc", 3.3 if "3" in vcc_pin else 5.0))
         ctx = _SynthesisContext(mcu=mcu, vcc=vcc)
         ctx._counters["U"] = 1  # U1 reservado para MCU
 
@@ -568,7 +575,9 @@ class CircuitSynthesizer:
     # ── Dispatch ──────────────────────────────────────────────────────────────
 
     def _find_handler(self, block: Dict[str, Any]) -> Optional[Callable]:
-        model     = block.get("model", "").lower().replace("-", "").replace(" ", "")
+        # Normalización del model: minúscula y sin separadores (-, _, espacios)
+        # para que "moisture_sensor" / "MOISTURE-SENSOR" matcheen "moisturesensor".
+        model     = block.get("model", "").lower().replace("-", "").replace("_", "").replace(" ", "")
         model_raw = block.get("model", "").lower().strip()
         iface     = block.get("interface", "").lower()
         btype     = block.get("type", "").lower()
