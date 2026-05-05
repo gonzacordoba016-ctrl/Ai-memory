@@ -19,6 +19,10 @@ _provider = os.getenv("LLM_PROVIDER", "ollama")
 _key = os.getenv("OPENROUTER_API_KEY", "")
 _log.info(f"[STARTUP] LLM_PROVIDER={_provider} | key prefix={_key[:15]}... | model={os.getenv('OPENROUTER_MODEL', os.getenv('OLLAMA_MODEL', '?'))}")
 _log.info(f"[STARTUP] PORT={os.getenv('PORT', '8000')} | MEMORY_DB={get_db_path('memory.db')}")
+_log.info(f"[DEBUG] DATA_DIR={os.environ.get('DATA_DIR', 'NOT_SET')}")
+_log.info(f"[DEBUG] /data exists={os.path.exists('/data')}")
+_log.info(f"[DEBUG] /data writable={os.access('/data', os.W_OK)}")
+_log.info(f"[DEBUG] /data contents={os.listdir('/data') if os.path.exists('/data') else 'N/A'}")
 
 # Coleccionamos errores de startup para reportarlos en /api/health
 _startup_errors: list[str] = []
