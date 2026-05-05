@@ -35,7 +35,9 @@ RUN mkdir -p database memory_db agent_files/knowledge agent_files/firmware api/s
 EXPOSE 8000
 
 RUN adduser --disabled-password --gecos "" appuser
-USER appuser
 
-# Railway inyecta PORT como variable de entorno
-CMD ["python", "run.py", "serve", "--no-reload"]
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Run as root so entrypoint can fix Railway volume permissions before starting
+CMD ["/entrypoint.sh"]
