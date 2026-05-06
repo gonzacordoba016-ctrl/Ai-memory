@@ -8,6 +8,8 @@
 
 > **2026-05-06 — Maintenance:** dead code purge (`agent/keywords/circuit_keywords.py` + `tests/test_keywords.py`) + sync doc/repo (~15 discrepancias). Tests: 144 collected / 120 passing. Commits: `chore: remove dead circuit_keywords module` + `docs: sync CONTEXT-PROJECT.md with repo state`.
 
+> **2026-05-06 — fix(agent) `62dd390` (pusheado):** `agent/session_store.py` (nuevo) reemplaza el singleton global `AgentState` por cache per-session con LRU+TTL+hidratación SQL. Resuelve bug estructural donde `conversation_history` y `active_circuit` se mezclaban entre chats simultáneos / pestañas / clientes WS concurrentes. `AgentController.state` se vuelve `@property` que resuelve vía `ContextVar` (cero churn en los 17 callsites). Bonus en el mismo commit: MCU footer SVG (`circuit_agent.py` propaga `_mcu`→`selected_mcu`), AsyncLLM transport recovery (`llm/async_client.py` retry-on-RuntimeError cuando TCPTransport queda cerrado pese a `is_closed=False`), chat UX (lista de componentes 12→25, nets 8→15), CTA opt-in para firmware cuando se detecta intent de control en el prompt. Tests: 120 passing (idéntico al baseline), cero regresión.
+
 ---
 
 ## 1. CONCEPTO CENTRAL
@@ -50,9 +52,10 @@ ai-memory-engine/
 ├── railway.toml                    # builder=dockerfile, healthcheck /health, restart on_failure
 │
 ├── agent/                          # NÚCLEO DEL AGENTE
-│   ├── agent_controller.py         # Recibe input, inyecta perfil activo, orquesta
+│   ├── agent_controller.py         # Recibe input, orquesta. `state` es @property que resuelve vía ContextVar a SessionStore
 │   ├── agent_runner.py             # Loop de tool calling
-│   ├── agent_state.py              # Estado de sesión (historial)
+│   ├── agent_state.py              # Estructura del estado por sesión (history, active_circuit, facts, platform, firmware_draft)
+│   ├── session_store.py            # Cache per-session de AgentState (LRU=100, TTL=1800s, hidrata desde SQL en miss)
 │   ├── orchestrator.py             # Routing keyword-first → LLM fast fallback
 │   ├── user_profiler.py            # Perfil del usuario (heurísticas, sin LLM)
 │   │
@@ -320,7 +323,7 @@ Helpers internos en `formulas_basic` (privados, no re-exportados): `_E24`, `_FUS
 - Al completar: `/ws/proactive` emite `{ "type": "job_complete", ... }`
 
 ### 4.7 Sesiones WebSocket Persistentes
-✅ `/ws/chat?session=<uuid>`: carga los últimos 20 mensajes de SQLite, inyecta en el agente. Título generado por IA (LLM, 5 palabras) tras el primer intercambio completo. Reconexión con backoff exponencial (2s → 4s → … → 8s).
+✅ `/ws/chat?session=<uuid>`: cada conexión propaga `session_id` al `AgentController` (vía `ContextVar`). `SessionStore` (`agent/session_store.py`, commit `62dd390`) provee un `AgentState` aislado por sesión, hidratado lazy desde SQL en el primer turno (últimos 20 mensajes + facts del usuario). LRU=100 sesiones / TTL=1800s idle. Esto evita el bug previo donde `conversation_history` y `active_circuit` se mezclaban entre chats simultáneos. Título generado por IA (LLM, 5 palabras) tras el primer intercambio. Reconexión con backoff exponencial (2s → 4s → … → 8s).
 
 ### 4.8 Hardware Bridge (Programación Remota)
 ✅ Arquitectura: `[Celular/web] → [Railway] → /ws/hardware-bridge → [PC+Arduino]`
