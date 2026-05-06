@@ -29,6 +29,35 @@ def _get_client() -> httpx.AsyncClient:
     return _client
 
 
+def _reset_client() -> httpx.AsyncClient:
+    """
+    Fuerza re-creación del cliente compartido. Necesario cuando el AsyncClient
+    está marcado como abierto pero su TCPTransport interno quedó muerto
+    (event loop reciclado, pool roto). En esos casos `is_closed` es False
+    pero cualquier request lanza RuntimeError('...handler is closed').
+    """
+    global _client
+    try:
+        # Best-effort close del cliente roto — si ya está corrupto, ignoramos.
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if not _client.is_closed:
+            loop.create_task(_client.aclose())
+    except Exception:
+        pass
+    _client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0))
+    return _client
+
+
+def _is_transport_closed_error(err: Exception) -> bool:
+    """Detecta errores de transport asyncio cerrado pese a is_closed=False."""
+    msg = str(err).lower()
+    return (
+        isinstance(err, RuntimeError)
+        and ("handler is closed" in msg or "transport closed" in msg or "closed=true" in msg)
+    )
+
+
 async def call_llm_async(
     messages:    list[dict[str, Any]],
     temperature: float = 0.7,
@@ -51,12 +80,23 @@ async def call_llm_async(
         payload["tools"]       = tools
         payload["tool_choice"] = "auto"
 
-    response = await _get_client().post(
-        get_llm_api(),
-        headers=get_llm_headers(agent_id, agent_name),
-        json=payload,
-        timeout=timeout,
-    )
+    try:
+        response = await _get_client().post(
+            get_llm_api(),
+            headers=get_llm_headers(agent_id, agent_name),
+            json=payload,
+            timeout=timeout,
+        )
+    except RuntimeError as e:
+        if not _is_transport_closed_error(e):
+            raise
+        logger.warning(f"[AsyncLLM] TCPTransport cerrado — re-creando cliente y reintentando ({agent_id})")
+        response = await _reset_client().post(
+            get_llm_api(),
+            headers=get_llm_headers(agent_id, agent_name),
+            json=payload,
+            timeout=timeout,
+        )
     response.raise_for_status()
     return response.json()
 

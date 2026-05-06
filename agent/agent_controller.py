@@ -1,7 +1,9 @@
 # agent/agent_controller.py
 
 import asyncio
+import contextvars
 from agent.agent_state import AgentState
+from agent.session_store import SessionStore
 from memory.vector_memory import store_memory, search_memory
 from memory.short_memory import ShortMemory
 from memory.fact_extractor import extract_facts
@@ -16,22 +18,45 @@ from llm.openrouter_client import call_llm_sync
 from llm.async_client import call_llm_async, stream_llm_async
 
 
+# ContextVar — propaga el session_id activo a través de tareas asyncio sin
+# acoplar la firma de cada método/mixin. process_input() lo setea al entrar.
+_current_session: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "current_session_id", default="_default"
+)
+
+
 class AgentController:
 
     def __init__(self):
-        self.state        = AgentState()
-        self.short_memory = ShortMemory()
-        self.sql_memory   = SQLMemory()
-        self.orchestrator = Orchestrator(call_llm_sync)
-        self.profiler     = UserProfiler(self.sql_memory)
+        self.short_memory  = ShortMemory()
+        self.sql_memory    = SQLMemory()
+        self.orchestrator  = Orchestrator(call_llm_sync)
+        self.profiler      = UserProfiler(self.sql_memory)
+        # Per-session AgentState con LRU+TTL+hidratación SQL.
+        # Reemplaza el singleton previo que mezclaba estado entre chats.
+        self.session_store = SessionStore(
+            sql_db=self.sql_memory,
+            max_sessions=100,
+            ttl_seconds=1800,
+            history_limit=20,
+        )
+        # Hechos persistidos se cargan al grafo + se exponen vía profile cache.
+        # Cada AgentState los lee perezosamente desde sql_memory.
         self._load_persisted_facts()
         self._init_knowledge_base()
+
+    @property
+    def state(self) -> AgentState:
+        """AgentState de la sesión activa (resuelta vía ContextVar).
+
+        Compatibilidad: todos los `self.state.foo` previos siguen funcionando
+        sin cambios; el property los redirige a la sesión correcta.
+        """
+        return self.session_store.get(_current_session.get())
 
     def _load_persisted_facts(self):
         try:
             facts = self.sql_memory.get_all_facts()
-            for key, value in facts.items():
-                self.state.set_user_fact(key, value)
             if facts:
                 graph_memory.add_facts_from_dict(facts)
                 logger.info(f"Memoria cargada: {len(facts)} hechos | "
@@ -50,11 +75,24 @@ class AgentController:
             logger.error(f"Error inicializando knowledge base: {e}")
 
     async def process_input(self, user_input: str, on_token=None,
-                            on_phase=None) -> dict:
+                            on_phase=None, session_id: str | None = None) -> dict:
         """
         on_phase: opcional, callback async(phase_name: str) que se invoca al
         entrar en cada fase. Útil para emitir progreso al frontend.
+
+        session_id: identificador de la sesión activa. Setea el ContextVar
+        global para que `self.state` resuelva al AgentState correcto, y
+        cualquier mixin (p.ej. hardware_diff) acceda a la misma sesión.
         """
+        # Setear ContextVar — todas las llamadas a self.state.foo dentro de
+        # esta tarea (y subtareas) resuelven al AgentState de session_id.
+        token = _current_session.set(session_id or "_default")
+        try:
+            return await self._process_input_impl(user_input, on_token, on_phase)
+        finally:
+            _current_session.reset(token)
+
+    async def _process_input_impl(self, user_input: str, on_token, on_phase) -> dict:
         async def _phase(name: str):
             if on_phase:
                 try:
@@ -138,10 +176,10 @@ class AgentController:
                 f"**MCU:** {mcu} | **Alimentación:** {power} | **Dominio:** {domain}\n\n"
                 f"**Componentes ({len(comps)}):**\n"
                 + "".join(f"- `{c['id']}` {c['name']}" + (f" — {c.get('value','')}{c.get('unit','')}" if c.get('value') else '') + "\n"
-                          for c in comps[:12])
-                + (f"\n_… y {len(comps)-12} más_\n" if len(comps) > 12 else "")
-                + f"\n**Nets ({len(nets)}):** " + ", ".join(f"`{n['name']}`" for n in nets[:8])
-                + (f" … +{len(nets)-8}" if len(nets) > 8 else "")
+                          for c in comps[:25])
+                + (f"\n_… y {len(comps)-25} más_\n" if len(comps) > 25 else "")
+                + f"\n**Nets ({len(nets)}):** " + ", ".join(f"`{n['name']}`" for n in nets[:15])
+                + (f" … +{len(nets)-15}" if len(nets) > 15 else "")
                 + f"\n\n**{drc_line}**"
                 + (f"\n\n⚠ **Advertencias:** " + " · ".join(warns[:3]) if warns else "")
                 + f"\n\n---\n"
@@ -151,6 +189,10 @@ class AgentController:
                 f"- [BOM CSV](/api/circuits/{design_id}/bom.csv)\n"
                 f"- [Gerber ZIP](/api/circuits/{design_id}/gerber)\n"
                 f"- [Ver en 3D](/api/circuits/viewer?id={design_id})\n"
+                + (
+                    f"\n💡 _Detecté intent de control en tu pedido. ¿Querés que también genere el **firmware** (`{mcu or 'Arduino'}`) con los pines asignados?_\n"
+                    if mcu and self._wants_firmware(user_input) else ""
+                )
             )
             self.state.add_message("assistant", hw_md)
             # F1.5 — persistir circuito activo para próximos turnos (Bug D)
@@ -336,6 +378,19 @@ class AgentController:
     # Reusa el routing keyword-first del orchestrator: si el input cae en
     # circuit_design / hardware / code / research, no contiene facts personales.
     _TECHNICAL_ROUTES = {"circuit_design", "hardware", "code", "research"}
+
+    _FIRMWARE_INTENT_KEYWORDS = (
+        "control", "controlar", "automátic", "automatic", "automatización", "automatizar",
+        "monitore", "monitorear", "leer", "enviar", "alarma", "alertar",
+        "encender cuando", "apagar cuando", "riego", "regar", "domótica",
+        "switch on", "turn on when", "trigger when",
+    )
+
+    def _wants_firmware(self, user_input: str) -> bool:
+        """True si el prompt sugiere que el usuario quiere lógica de control,
+        no sólo el circuito físico. Usado para sugerir generación de firmware."""
+        q = (user_input or "").lower()
+        return any(k in q for k in self._FIRMWARE_INTENT_KEYWORDS)
 
     def _should_extract_facts(self, user_input: str) -> bool:
         try:

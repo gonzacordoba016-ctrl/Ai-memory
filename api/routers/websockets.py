@@ -120,10 +120,9 @@ async def ws_chat(websocket: WebSocket, session: str = None, token: str = ""):
         "server_start": SERVER_START_TS,
     }))
 
-    # Si retomamos sesión, inyectar historial en el agente
-    if resumed and hasattr(agent, 'state'):
-        for msg in history[-20:]:
-            agent.state.add_message(msg["role"], msg["content"])
+    # SessionStore hidrata history desde SQL al primer self.state.* del turno.
+    # No es necesario inyectar manualmente aquí (eliminaría el bug de mezclar
+    # estado entre sesiones simultáneas si dos clientes están abiertos).
 
     # Sesión nueva → enviar context card con trabajo reciente en background
     if not resumed:
@@ -194,7 +193,12 @@ async def ws_chat(websocket: WebSocket, session: str = None, token: str = ""):
 
             try:
                 _task = asyncio.create_task(
-                    agent.process_input(user_input, on_token=on_token, on_phase=on_phase)
+                    agent.process_input(
+                        user_input,
+                        on_token=on_token,
+                        on_phase=on_phase,
+                        session_id=session_id,
+                    )
                 )
                 _elapsed = 0
                 _timeout  = 240  # +60s — modo calidad permite circuitos complejos

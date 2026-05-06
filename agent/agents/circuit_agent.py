@@ -709,7 +709,10 @@ class CircuitAgent:
         circuit_data["pipeline_scores"] = {"schematic": sch_score, "pcb": pcb_score}
 
         circuit_data.setdefault("detected_domain", "synthesized")
-        circuit_data.setdefault("selected_mcu", "")
+        # Propaga el MCU del synthesizer (`_mcu`) al campo público que consume
+        # el renderer SVG y la persistencia en DB.
+        if not circuit_data.get("selected_mcu"):
+            circuit_data["selected_mcu"] = circuit_data.get("_mcu", "")
 
         design_id = self.circuit_manager.save_design(circuit_data)
         circuit_data["design_id"] = design_id
