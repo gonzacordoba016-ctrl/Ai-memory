@@ -1,10 +1,12 @@
 # STRATUM — Contexto del Proyecto
 > Última actualización: 2026-05-06
-> Versión actual: **v4.27.0**
+> Versión actual: **v4.27.0** (maintenance patch 2026-05-06)
 > Tagline: _"Tu memoria técnica siempre disponible"_
 > Estado: **Production-ready** (local + Railway)
 >
 > Nota: el changelog de abajo refleja v4.23.0 y v4.27.0; las versiones intermedias (v4.24/4.25/4.26) están documentadas en la memoria del proyecto pero aún no migradas aquí.
+
+> **2026-05-06 — Maintenance:** dead code purge (`agent/keywords/circuit_keywords.py` + `tests/test_keywords.py`) + sync doc/repo (~15 discrepancias). Tests: 144 collected / 120 passing. Commits: `chore: remove dead circuit_keywords module` + `docs: sync CONTEXT-PROJECT.md with repo state`.
 
 ---
 
