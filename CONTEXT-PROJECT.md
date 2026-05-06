@@ -58,6 +58,7 @@ ai-memory-engine/
 │   │   ├── base_agent.py
 │   │   ├── hardware_agent.py       # Facade (~122 líneas) — delega a mixins
 │   │   ├── hardware_design.py      # Mixin: parse_circuit, save_circuit (~224 líneas)
+│   │   ├── hardware_diff.py        # Mixin: _DiffMixin para firmware iterativo con diff
 │   │   ├── hardware_firmware.py    # Mixin: generate, compile, flash, serial (~250 líneas)
 │   │   ├── hardware_keywords.py    # Mixin: clasificación por keywords (~140 líneas)
 │   │   ├── hardware_memory_ops.py  # Mixin: consultas a hardware_memory (~210 líneas)
@@ -75,7 +76,9 @@ ai-memory-engine/
 │   ├── proactive_engine.py         # Facade orquestador (~82 líneas)
 │   ├── proactive_broadcast.py      # Gestión de colas asyncio de clientes WS (~81 líneas)
 │   ├── proactive_scheduler.py      # Loops periódicos: devices/inactive/errors/daily (~245 líneas)
-│   └── proactive_consolidator.py   # Consolidación nocturna de memorias (~92 líneas)
+│   ├── proactive_consolidator.py   # Consolidación nocturna de memorias (~92 líneas)
+│   ├── quality_estimator.py        # Estimación de calidad de respuesta (lazy import desde websockets)
+│   └── session_continuity.py       # Continuidad de sesión entre reconexiones WS
 │
 ├── api/                            # SERVIDOR WEB
 │   ├── server.py                   # FastAPI app + lifecycle
@@ -89,6 +92,7 @@ ai-memory-engine/
 │   │   ├── memory.py               # /api/stats, /api/facts, /api/history, /api/search, /api/graph
 │   │   ├── hardware.py             # /api/hardware/** (devices, firmware, circuits, library, vision, signal)
 │   │   ├── hardware_bridge.py      # /ws/hardware-bridge · /api/hardware/bridge/status
+│   │   ├── hardware_state.py       # /api/hardware/state/** (Live Hardware State Visualizer)
 │   │   ├── knowledge.py            # /api/knowledge/**
 │   │   ├── circuits.py             # /api/circuits/** (parse, schematic, breadboard, pcb, gerber)
 │   │   ├── schematics.py           # /api/schematics/** (import, supported, list)
@@ -97,15 +101,16 @@ ai-memory-engine/
 │   │   ├── stock.py                # /api/stock/**
 │   │   ├── decisions.py            # /api/decisions/**
 │   │   ├── push.py                 # POST/DELETE /api/push/register
+│   │   ├── projects.py             # /api/projects/** (project library)
 │   │   └── websockets.py           # /ws/chat · /ws/signal · /ws/proactive
 │   │
 │   └── static/
 │       ├── index.html              # Frontend principal Cyberpunk (~1136 líneas)
-│       ├── styles.css              # Estilos separados (~43 líneas)
-│       ├── app.js                  # Globals + init + navegación (~170 líneas, refactorizado)
+│       ├── styles.css              # Estilos separados (~593 líneas)
+│       ├── app.js                  # Globals + init + navegación (~390 líneas, refactorizado)
 │       ├── circuit_viewer.html     # Visualizador con drag & drop
 │       ├── graph3d.html
-│       └── modules/                # 14 módulos JS (plain <script>, no ES-modules)
+│       └── modules/                # 16 módulos JS (plain <script>, no ES-modules)
 │           ├── utils.js            # escHtml, renderMarkdown, addLog, offline queue (~124 líneas)
 │           ├── auth.js             # authFetch, JWT, doLogin, loadAuthStatus (~71 líneas)
 │           ├── sessions.js         # loadSessions, switchSession, deleteSession (~126 líneas)
@@ -119,7 +124,9 @@ ai-memory-engine/
 │           ├── stock.js            # stock summary, search, import schematic (~112 líneas)
 │           ├── metrics.js          # loadMetrics, charts firmw/stock (~289 líneas)
 │           ├── decisions.js        # webLoadDecisions, webSaveDecision (~63 líneas)
-│           └── proactive.js        # connectProactiveWS, showProactiveNotification (~40 líneas)
+│           ├── proactive.js        # connectProactiveWS, showProactiveNotification (~40 líneas)
+│           ├── live_circuit.js     # Live Hardware State Visualizer (v4.2.0)
+│           └── projects.js         # Project library UI
 │
 ├── core/
 │   ├── config.py                   # LLM_API, LLM_MODEL_*, DB paths, QDRANT_URL, PORT, ALLOWED_ORIGINS, MULTI_USER
@@ -172,8 +179,22 @@ ai-memory-engine/
 │   │   ├── symbol_draw.py          # SchematicRenderer (clase + ~50 _sym_* + drawing helpers)
 │   │   └── pcb_draw.py             # PCBRenderer + _FOOTPRINT, _fp, _place_components, _board_size
 │   ├── bom_generator.py
+│   ├── circuit_synthesizer.py      # Síntesis de circuitos (~48 KB) — usa component_pinouts + component_types
+│   ├── circuit_importer.py         # Import KiCad/Eagle (S-expr v5/v6, XML)
+│   ├── component_pinouts.py        # Pinouts de componentes (~27 KB) — usado por circuit_agent
+│   ├── component_types.py          # Tipos/categorías de componentes — usado por eda/* y synthesizer
+│   ├── design_rules.py             # Reglas de diseño compartidas — usado por eda/symbol_draw, pcb_draw, layout
 │   ├── firmware_generator.py       # LLM_MODEL_SMART, soporta micropython
 │   ├── firmware_flasher.py         # arduino-cli + flash_micropython() via mpremote
+│   ├── firmware_validator.py       # Validación de firmware generado (~14 KB)
+│   ├── file_tools.py               # Helpers de archivo registrados en tool_registry
+│   ├── datasheet_fetcher.py        # Auto-fetch datasheets (Alldatasheet/Mouser) — usado por agent_controller
+│   ├── kicad_exporter.py           # Export .kicad_sch (símbolos custom + pre-pass)
+│   ├── kicad_pcb_exporter.py       # Export .kicad_pcb (footprints SMD/THT)
+│   ├── kicad_sym_parser.py         # Parser de símbolos .kicad_sym
+│   ├── kicad_sym_renderer.py       # Render desde .kicad_sym (usado por eda/symbol_draw)
+│   ├── kicad_symbols/              # Biblioteca de símbolos KiCad
+│   ├── mcu_pinout_validator.py     # Validador de pinouts MCU (~5 KB) — circuit_agent ×3 lazy imports
 │   ├── hardware_bridge_client.py   # Bridge PC: ejecuta jobs locales enviados desde el backend
 │   ├── hardware_detector.py        # Detecta USB + REPL MicroPython automáticamente
 │   ├── serial_monitor.py
@@ -188,8 +209,8 @@ ai-memory-engine/
 │   ├── platformio_exporter.py
 │   ├── pdf_exporter.py
 │   └── plugins/
-│       ├── example_plugin.py
-│       └── homeassistant_plugin.py
+│       ├── example_plugin.py       # + example_plugin.json (manifiesto)
+│       └── homeassistant_plugin.py # + homeassistant_plugin.json (manifiesto)
 │
 ├── cli/                            # CLI de administración (subcomandos de run.py)
 │   ├── __init__.py
@@ -208,6 +229,19 @@ ai-memory-engine/
 │
 ├── data/                           # Datos persistentes (montados en Railway como volumen)
 │   └── component_library.json
+│
+├── knowledge_feed/                 # KB técnica indexada al startup (ver §9)
+│   ├── 00_INSTRUCCIONES_USO.txt
+│   ├── 01_electronica_analogica.txt
+│   ├── 02_microcontroladores.txt
+│   ├── 03_electronica_potencia.txt
+│   ├── 04_plc_automatizacion.txt
+│   ├── 05_sensores_protocolos.txt
+│   ├── 06_instalaciones_electricas.txt
+│   └── 07_formulas_calculos.txt
+│
+├── docs/                           # Documentación adicional del proyecto
+├── imagen/                         # Recursos gráficos
 │
 ├── eval/                           # Tests
 │   ├── run_eval.py
@@ -739,19 +773,17 @@ SlowAPI — límites configurados por endpoint en `api/limiter.py`.
 
 ## 7. TESTS
 
-### Estado actual: 3/3 pasan (offline)
+### Estado actual (2026-05-06): 144 colectados, 120 passing, 3 failed, 21 errors
 ```
-eval/test_full_integration.py::test_complete_integration        ✅
-eval/test_full_integration.py::test_kicad_connectivity          ✅  (parser v6 Union-Find)
-eval/test_full_integration.py::test_kicad_legacy_connectivity   ✅  (parser v5 Union-Find)
+pytest tests/  → 3 failed, 120 passed, 21 errors in 0.90s
 ```
 
-`eval/test_e2e_api.py` — requiere servidor corriendo en `:8000` (no se ejecuta offline).
+Los 3 failures + 21 errors son **pre-existentes** (documentados en el changelog v4.27.0). En 2026-05-06 se eliminó el módulo dead `agent/keywords/circuit_keywords.py` y su test (`test_keywords.py`, 4 tests) — el conteo bajó de 124 a 120 sin regresiones.
 
-### Cobertura
-- `test_complete_integration`: importaciones, DB de componentes, CircuitDesignManager, HardwareAgent._format_circuit_for_firmware
-- `test_kicad_connectivity`: parser KiCad v6 — 2 componentes, 3 nets (VCC/ANODE/GND), nodes poblados con REF.PIN, DRC ejecutable, sin SHORT_CIRCUIT
-- `test_kicad_legacy_connectivity`: parser KiCad v5 — 2 componentes (R1/LED1), 2 nets separados (VCC/GND), nodes != []
+### Suites principales
+- `tests/` (148 tests) — pytest puro, sin servidor, sin red. Cubre EDA (classifier/layout/router/symbol_draw/pcb_draw), circuit_importer, firmware_generator, electrical_formulas, versioning_sharing.
+- `eval/test_full_integration.py` (3 tests offline) — `test_complete_integration` (DB componentes, CircuitDesignManager), `test_kicad_connectivity` (parser v6 Union-Find), `test_kicad_legacy_connectivity` (parser v5).
+- `eval/test_e2e_api.py` — requiere servidor en `:8000` (no se ejecuta offline).
 
 ---
 
@@ -759,7 +791,7 @@ eval/test_full_integration.py::test_kicad_legacy_connectivity   ✅  (parser v5 
 
 | Archivo original              | Antes    | Después                          | Motivo                          |
 |-------------------------------|----------|----------------------------------|---------------------------------|
-| `api/static/app.js`           | 2154 lín | 170 lín + 14 módulos (~1816 lín total) | Separación de responsabilidades |
+| `api/static/app.js`           | 2154 lín | 390 lín + 16 módulos | Separación de responsabilidades |
 | `database/hardware_memory.py` | ~500 lín | 121 lín facade + 4 sub-DB (~639 lín total) | Tabla única → 4 tablas especializadas |
 | `agent/proactive_engine.py`   | ~450 lín | 82 lín facade + 3 clases (~500 lín total) | Broadcast/Scheduler/Consolidator independientes |
 | `agent/agents/electrical_calc_agent.py` | ~350 lín | 214 lín + prompts externos (196 lín) | Prompts LLM externalizados |
@@ -771,10 +803,11 @@ eval/test_full_integration.py::test_kicad_legacy_connectivity   ✅  (parser v5 
 
 ## 9. KNOWLEDGE BASE TÉCNICA
 
-Archivos en `agent_files/knowledge/` — indexados automáticamente al startup via `index_knowledge_base()`:
+Archivos en `knowledge_feed/` — indexados automáticamente al startup via `index_knowledge_base()`:
 
 | Archivo | Contenido |
 |---|---|
+| `00_INSTRUCCIONES_USO.txt` | Guía interna de uso del knowledge feed |
 | `01_electronica_analogica.txt` | Ley de Ohm, filtros RC/RLC, op-amps, BJT, MOSFET, diodos, capacitores, inductores |
 | `02_microcontroladores.txt` | Arduino UNO/MEGA, ESP32, ESP8266, STM32, Pico RP2040, I2C/SPI/UART/interrupciones |
 | `03_electronica_potencia.txt` | Buck/Boost/Flyback, IGBT, MOSFET potencia, drivers de gate, motores, baterías, transformadores |
@@ -785,55 +818,15 @@ Archivos en `agent_files/knowledge/` — indexados automáticamente al startup v
 
 ---
 
-## 10. MEJORAS PROPUESTAS — DIFERENCIADORES CLAVE
+## 10. ROADMAP — DIFERENCIADORES PENDIENTES
 
-Las siguientes mejoras están ordenadas por impacto percibido vs herramientas existentes (ChatGPT, Copilot, Claude). El criterio: ¿puede hacerlo otra herramienta sin configuración especial? Si no → diferenciador real.
+> Las propuestas históricas 10.1–10.5 y 10.7 ya están implementadas y se documentan en §4 (datasheet auto-fetch §4.15, firmware iterativo §4.14, Wokwi §4.16, ZIP export §4.37, error patterns §4.5, platform context §4.13). Esta sección queda para roadmap real.
 
-### 10.1 Datasheet auto-fetch + indexado ⭐⭐⭐⭐⭐
-**Impacto:** El mayor diferenciador técnico posible.
-- El usuario escribe el nombre de un CI (ESP32, LM317, IRF520, etc.) → el sistema busca el datasheet en Alldatasheet/Mouser → lo parsea y lo indexa automáticamente en la KB
-- Cuando luego pregunta "¿cuánta corriente puede dar el LM317?" → la respuesta viene del datasheet real, no de la memoria del LLM
-- Ninguna otra herramienta hace esto automáticamente. ChatGPT inventa valores. Stratum los verifica.
-- **Implementación:** `tools/datasheet_fetcher.py` + endpoint `POST /api/kb/fetch-datasheet?ic=LM317` + trigger en HardwareAgent cuando detecta nombre de CI
-
-### 10.2 Firmware iterativo con diff ⭐⭐⭐⭐⭐
-**Impacto:** Cambia completamente el flujo de trabajo de programación.
-- Actualmente: cada mensaje regenera el firmware desde cero
-- Mejora: el sistema mantiene el "firmware activo" en la sesión → cuando el usuario dice "hacelo más rápido" o "agregá el sensor de humedad", hace un PATCH del código y muestra un diff coloreado
-- El ingeniero ve exactamente qué cambió, no tiene que releer todo
-- **Implementación:** `agent_state.py` guarda `current_firmware_draft`, `HardwareAgent` detecta intent `"modify"` → aplica cambio incremental + genera diff con `difflib`
-
-### 10.3 Wokwi auto-simulate ⭐⭐⭐⭐
-**Impacto:** Probar código sin tener el hardware físico.
-- Al generar firmware, botón "SIMULAR" → abre Wokwi con el ESP32/Arduino y el código ya cargado, en un iframe o nueva tab
-- El sistema construye el JSON de Wokwi con los componentes correctos (LED en pin X, sensor en pin Y) basado en el circuito guardado en memoria
-- Ninguna herramienta de chat hace esto end-to-end automáticamente
-- **Implementación:** `tools/wokwi_simulator.py` ya existe — extender para generar el JSON de diagrama desde `hardware_circuits.py`
-
-### 10.4 Sesión compartida / export de proyecto ⭐⭐⭐⭐
-**Impacto:** El ingeniero puede documentar y compartir trabajo completo.
-- Export de sesión completa como PDF técnico: código, cálculos, esquemas, decisiones de diseño, todo formateado profesionalmente
-- O como ZIP: firmware `.cpp`, schematic `.svg`, BOM `.csv`, decisiones `.md`
-- Útil para entregas a clientes, documentación interna, portfolio
-- **Implementación:** `tools/pdf_exporter.py` ya existe — integrar con endpoint `GET /api/sessions/{id}/export?format=pdf|zip`
-
-### 10.5 Memoria de errores + patrones ⭐⭐⭐⭐
-**Impacto:** El asistente se vuelve más útil cuanto más se usa — diferenciador directo vs herramientas sin memoria.
-- El sistema detecta cuándo el mismo error aparece múltiples veces en la historia → proactivamente sugiere una solución raíz
-- Ejemplo: "Esta es la 3ra vez que tu ESP32 se desconecta del WiFi. En las sesiones anteriores coincidió con uso de ADC2 — ese pin no funciona con WiFi activo. Cambié los pines a ADC1."
-- **Implementación:** `proactive_scheduler.py` agrega un loop que analiza errores recurrentes en `graph_memory` + `vector_memory`
-
-### 10.6 Voice-to-firmware pipeline completo ⭐⭐⭐
+### 10.6 Voice-to-firmware pipeline completo ⭐⭐⭐ (pendiente)
 **Impacto:** El ingeniero habla, el sistema genera código y wiring.
 - La voz ya existe (Web Speech API) pero solo inserta texto en el prompt
 - Mejora: modo "voice firmware" → el usuario describe en voz lo que quiere → el sistema genera firmware + esquema de conexiones + BOM en un solo paso
 - **Implementación:** Detectar frases clave en el transcript de voz → disparar pipeline directo a `HardwareAgent._design_consult` + `CircuitAgent`
-
-### 10.7 Context de plataforma persistente en sesión ⭐⭐⭐
-**Impacto:** Elimina la inconsistencia actual (MicroPython vs C++ en la misma sesión).
-- Cuando el usuario menciona "Arduino IDE", "C++", "MicroPython", o una plataforma específica, el sistema lo guarda como contexto de sesión
-- Todos los mensajes siguientes usan esa plataforma por defecto sin necesidad de repetirla
-- **Implementación:** `agent_state.py` agrega `session_platform: str` → `agent_controller.py` lo inyecta en el system prompt → `hardware_agent.py` lo usa en `_design_consult`
 
 ---
 
@@ -1097,7 +1090,7 @@ Funciones públicas críticas que varios módulos consumen. Cambiar la firma o e
 
 ## 17. COBERTURA DE TESTS
 
-Tests actuales: **56 en `tests/`** (pytest, sin servidor, sin red). Más 3 en `eval/` (requieren servidor o son integración).
+Tests actuales: **144 colectados en `tests/`** (120 passing, 3 failed, 21 errors pre-existentes). Más 3 en `eval/` offline + suites e2e que requieren servidor.
 
 | Módulo | Tests | Cobertura | Notas |
 |---|---|---|---|
@@ -1119,7 +1112,7 @@ Tests actuales: **56 en `tests/`** (pytest, sin servidor, sin red). Más 3 en `e
 | `tools/eda/router.py` | ✅ 16 | Buena | `tests/test_eda_router.py` — widths, layers, skip <0.001mm |
 | `tools/eda/symbol_draw.py` | ✅ 6 | Parity | `tests/test_eda_symbol_draw.py` — 4 parity tests vs renderer original |
 | `tools/eda/pcb_draw.py` | ✅ 6 | Parity | `tests/test_eda_pcb_draw.py` — 4 parity tests vs renderer original |
-| `tools/electrical_formulas.py` + módulos | ⚠️ 0 | Ninguna | 25 fórmulas Python puras — ideales para unit tests sin dependencias |
+| `tools/electrical_formulas.py` + módulos | ✅ sí | Media | `tests/test_electrical_formulas.py` cubre las 25 fórmulas |
 | `tools/electrical_drc.py` | ⚠️ 0 | Ninguna | 15 DRC checks — lógica determinística, fácil de testear |
 | `api/routers/*` | 0 | — | Solo via `eval/test_e2e_api.py` (requiere servidor en :8000) |
 | `memory/memory_consolidator.py` | 0 | — | |
