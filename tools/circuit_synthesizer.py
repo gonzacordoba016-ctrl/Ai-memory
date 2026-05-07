@@ -577,10 +577,13 @@ class CircuitSynthesizer:
     def _find_handler(self, block: Dict[str, Any]) -> Optional[Callable]:
         # Normalización del model: minúscula y sin separadores (-, _, espacios)
         # para que "moisture_sensor" / "MOISTURE-SENSOR" matcheen "moisturesensor".
-        model     = block.get("model", "").lower().replace("-", "").replace("_", "").replace(" ", "")
-        model_raw = block.get("model", "").lower().strip()
-        iface     = block.get("interface", "").lower()
-        btype     = block.get("type", "").lower()
+        # `or ""` defiende contra el LLM emitiendo `null` literal: dict.get(k, "")
+        # devuelve None (no el default) cuando la key existe con value=null.
+        model_str = block.get("model") or ""
+        model     = model_str.lower().replace("-", "").replace("_", "").replace(" ", "")
+        model_raw = model_str.lower().strip()
+        iface     = (block.get("interface") or "").lower()
+        btype     = (block.get("type") or "").lower()
 
         model_map: Dict[str, Callable] = {
             "bmp280":         self._add_i2c_sensor_block,
@@ -636,7 +639,8 @@ class CircuitSynthesizer:
             )
             return None
 
-        label = block.get("model", block.get("type", "desconocido"))
+        label = block.get("model") or block.get("type") or "desconocido"
+        label = str(label)
         logger.warning(
             "[CircuitSynthesizer] Bloque '%s' sin handler. "
             "Sugerencia: agregar a BLOCK_TYPE_ALIASES o implementar _add_%s_block",

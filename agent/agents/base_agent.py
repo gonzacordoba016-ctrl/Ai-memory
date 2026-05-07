@@ -4,6 +4,8 @@
 # Cada agente tiene: nombre, system prompt, herramientas habilitadas,
 # y su propio loop ReAct acotado.
 
+import asyncio
+
 from core.logger import logger
 from agent.agent_runner import run_agent_loop
 
@@ -24,6 +26,10 @@ class BaseAgent:
         """
         Ejecuta el agente sobre una tarea específica.
         Retorna la respuesta final como string.
+
+        `run_agent_loop` es async; este método es sync y típicamente se invoca
+        desde el orquestador vía `asyncio.to_thread`. Como el thread worker no
+        tiene event loop propio, usamos `asyncio.run` para drivear la corutina.
         """
         system = self.system_prompt
         if context:
@@ -37,10 +43,10 @@ class BaseAgent:
         logger.info(f"[{self.name}] Iniciando tarea: {task[:60]}...")
 
         try:
-            answer, _ = run_agent_loop(
+            answer, _ = asyncio.run(run_agent_loop(
                 client_fn=self.client_fn,
                 messages=messages,
-            )
+            ))
             logger.info(f"[{self.name}] Tarea completada")
             return answer or f"[{self.name}] Sin respuesta"
         except Exception as e:

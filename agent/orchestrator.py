@@ -198,7 +198,8 @@ class Orchestrator:
     # "Diseñá un circuito controlador para 7 electroválvulas..." no matcheaba
     # ningún literal exacto y caía a 'hardware' (que tiene "circuito" en su lista)
     # → terminaba en LLM general que solo explicaba sin generar el circuito.
-    _CIRCUIT_REGEX = None  # se compila lazy en _keyword_route
+    _CIRCUIT_REGEX = None        # verbo + sustantivo de circuito
+    _CIRCUIT_MCU_REGEX = None    # MCU + componente (capta "ESP32 con LED" sin "circuito")
 
     def _keyword_route(self, query: str) -> list[str] | None:
         """Heurística estática — sin overhead LLM. Siempre se intenta primero.
@@ -229,6 +230,45 @@ class Orchestrator:
             )
         if self._CIRCUIT_REGEX.search(q):
             return ["circuit_design"]
+
+        # 2b) Regex MCU + componente — capta pedidos sin "circuito" explícito,
+        # ej. "diseña ESP32 con un LED en GPIO2" o "Arduino que lea DHT22".
+        # Guard: si el query menciona keywords de firmware/código, NO disparar
+        # acá — debe caer a hardware. Sino "código para ESP32 que lee un sensor"
+        # se confundiría con un pedido de circuito.
+        firmware_hints = ("código", "codigo", "sketch", "firmware",
+                          "programa", "función", "funcion", "library",
+                          "librería", "libreria", "configurar", "como uso",
+                          "cómo uso", "como funciona", "cómo funciona")
+        if any(h in q for h in firmware_hints):
+            pass  # skip MCU+componente regex
+        else:
+            if self._CIRCUIT_MCU_REGEX is None:
+                import re as _re
+                mcu_pat = (r"esp32|esp8266|esp01|"
+                           r"arduino(?:\s+(?:uno|nano|mega|micro|mini|leonardo|due|zero))?|"
+                           r"stm32|blue\s+pill|rp2040|"
+                           r"raspberry\s+pi\s+pico|pico|"
+                           r"attiny|atmega|teensy|nodemcu")
+                comp_pat = (r"led|leds|sensor|sensores|rel[éee]s?|relay|"
+                            r"motor|motores|servo|servos|stepper|steppers|"
+                            r"oled|lcd|display|pantalla|"
+                            r"pulsador|bot[óo]n|botones|switch|"
+                            r"bomba|bombas|electrov[áa]lvula|electrov[áa]lvulas|"
+                            r"carga|cargas|v[áa]lvula|v[áa]lvulas|"
+                            r"l[áa]mpara|l[áa]mparas|"
+                            r"dht22|dht11|bmp280|bme280|hc-?sr04|mpu6050|ds18b20|ds3231|"
+                            r"l298n|drv8825|a4988|"
+                            r"transistor|mosfet|"
+                            r"buzzer|zumbador|"
+                            r"neopixel|ws2812|"
+                            r"pir|fc-?28|yl-?69")
+                type(self)._CIRCUIT_MCU_REGEX = _re.compile(
+                    rf"\b({mcu_pat})\b[\w\s,.;:¿?¡!()-]{{0,200}}?\b({comp_pat})\b"
+                    rf"|\b({comp_pat})\b[\w\s,.;:¿?¡!()-]{{0,200}}?\b({mcu_pat})\b"
+                )
+            if self._CIRCUIT_MCU_REGEX.search(q):
+                return ["circuit_design"]
 
         # 3) Resto de routes en orden
         for agent, keywords in KEYWORD_ROUTES.items():
