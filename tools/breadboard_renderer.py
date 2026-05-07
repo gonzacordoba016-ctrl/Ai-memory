@@ -156,6 +156,12 @@ class BreadboardRenderer:
                 "material": {"color": "#334455"},
                 "dimensions": {"width": 70, "height": 50, "depth": 5}
             },
+            "esp32": {
+                "geometry": "box",
+                "material": {"color": "#143018", "headers": "#d4a017",
+                             "silkscreen": "ESP32"},
+                "dimensions": {"width": 25, "height": 48, "depth": 4}
+            },
             "button": {
                 "geometry": "box",
                 "material": {"color": "#aaaaaa"},

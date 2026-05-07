@@ -108,7 +108,7 @@ _FOOTPRINT: Dict[str, Tuple[float, float]] = {
     "arduino_uno":  (68.6, 53.4),
     "arduino_nano": (18.0, 43.2),
     "arduino_mega": (101.5, 53.4),
-    "esp32":        (18.0, 25.4),
+    "esp32":        (25.5, 48.0),  # DevKit real con headers
     "esp8266":      (24.8, 16.0),
     "pico":         (21.0, 51.0),
     "stm32":        (25.4, 25.4),

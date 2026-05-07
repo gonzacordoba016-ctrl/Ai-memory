@@ -658,8 +658,10 @@ class SchematicRenderer:
             "ultrasonic":            self._sym_ultrasonic,
             "ultrasonic_sensor":     self._sym_ultrasonic,
             "display":               self._sym_display,
-            "oled":                  self._sym_display,
+            "oled":                  self._sym_oled,
             "lcd":                   self._sym_display,
+            "bmp280":                self._sym_bmp280,
+            "transistor_npn":        self._sym_transistor,
             "voltage_regulator":     self._sym_regulator,
             "lm7805":                self._sym_regulator,
             "ams1117":               self._sym_regulator,
@@ -985,6 +987,73 @@ class SchematicRenderer:
         dwg.add(dwg.text("DISP", insert=(x,y+6),
                          font_size=9, fill="#aabbff",
                          font_family="monospace", text_anchor="middle"))
+
+    def _sym_bmp280(self, dwg, x, y, comp):
+        """BMP280 — IC negra 60×40 con pines I2C/SPI."""
+        W, H = 60, 40
+        dwg.add(dwg.rect(insert=(x-W//2, y-H//2), size=(W, H),
+                         fill="#1a1a1a", stroke="#000000", stroke_width=1.8, rx=2))
+        # Pin 1 marker
+        dwg.add(dwg.circle(center=(x-W//2+5, y-H//2+5), r=1.5, fill="#cccccc"))
+        # Left pins: VCC, GND
+        for i, lbl in enumerate(("VCC", "GND")):
+            py = y - 8 + i*16
+            dwg.add(dwg.line(start=(x-W//2-10, py), end=(x-W//2, py),
+                             stroke=self._PIN_COLOR, stroke_width=1.5))
+            dwg.add(dwg.text(lbl, insert=(x-W//2+3, py+3),
+                             font_size=7, fill="#dddddd",
+                             font_family="monospace", text_anchor="start"))
+        # Right pins: SDA, SCL, CSB, SDO
+        for i, lbl in enumerate(("SDA", "SCL", "CSB", "SDO")):
+            py = y - 12 + i*8
+            dwg.add(dwg.line(start=(x+W//2, py), end=(x+W//2+10, py),
+                             stroke=self._PIN_COLOR, stroke_width=1.5))
+            dwg.add(dwg.text(lbl, insert=(x+W//2-3, py+3),
+                             font_size=7, fill="#dddddd",
+                             font_family="monospace", text_anchor="end"))
+        # Labels
+        dwg.add(dwg.text("BMP280", insert=(x, y-3),
+                         font_size=9, fill="#ffffff",
+                         font_family="monospace", font_weight="bold",
+                         text_anchor="middle"))
+        dwg.add(dwg.text("Temp/Press", insert=(x, y+9),
+                         font_size=7, fill="#aaaaaa",
+                         font_family="monospace", text_anchor="middle"))
+
+    def _sym_oled(self, dwg, x, y, comp):
+        """OLED 128×64 — rectángulo con pantalla interior y pines abajo."""
+        W, H = 70, 50
+        # Outer board (greenish PCB tone)
+        dwg.add(dwg.rect(insert=(x-W//2, y-H//2), size=(W, H),
+                         fill=self._FILL_DISP, stroke="#334499",
+                         stroke_width=2, rx=3))
+        # Inner screen area (azul oscuro)
+        sx, sy, sw, sh = x-W//2+5, y-H//2+5, W-10, H-20
+        dwg.add(dwg.rect(insert=(sx, sy), size=(sw, sh),
+                         fill="#0a1030", stroke="#222244", stroke_width=1, rx=2))
+        # Simulated pixel rows
+        for row in range(3):
+            dwg.add(dwg.rect(insert=(sx+3, sy+3+row*7),
+                             size=(sw-6, 4), fill="#3366ff",
+                             fill_opacity=0.55, rx=1))
+        # Labels
+        dwg.add(dwg.text("OLED", insert=(x, y+H//2-9),
+                         font_size=8, fill="#ffffff",
+                         font_family="monospace", font_weight="bold",
+                         text_anchor="middle"))
+        dwg.add(dwg.text("128x64", insert=(x, y+H//2-1),
+                         font_size=7, fill="#aabbff",
+                         font_family="monospace", text_anchor="middle"))
+        # Bottom pins: GND, VCC, SCL, SDA
+        pin_labels = ("GND", "VCC", "SCL", "SDA")
+        spacing = W / (len(pin_labels) + 1)
+        for i, lbl in enumerate(pin_labels):
+            px = x - W//2 + spacing*(i+1)
+            dwg.add(dwg.line(start=(px, y+H//2), end=(px, y+H//2+10),
+                             stroke=self._PIN_COLOR, stroke_width=1.5))
+            dwg.add(dwg.text(lbl, insert=(px, y+H//2+18),
+                             font_size=6, fill=self._TEXT_COLOR,
+                             font_family="monospace", text_anchor="middle"))
 
     def _sym_ic_generic(self, dwg, x, y, comp):
         """Generic IC / driver."""

@@ -544,7 +544,7 @@ class CircuitSynthesizer:
             vcc_net=ctx.vcc_net,
         )
 
-        b.add_component("U1", mcu, "microcontroller")
+        b.add_component("U1", mcu, mcu.lower().replace(" ", "_"))
         b.connect("GND", "U1.GND")
         b.connect(ctx.vcc_net, f"U1.{ctx.mcu_vcc_pin}")
 
