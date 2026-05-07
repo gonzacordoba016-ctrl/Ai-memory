@@ -1,8 +1,12 @@
 # tools/mcu_pinout_validator.py
 #
+# DEPRECATED — usar `tools.eda.constraint_engine` (reglas PIN_INVALID /
+# PIN_FORBIDDEN / PIN_INPUT_ONLY_MISUSE) que consumen el component registry
+# como fuente única de verdad. Este módulo permanece operativo durante
+# la transición y será retirado cuando el agent use el pipeline IR.
+#
 # Verifica post-generación que los pines usados en el netlist existan en el
 # MCU declarado. Detecta errores como U1.D14 cuando U1 es Arduino Nano (D0-D13).
-# Lógica Python pura — sin LLM, sin I/O.
 
 from __future__ import annotations
 from typing import Any

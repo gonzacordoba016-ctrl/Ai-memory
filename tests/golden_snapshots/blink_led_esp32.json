@@ -1,0 +1,127 @@
+{
+  "board": {
+    "height_mm": 125.0,
+    "width_mm": 150.0
+  },
+  "byte_lengths": {
+    "bom_csv": 187,
+    "kicad_pcb": 3324,
+    "kicad_sch": 8480,
+    "pcb_svg": 2534,
+    "schematic_svg": 2715
+  },
+  "components": [
+    {
+      "placement": {
+        "rotation": 0.0,
+        "side": "top",
+        "x": 7.62,
+        "y": 93.98
+      },
+      "ref": "LED1",
+      "type": "led",
+      "value": null
+    },
+    {
+      "placement": {
+        "rotation": 0.0,
+        "side": "top",
+        "x": 17.78,
+        "y": 93.98
+      },
+      "ref": "R1",
+      "type": "resistor",
+      "value": "220"
+    },
+    {
+      "placement": {
+        "rotation": 0.0,
+        "side": "top",
+        "x": 53.34,
+        "y": 53.34
+      },
+      "ref": "U1",
+      "type": "esp32",
+      "value": null
+    }
+  ],
+  "drc_final_summary": {
+    "errors": [],
+    "info": [],
+    "total": 1,
+    "warnings": [
+      "ESP_WIFI_NO_BULK_CAP"
+    ]
+  },
+  "drc_raw_summary": {
+    "errors": [],
+    "info": [],
+    "total": 1,
+    "warnings": [
+      "ESP_WIFI_NO_BULK_CAP"
+    ]
+  },
+  "hashes": {
+    "bom_csv": "6d6abe0afa856265b5a4e81ab1bb947ff2e6f25fca3edb14b3802cf4cc2cbb93",
+    "kicad_pcb": "72a5b22dcd6f1fb90041bca6288eab33009bfb10b1c9edfaa187c99883f3337a",
+    "kicad_sch": "800c5c31ece00fb4780c336780a32730f95acc3802cee099c027ace037950374",
+    "pcb_svg": "5eaea0fd92855dca345c3ffa0f94f616b3bebaef482e6b62bf75203395ff55e5",
+    "schematic_svg": "a60ac25c95f16724c96f810f5d702104981e5e6bfa7b1a8374769fac8330359a"
+  },
+  "nets": [
+    {
+      "class": "signal",
+      "name": "GND",
+      "nodes": [
+        "LED1.cathode",
+        "U1.GND"
+      ]
+    },
+    {
+      "class": "signal",
+      "name": "LED_ANODE",
+      "nodes": [
+        "LED1.anode",
+        "R1.2"
+      ]
+    },
+    {
+      "class": "signal",
+      "name": "LED_DRIVE",
+      "nodes": [
+        "R1.1",
+        "U1.GPIO2"
+      ]
+    },
+    {
+      "class": "signal",
+      "name": "VCC",
+      "nodes": [
+        "U1.VCC"
+      ]
+    }
+  ],
+  "traces_summary": {
+    "by_layer": {
+      "B.Cu": 1,
+      "F.Cu": 2
+    },
+    "by_net": {
+      "GND": 1,
+      "LED_ANODE": 1,
+      "LED_DRIVE": 1
+    },
+    "count": 3
+  },
+  "vias_summary": {
+    "by_net": {
+      "LED_ANODE": 2
+    },
+    "count": 2
+  },
+  "zones": {
+    "LED1": "passive",
+    "R1": "passive",
+    "U1": "mcu"
+  }
+}

@@ -1,4 +1,10 @@
 # tools/component_pinouts.py
+#
+# DEPRECATED — la fuente única de verdad de pinouts ahora vive en
+# `tools/eda/component_registry/data/*.yaml` (Component Registry, v4.29+).
+# Este módulo permanece operativo para la inyección legacy en el prompt LLM
+# y será retirado cuando los prompts consuman el registry directamente.
+#
 # Static database of verified component pinouts injected into the LLM prompt
 # BEFORE netlist generation — prevents pin hallucination and missing passives.
 

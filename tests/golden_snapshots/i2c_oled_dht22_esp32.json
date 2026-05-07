@@ -1,0 +1,209 @@
+{
+  "board": {
+    "height_mm": 125.0,
+    "width_mm": 150.0
+  },
+  "byte_lengths": {
+    "bom_csv": 531,
+    "kicad_pcb": 10557,
+    "kicad_sch": 16295,
+    "pcb_svg": 7277,
+    "schematic_svg": 5943
+  },
+  "components": [
+    {
+      "placement": {
+        "rotation": 0.0,
+        "side": "top",
+        "x": 10.16,
+        "y": 96.52
+      },
+      "ref": "C1",
+      "type": "capacitor_electrolytic",
+      "value": "100uF"
+    },
+    {
+      "placement": {
+        "rotation": 0.0,
+        "side": "top",
+        "x": 20.32,
+        "y": 93.98
+      },
+      "ref": "C2",
+      "type": "capacitor",
+      "value": "100nF"
+    },
+    {
+      "placement": {
+        "rotation": 0.0,
+        "side": "top",
+        "x": 116.84,
+        "y": 17.78
+      },
+      "ref": "DISP",
+      "type": "oled_ssd1306",
+      "value": null
+    },
+    {
+      "placement": {
+        "rotation": 0.0,
+        "side": "top",
+        "x": 33.02,
+        "y": 93.98
+      },
+      "ref": "R1",
+      "type": "resistor",
+      "value": "4.7k"
+    },
+    {
+      "placement": {
+        "rotation": 0.0,
+        "side": "top",
+        "x": 45.72,
+        "y": 93.98
+      },
+      "ref": "R2",
+      "type": "resistor",
+      "value": "4.7k"
+    },
+    {
+      "placement": {
+        "rotation": 0.0,
+        "side": "top",
+        "x": 58.42,
+        "y": 93.98
+      },
+      "ref": "R3",
+      "type": "resistor",
+      "value": "10k"
+    },
+    {
+      "placement": {
+        "rotation": 0.0,
+        "side": "top",
+        "x": 15.24,
+        "y": 35.56
+      },
+      "ref": "S1",
+      "type": "dht22",
+      "value": null
+    },
+    {
+      "placement": {
+        "rotation": 0.0,
+        "side": "top",
+        "x": 53.34,
+        "y": 53.34
+      },
+      "ref": "U1",
+      "type": "esp32",
+      "value": null
+    }
+  ],
+  "drc_final_summary": {
+    "errors": [],
+    "info": [],
+    "total": 0,
+    "warnings": []
+  },
+  "drc_raw_summary": {
+    "errors": [],
+    "info": [],
+    "total": 0,
+    "warnings": []
+  },
+  "hashes": {
+    "bom_csv": "7c8c17f44ce8987c8d10f01371b2677e7454bddb11e811c0b02cf84e5e4f2a28",
+    "kicad_pcb": "1861fcf639de4ae5c45c154df9ad395186178445f787c3552c5c0e5435247ae1",
+    "kicad_sch": "59a839c1462b6bcc3bcb8a9b7049606ffbd34d3f86498548727cf9d3f884243e",
+    "pcb_svg": "7d214c8c859aeb2015a912b4ae4b6461bd5f11b7e93cf1ed4266b71d3bb7dd20",
+    "schematic_svg": "3f766fb5ab044fa21dbc51b37277b49097863730facceea9175f8d7b86f68825"
+  },
+  "nets": [
+    {
+      "class": "signal",
+      "name": "DHT_DATA",
+      "nodes": [
+        "R3.1",
+        "S1.DATA",
+        "U1.GPIO16"
+      ]
+    },
+    {
+      "class": "signal",
+      "name": "GND",
+      "nodes": [
+        "C1.-",
+        "C2.2",
+        "DISP.GND",
+        "S1.GND",
+        "U1.GND"
+      ]
+    },
+    {
+      "class": "signal",
+      "name": "SCL",
+      "nodes": [
+        "DISP.SCL",
+        "R2.1",
+        "U1.GPIO22"
+      ]
+    },
+    {
+      "class": "signal",
+      "name": "SDA",
+      "nodes": [
+        "DISP.SDA",
+        "R1.1",
+        "U1.GPIO21"
+      ]
+    },
+    {
+      "class": "signal",
+      "name": "VCC",
+      "nodes": [
+        "C1.+",
+        "C2.1",
+        "DISP.VCC",
+        "R1.2",
+        "R2.2",
+        "R3.2",
+        "S1.VCC",
+        "U1.VCC"
+      ]
+    }
+  ],
+  "traces_summary": {
+    "by_layer": {
+      "B.Cu": 6,
+      "F.Cu": 11
+    },
+    "by_net": {
+      "DHT_DATA": 2,
+      "GND": 4,
+      "SCL": 2,
+      "SDA": 2,
+      "VCC": 7
+    },
+    "count": 17
+  },
+  "vias_summary": {
+    "by_net": {
+      "GND": 2,
+      "SCL": 3,
+      "SDA": 3,
+      "VCC": 2
+    },
+    "count": 10
+  },
+  "zones": {
+    "C1": "passive",
+    "C2": "passive",
+    "DISP": "comm",
+    "R1": "passive",
+    "R2": "passive",
+    "R3": "passive",
+    "S1": "input",
+    "U1": "mcu"
+  }
+}

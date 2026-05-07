@@ -1,0 +1,149 @@
+{
+  "board": {
+    "height_mm": 156.25,
+    "width_mm": 187.5
+  },
+  "byte_lengths": {
+    "bom_csv": 135,
+    "kicad_pcb": 4841,
+    "kicad_sch": 11135,
+    "pcb_svg": 3621,
+    "schematic_svg": 3500
+  },
+  "components": [
+    {
+      "placement": {
+        "rotation": 0.0,
+        "side": "top",
+        "x": 149.86,
+        "y": 71.12
+      },
+      "ref": "DRV",
+      "type": "l298n",
+      "value": null
+    },
+    {
+      "placement": {
+        "rotation": 0.0,
+        "side": "top",
+        "x": 10.16,
+        "y": 119.38
+      },
+      "ref": "M1",
+      "type": "motor",
+      "value": null
+    },
+    {
+      "placement": {
+        "rotation": 0.0,
+        "side": "top",
+        "x": 76.2,
+        "y": 68.58
+      },
+      "ref": "U1",
+      "type": "arduino_uno",
+      "value": null
+    }
+  ],
+  "drc_final_summary": {
+    "errors": [],
+    "info": [],
+    "total": 1,
+    "warnings": [
+      "HIGH_CURRENT_NO_FUSE"
+    ]
+  },
+  "drc_raw_summary": {
+    "errors": [],
+    "info": [],
+    "total": 1,
+    "warnings": [
+      "HIGH_CURRENT_NO_FUSE"
+    ]
+  },
+  "hashes": {
+    "bom_csv": "c8bcd77525bb1ea074f36987e78b6ff4c6d27a78a92bc523c4cf0c1a429d678d",
+    "kicad_pcb": "415b4347796a6c531476dbc6a848c812e70a55d17087259091880d12582ac988",
+    "kicad_sch": "bc960ff005eab6df7d30145747c6c4e2aecf707c38c104a08ba5be4a8533f51e",
+    "pcb_svg": "bd6bbca44960dc49d266878e0b3864e5a495ce15faa7b9856074d92cb49290f3",
+    "schematic_svg": "94ee6cf5aee1ec63729c3d0d68c985d595372ef3bc4c0f0c226fb4a350a2677a"
+  },
+  "nets": [
+    {
+      "class": "signal",
+      "name": "GND",
+      "nodes": [
+        "DRV.GND",
+        "U1.GND"
+      ]
+    },
+    {
+      "class": "signal",
+      "name": "MOTOR_IN1",
+      "nodes": [
+        "DRV.IN1",
+        "U1.D5"
+      ]
+    },
+    {
+      "class": "signal",
+      "name": "MOTOR_IN2",
+      "nodes": [
+        "DRV.IN2",
+        "U1.D6"
+      ]
+    },
+    {
+      "class": "high_current",
+      "name": "MOTOR_OUT",
+      "nodes": [
+        "DRV.OUT1",
+        "M1.1"
+      ]
+    },
+    {
+      "class": "high_current",
+      "name": "MOTOR_RET",
+      "nodes": [
+        "DRV.OUT2",
+        "M1.2"
+      ]
+    },
+    {
+      "class": "signal",
+      "name": "VCC",
+      "nodes": [
+        "DRV.VCC",
+        "U1.VCC"
+      ]
+    }
+  ],
+  "traces_summary": {
+    "by_layer": {
+      "B.Cu": 3,
+      "F.Cu": 3
+    },
+    "by_net": {
+      "GND": 1,
+      "MOTOR_IN1": 1,
+      "MOTOR_IN2": 1,
+      "MOTOR_OUT": 1,
+      "MOTOR_RET": 1,
+      "VCC": 1
+    },
+    "count": 6
+  },
+  "vias_summary": {
+    "by_net": {
+      "MOTOR_IN2": 2,
+      "MOTOR_RET": 2,
+      "VCC": 2
+    },
+    "count": 6
+  },
+  "zones": {
+    "DRV": "output",
+    "M1": "unknown",
+    "U1": "mcu"
+  }
+}

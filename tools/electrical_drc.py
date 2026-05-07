@@ -1,8 +1,12 @@
 # tools/electrical_drc.py
 #
+# DEPRECATED — usar `tools.eda.constraint_engine` (v4.30+).
+# Este módulo permanece operativo durante la transición; toda nueva regla
+# debe agregarse al constraint_engine como `@rule_registry.register("CODE")`.
+# Será retirado cuando el agent consuma el pipeline IR end-to-end.
+#
 # Motor de verificación eléctrica (DRC — Design Rule Check) para Stratum.
-# Analiza un circuito y retorna errores/advertencias antes de fabricarlo.
-# Lógica Python pura — sin LLM, sin I/O.
+# Analiza un circuito (formato dict legacy) y retorna errores/advertencias.
 
 from __future__ import annotations
 from typing import Any
