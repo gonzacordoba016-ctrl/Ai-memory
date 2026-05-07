@@ -4,7 +4,7 @@ import json
 import asyncio
 from core.logger import logger
 from core.config import LLM_MODEL_FAST
-from llm.async_client import call_llm_text
+from llm.async_client import call_llm_async, call_llm_text
 
 from agent.agents.research_agent import ResearchAgent
 from agent.agents.code_agent import CodeAgent
@@ -189,10 +189,13 @@ KEYWORD_ROUTES = {
 class Orchestrator:
 
     def __init__(self, client_fn):
+        # `client_fn` (call_llm_sync) se conserva para usos sync del orquestador.
+        # Los subagentes pasan por `run_agent_loop` (async) que hace
+        # `await client_fn(...)` → necesitan la versión async.
         self.client_fn      = client_fn
-        self.research_agent = ResearchAgent(client_fn)
-        self.code_agent     = CodeAgent(client_fn)
-        self.memory_agent   = MemoryAgent(client_fn)
+        self.research_agent = ResearchAgent(call_llm_async)
+        self.code_agent     = CodeAgent(call_llm_async)
+        self.memory_agent   = MemoryAgent(call_llm_async)
 
     # Regex laxo para circuit_design — fix v4.14.1 bug #2:
     # "Diseñá un circuito controlador para 7 electroválvulas..." no matcheaba
