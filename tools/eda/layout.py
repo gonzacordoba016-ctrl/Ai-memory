@@ -8,11 +8,33 @@ import math
 from typing import Dict, List, Optional, Tuple
 
 from tools.component_types import _MCU_TYPES, _RELAY_TYPES
-from tools.design_rules import MARGIN_MM, TITLE_BLOCK_H, snap_to_grid
+from tools.design_rules import (
+    MARGIN_MM,
+    TITLE_BLOCK_H,
+    BORDER_MM,
+    ZONE_REF_MM,
+    TITLE_BLOCK_H_MM,
+    snap_to_grid,
+)
 from tools.eda.classifier import classify_zone
 
 
 PX_PER_MM = 4.0  # 1mm = 4 SVG user units (pixel scale)
+
+
+def drawing_area_px(width: int, height: int) -> tuple:
+    """Returns (x0, y0, x1, y1) of the inner drawing area in pixels.
+
+    Excludes outer border, zone-ref band, and bottom title-block strip.
+    """
+    inset = (BORDER_MM + ZONE_REF_MM) * PX_PER_MM
+    title_h = TITLE_BLOCK_H_MM * PX_PER_MM
+    pad = 30.0
+    x0 = inset + pad
+    x1 = max(width - inset - pad, x0 + 1)
+    y0 = inset + pad
+    y1 = max(height - inset - title_h - pad, y0 + 1)
+    return (x0, y0, x1, y1)
 
 
 def build_relay_groups(components: List[Dict]) -> Dict[str, List[Dict]]:
@@ -104,15 +126,6 @@ def layout_components(components: List[Dict], width: int, height: int,
     for rid in relay_groups:
         pass
 
-    x_margin = 80
-    SLOT_AC     = 240
-    SLOT_MCU    = 240
-    SLOT_SENSOR = 220
-    SLOT_OTHER  = 200
-    SLOT_RELAY  = 360
-    SLOT_OUTPUT = 200
-    GAP         = 60
-
     mcu_sorted = sorted(
         zones["mcu"],
         key=lambda c: 0 if (c.get("resolved_type") or c.get("type") or "").lower() in _MCU_TYPES else 1,
@@ -124,40 +137,44 @@ def layout_components(components: List[Dict], width: int, height: int,
     has_relay   = bool(relay_groups)
     has_output  = bool(zones["output"])
 
-    cur = x_margin
-    if has_ac:
-        x_ac_c = cur + SLOT_AC // 2; cur += SLOT_AC + GAP
-    else:
-        x_ac_c = cur
+    # Scale zone columns to fill the drawing area (inside the engineering frame,
+    # above the title block). Each zone gets a weighted slice of inner_w.
+    inner_x0, inner_y0, inner_x1, inner_y1 = drawing_area_px(width, height)
+    inner_w = inner_x1 - inner_x0
+    inner_h = inner_y1 - inner_y0
 
-    if has_mcu:
-        x_mcu_c = cur + SLOT_MCU // 2; cur += SLOT_MCU + GAP
-    else:
-        x_mcu_c = cur
+    # Relative weights — relays take more horizontal space (cell with diode + R)
+    weights = {
+        "ac":     2.4 if has_ac else 0.0,
+        "mcu":    2.6 if has_mcu else 0.0,
+        "sensor": 2.2 if has_sensor else 0.0,
+        "other":  2.0 if has_other else 0.0,
+        "relay":  3.6 if has_relay else 0.0,
+        "output": 2.0 if has_output else 0.0,
+    }
+    order = ["ac", "mcu", "sensor", "other", "relay", "output"]
+    total_w = sum(weights[z] for z in order) or 1.0
 
-    if has_sensor:
-        x_sensor_c = cur + SLOT_SENSOR // 2; cur += SLOT_SENSOR + GAP
-    else:
-        x_sensor_c = cur
+    centers: Dict[str, int] = {}
+    cursor = inner_x0
+    for z in order:
+        if weights[z] <= 0:
+            centers[z] = int(cursor)
+            continue
+        slot = inner_w * weights[z] / total_w
+        centers[z] = int(cursor + slot / 2)
+        cursor += slot
 
-    if has_other:
-        x_other_c = cur + SLOT_OTHER // 2; cur += SLOT_OTHER + GAP
-    else:
-        x_other_c = cur
+    x_ac_c     = centers["ac"]
+    x_mcu_c    = centers["mcu"]
+    x_sensor_c = centers["sensor"]
+    x_other_c  = centers["other"]
+    x_relay_c  = centers["relay"]
+    x_output_c = centers["output"]
 
-    if has_relay:
-        x_relay_c = cur + SLOT_RELAY // 2; cur += SLOT_RELAY + GAP
-    else:
-        x_relay_c = cur
-
-    if has_output:
-        x_output_c = cur + SLOT_OUTPUT // 2; cur += SLOT_OUTPUT
-    else:
-        x_output_c = cur
-
-    y_top    = 90
-    y_bottom = max(y_top + 200, height - 40)
-    y_height = y_bottom - y_top
+    y_top    = int(inner_y0)
+    y_bottom = int(inner_y1)
+    y_height = max(y_bottom - y_top, 200)
 
     def _stack_y_positions(n: int) -> List[int]:
         if n == 0:
@@ -206,7 +223,7 @@ def layout_components(components: List[Dict], width: int, height: int,
 
     other_comps = [c for c in zones["other"] if c["id"] not in positions]
     other_col2_ids: set = set()
-    x_other_col2: int = x_other_c + SLOT_OTHER + GAP
+    x_other_col2: int = x_other_c + max(80, int(inner_w * 0.06))
     if other_comps:
         active_zone_count = sum(
             1 for v in (has_ac, has_mcu, has_sensor, has_relay, has_output) if v
@@ -299,32 +316,13 @@ def compute_schematic_layout(
 ) -> Dict[str, Tuple[float, float]]:
     """Returns {comp_id: (x, y)} grid-snapped positions in SVG px.
 
-    Canvas size is derived from active zones (never smaller than sheet * PX_PER_MM).
-    Zone order follows design_rules.ZONE_ORDER.
+    Canvas is fixed to the sheet size (A4/A3/...). Zone columns scale to fill the
+    drawing area inside the engineering frame.
     """
-    n_ac     = sum(1 for c in components if classify_zone(c) == "ac")
-    n_mcu    = sum(1 for c in components if classify_zone(c) == "mcu")
-    n_sensor = sum(1 for c in components if classify_zone(c) == "sensor")
-    n_other  = sum(1 for c in components if classify_zone(c) == "other")
-    n_relay  = sum(1 for c in components
-                   if (c.get("resolved_type") or c.get("type") or "").lower()
-                   in ("relay", "relay_module", "ssr") or c.get("id", "").lower().startswith("rl"))
-    n_output = sum(1 for c in components if classify_zone(c) == "output")
-    active   = sum(1 for v in (n_ac, n_mcu, n_sensor, n_other, n_relay, n_output) if v > 0)
-
-    slots_w = (240 * bool(n_ac) + 240 * bool(n_mcu) + 220 * bool(n_sensor)
-               + 200 * bool(n_other) + 360 * bool(n_relay) + 200 * bool(n_output))
-    gap_w   = 60 * max(0, active - 1)
-    w_px    = max(int(sheet["w"] * PX_PER_MM), slots_w + gap_w + 160)
-
-    active_excl_other = sum(1 for v in (n_ac, n_mcu, n_sensor, n_relay, n_output) if v > 0)
-    n_other_eff = (math.ceil(n_other / 2)
-                   if active_excl_other < 3 and n_other >= 2 else n_other)
-    n_max_zone  = max(n_ac, n_mcu, n_sensor, n_other_eff, n_relay, n_output, 1)
-    h_px        = max(int(sheet["h"] * PX_PER_MM), n_max_zone * 110 + 180)
-
+    w_px    = int(sheet["w"] * PX_PER_MM)
+    h_px    = int(sheet["h"] * PX_PER_MM)
     grid_px = sheet["grid"] * PX_PER_MM
-    raw = layout_components(components, w_px, h_px - 90, {}, nets)
+    raw = layout_components(components, w_px, h_px, {}, nets)
     return {cid: snap_to_grid(x, y, grid_px) for cid, (x, y) in raw.items()}
 
 

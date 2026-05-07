@@ -803,77 +803,101 @@
         async function _buildThreeScene() {
             if (!threeScene) return;
 
-            // ── Real Breadboard base (white ABS, 2.54mm pitch) ──────────────
-            const bbW = 195, bbD = 130, bbH = 8;
-            const bbMat = new THREE.MeshStandardMaterial({
-                color: 0xf5f5f0, roughness: 0.7, metalness: 0.0
+            // ── Real PCB (FR4, 1.6mm thick, gold edge.cuts + mounting holes) ──
+            const bbW = 195, bbD = 130, bbH = 3.2;
+            const pcbMat = new THREE.MeshStandardMaterial({
+                color: 0x0e4a1a, roughness: 0.55, metalness: 0.10
             });
-            const bbGeo = new THREE.BoxGeometry(bbW, bbH, bbD);
-            const bb = new THREE.Mesh(bbGeo, bbMat);
-            bb.receiveShadow = true; bb.castShadow = false;
-            bb.position.set(0, -bbH/2, 0);
-            threeScene.add(bb);
-            // Hole grid — 2.54mm pitch scaled ×2, 30 cols × 10 rows (5+5, center gap)
-            const bbPitch = 5.08;
-            const bbCols = 30, bbHoleR = 0.9;
-            const holeMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 1.0 });
-            const holeGeo = new THREE.CylinderGeometry(bbHoleR, bbHoleR, bbH + 0.4, 8);
-            for (let row = 0; row < 10; row++) {
-                const zOff = row < 5
-                    ? -bbD/2 + 18 + row * bbPitch
-                    : -bbD/2 + 18 + (row + 1) * bbPitch + 6;
-                for (let col = 0; col < bbCols; col++) {
-                    const h = new THREE.Mesh(holeGeo, holeMat);
-                    h.position.set(-bbW/2 + 16 + col * bbPitch, 0, zOff);
-                    threeScene.add(h);
-                }
-            }
-            // Center gap divider
-            const gapGeo2 = new THREE.BoxGeometry(bbW - 24, 0.4, 4);
-            const gapMesh = new THREE.Mesh(gapGeo2, new THREE.MeshStandardMaterial({ color: 0xdddddd }));
-            gapMesh.position.set(0, bbH/2 + 0.1, -bbD/2 + 18 + 5 * bbPitch + 3);
-            threeScene.add(gapMesh);
-            // Power bus strips (VCC=red, GND=blue)
-            const busGeo2 = new THREE.BoxGeometry(bbW - 24, 0.5, 2.5);
-            for (const [col, zOff2] of [
-                [0xff2222, -bbD/2 + 6], [0x2244cc, -bbD/2 + 9.5],
-                [0x2244cc,  bbD/2 - 9.5],[0xff2222,  bbD/2 - 6],
+            const pcbGeo = new THREE.BoxGeometry(bbW, bbH, bbD);
+            const pcb = new THREE.Mesh(pcbGeo, pcbMat);
+            pcb.receiveShadow = true; pcb.castShadow = false;
+            pcb.position.set(0, -bbH/2, 0);
+            threeScene.add(pcb);
+
+            // Solder-mask top sheen (slightly lighter green plane just above the FR4)
+            const maskMat = new THREE.MeshStandardMaterial({
+                color: 0x126a26, roughness: 0.45, metalness: 0.05,
+                transparent: true, opacity: 0.55
+            });
+            const maskGeo = new THREE.PlaneGeometry(bbW - 1.0, bbD - 1.0);
+            const mask = new THREE.Mesh(maskGeo, maskMat);
+            mask.rotation.x = -Math.PI / 2;
+            mask.position.set(0, 0.08, 0);
+            threeScene.add(mask);
+
+            // Gold edge.cuts outline (rounded corners faked with tube along perimeter)
+            const edgeMat = new THREE.LineBasicMaterial({
+                color: 0xffcc00, linewidth: 2
+            });
+            const edgePts = [
+                new THREE.Vector3(-bbW/2 + 4, 0.10, -bbD/2),
+                new THREE.Vector3( bbW/2 - 4, 0.10, -bbD/2),
+                new THREE.Vector3( bbW/2,     0.10, -bbD/2 + 4),
+                new THREE.Vector3( bbW/2,     0.10,  bbD/2 - 4),
+                new THREE.Vector3( bbW/2 - 4, 0.10,  bbD/2),
+                new THREE.Vector3(-bbW/2 + 4, 0.10,  bbD/2),
+                new THREE.Vector3(-bbW/2,     0.10,  bbD/2 - 4),
+                new THREE.Vector3(-bbW/2,     0.10, -bbD/2 + 4),
+                new THREE.Vector3(-bbW/2 + 4, 0.10, -bbD/2),
+            ];
+            threeScene.add(new THREE.Line(
+                new THREE.BufferGeometry().setFromPoints(edgePts), edgeMat));
+
+            // Mounting holes (M3 plated through-hole) at the four corners
+            const ringMat = new THREE.MeshStandardMaterial({
+                color: 0xc8a000, metalness: 0.85, roughness: 0.25
+            });
+            const ringGeo = new THREE.RingGeometry(2.0, 3.4, 24);
+            const drillGeo = new THREE.CylinderGeometry(1.7, 1.7, bbH + 0.5, 16);
+            const drillMat = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 1 });
+            for (const [mx, mz] of [
+                [-bbW/2 + 7, -bbD/2 + 7], [ bbW/2 - 7, -bbD/2 + 7],
+                [-bbW/2 + 7,  bbD/2 - 7], [ bbW/2 - 7,  bbD/2 - 7],
             ]) {
-                const s = new THREE.Mesh(busGeo2,
-                    new THREE.MeshStandardMaterial({ color: col, roughness: 0.4 }));
-                s.position.set(0, bbH/2 + 0.2, zOff2);
-                threeScene.add(s);
+                const ring = new THREE.Mesh(ringGeo, ringMat);
+                ring.rotation.x = -Math.PI / 2;
+                ring.position.set(mx, 0.20, mz);
+                threeScene.add(ring);
+                const drill = new THREE.Mesh(drillGeo, drillMat);
+                drill.position.set(mx, -bbH/2, mz);
+                threeScene.add(drill);
             }
-            // Bus holes
-            const busHoleGeo2 = new THREE.CylinderGeometry(0.55, 0.55, 1.0, 6);
-            const busHoleMat2 = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.6 });
-            for (let col = 0; col < bbCols; col++) {
-                const bx = -bbW/2 + 16 + col * bbPitch;
-                for (const bz of [-bbD/2+6, -bbD/2+9.5, bbD/2-9.5, bbD/2-6]) {
-                    const bh = new THREE.Mesh(busHoleGeo2, busHoleMat2);
-                    bh.position.set(bx, bbH/2 + 0.4, bz);
-                    threeScene.add(bh);
-                }
-            }
-            // Row / col sprite labels
-            function _bbLabel(text, color) {
-                const cv = document.createElement('canvas'); cv.width = 64; cv.height = 32;
+
+            // Silkscreen — board title + Stratum brand
+            function _silkLabel(text, color, x, z, scaleX) {
+                const cv = document.createElement('canvas'); cv.width = 384; cv.height = 64;
                 const ctx = cv.getContext('2d');
-                ctx.fillStyle = color || '#555555'; ctx.font = 'bold 18px monospace';
-                ctx.fillText(text, 2, 24);
-                const sp = new THREE.Sprite(new THREE.SpriteMaterial(
-                    { map: new THREE.CanvasTexture(cv), transparent: true }));
-                sp.scale.set(9, 4.5, 1); return sp;
+                ctx.clearRect(0, 0, cv.width, cv.height);
+                ctx.fillStyle = color || '#ffffff';
+                ctx.font = 'bold 36px monospace';
+                ctx.fillText(text, 4, 46);
+                const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+                    map: new THREE.CanvasTexture(cv), transparent: true,
+                    depthTest: false
+                }));
+                sp.scale.set(scaleX, scaleX * 0.16, 1);
+                sp.position.set(x, 0.5, z);
+                return sp;
             }
-            for (let col = 0; col < bbCols; col += 5) {
-                const sp = _bbLabel(String(col + 1), '#888888');
-                sp.position.set(-bbW/2 + 16 + col * bbPitch, bbH/2 + 4, -bbD/2 + 2);
-                threeScene.add(sp);
+            threeScene.add(_silkLabel('STRATUM PCB', '#ffffff',
+                                       -bbW/2 + 22, -bbD/2 + 5, 30));
+            const _boardName = ((currentCircuit && currentCircuit.name) || '').slice(0, 28);
+            if (_boardName) {
+                threeScene.add(_silkLabel(_boardName, '#cceecc',
+                                          bbW/2 - 30, bbD/2 - 5, 32));
             }
-            for (let row = 0; row < 5; row++) {
-                const sp = _bbLabel(String.fromCharCode(65 + row), '#666688');
-                sp.position.set(-bbW/2 + 4, bbH/2 + 4, -bbD/2 + 18 + row * bbPitch);
-                threeScene.add(sp);
+
+            // Subtle silk grid lines (fiducials) at corners
+            const fidMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 });
+            const fidGeo = new THREE.CircleGeometry(1.2, 16);
+            for (const [fx, fz] of [
+                [-bbW/2 + 14, -bbD/2 + 14], [ bbW/2 - 14, -bbD/2 + 14],
+                [-bbW/2 + 14,  bbD/2 - 14], [ bbW/2 - 14,  bbD/2 - 14],
+            ]) {
+                const f = new THREE.Mesh(fidGeo, fidMat);
+                f.rotation.x = -Math.PI / 2;
+                f.position.set(fx, 0.15, fz);
+                threeScene.add(f);
             }
 
             if (!currentCircuit) return;

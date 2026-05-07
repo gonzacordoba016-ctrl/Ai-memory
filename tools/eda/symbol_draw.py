@@ -13,13 +13,23 @@ import svgwrite
 
 from core.logger import get_logger
 from tools.kicad_sym_renderer import KiCadSymRenderer as _KSR
-from tools.design_rules import get_sheet_size, snap_to_grid
+from tools.design_rules import (
+    get_sheet_size,
+    snap_to_grid,
+    BORDER_MM,
+    ZONE_REF_MM,
+    TITLE_BLOCK_W_MM,
+    TITLE_BLOCK_H_MM,
+    ZONE_COLS,
+    ZONE_ROWS,
+)
 
 from tools.eda.classifier import classify_zone as _classify_zone
 from tools.eda.layout import (
     PX_PER_MM as _PX_PER_MM,
     compute_schematic_layout as _compute_positions,
     validate_positions as _validate_positions,
+    drawing_area_px as _drawing_area_px,
 )
 from tools.eda.router import route_orthogonal as _route_orthogonal
 
@@ -87,17 +97,16 @@ class SchematicRenderer:
 
             positions = _validate_positions(positions, sheet)
 
-            # Canvas: at least sheet-sized, expanding to fit all positions
-            xs   = [x for x, _ in positions.values()] or [0]
-            ys   = [y for _, y in positions.values()] or [0]
-            w_px = max(int(sheet["w"] * _PX_PER_MM), int(max(xs)) + 160)
-            h_px = max(int(sheet["h"] * _PX_PER_MM), int(max(ys)) + 180)
+            # Canvas: fixed to the sheet size (no dynamic growth).
+            w_px = int(sheet["w"] * _PX_PER_MM)
+            h_px = int(sheet["h"] * _PX_PER_MM)
 
             dwg = svgwrite.Drawing(size=('100%', '100%'),
                                    viewBox=f"0 0 {w_px} {h_px}")
             self._draw_background(dwg, w_px, h_px)
-            self._draw_title_block(dwg, circuit_data, w_px, h_px)
             self._draw_schematic(dwg, circuit_data, components, nets, positions, sheet)
+            tb_data = {**circuit_data, "sheet_name": sheet.get("name", "A4")}
+            self._draw_title_block(dwg, tb_data, w_px, h_px)
             return dwg.tostring()
         except Exception as e:
             logger.error(f"Error renderizando esquemático: {e}")
@@ -111,10 +120,8 @@ class SchematicRenderer:
                         nets: List[Dict], positions: Dict[str, Tuple],
                         sheet: Dict) -> None:
         """Draws all schematic elements. Receives pre-computed positions."""
-        xs   = [x for x, _ in positions.values()] or [0]
-        ys   = [y for _, y in positions.values()] or [0]
-        w_px = max(int(sheet["w"] * _PX_PER_MM), int(max(xs)) + 160)
-        h_px = max(int(sheet["h"] * _PX_PER_MM), int(max(ys)) + 180)
+        w_px = int(sheet["w"] * _PX_PER_MM)
+        h_px = int(sheet["h"] * _PX_PER_MM)
         self._draw_galvanic_barrier(dwg, components, positions, w_px, h_px)
         self._draw_connections(dwg, nets, positions, w_px, h_px)
         self._draw_power_rails(dwg, nets, positions)
@@ -127,105 +134,191 @@ class SchematicRenderer:
     # ── Background ──────────────────────────────────────────────────────────
 
     def _draw_background(self, dwg, width: int, height: int):
-        # Light cream background like KiCad
-        dwg.add(dwg.rect(insert=(0,0), size=(width, height), fill="#f5f6f7"))
-        # Fine grid lines
-        for gx in range(0, width, 20):
-            dwg.add(dwg.line(start=(gx,0), end=(gx, height-90),
-                             stroke="#e4e6eb", stroke_width=0.4))
-        for gy in range(0, height-90, 20):
-            dwg.add(dwg.line(start=(0,gy), end=(width, gy),
-                             stroke="#e4e6eb", stroke_width=0.4))
-        # Major grid every 100px
-        for gx in range(0, width, 100):
-            dwg.add(dwg.line(start=(gx,0), end=(gx, height-90),
-                             stroke="#d0d2da", stroke_width=0.8))
-        for gy in range(0, height-90, 100):
-            dwg.add(dwg.line(start=(0,gy), end=(width,gy),
-                             stroke="#d0d2da", stroke_width=0.8))
-        # Schematic area border
-        dwg.add(dwg.rect(insert=(2,2), size=(width-4, height-92),
-                         fill="none", stroke="#999aaa", stroke_width=1.2))
+        """ISO 7200-style sheet: paper + outer frame + zone-ref band + inner frame."""
+        border = BORDER_MM * _PX_PER_MM
+        zr     = ZONE_REF_MM * _PX_PER_MM
+        inner_x  = border + zr
+        inner_y  = border + zr
+        inner_w  = width  - 2 * (border + zr)
+        inner_h  = height - 2 * (border + zr)
+        ix2 = inner_x + inner_w
+        iy2 = inner_y + inner_h
+
+        # Paper
+        dwg.add(dwg.rect(insert=(0, 0), size=(width, height), fill="#f5f6f7"))
+
+        # Inner drawing-area background (slightly whiter)
+        dwg.add(dwg.rect(insert=(inner_x, inner_y), size=(inner_w, inner_h),
+                         fill="#fcfcfd"))
+
+        # Fine grid inside drawing area only
+        for gx in range(int(inner_x) + 20, int(ix2), 20):
+            dwg.add(dwg.line(start=(gx, inner_y), end=(gx, iy2),
+                             stroke="#eaecf2", stroke_width=0.4))
+        for gy in range(int(inner_y) + 20, int(iy2), 20):
+            dwg.add(dwg.line(start=(inner_x, gy), end=(ix2, gy),
+                             stroke="#eaecf2", stroke_width=0.4))
+        # Major grid (100px ≈ 25mm)
+        for gx in range(int(inner_x) + 100, int(ix2), 100):
+            dwg.add(dwg.line(start=(gx, inner_y), end=(gx, iy2),
+                             stroke="#d4d7e0", stroke_width=0.7))
+        for gy in range(int(inner_y) + 100, int(iy2), 100):
+            dwg.add(dwg.line(start=(inner_x, gy), end=(ix2, gy),
+                             stroke="#d4d7e0", stroke_width=0.7))
+
+        # Outer frame
+        dwg.add(dwg.rect(insert=(border, border),
+                         size=(width - 2 * border, height - 2 * border),
+                         fill="none", stroke="#222244", stroke_width=1.2))
+        # Inner frame (drawing-area boundary)
+        dwg.add(dwg.rect(insert=(inner_x, inner_y),
+                         size=(inner_w, inner_h),
+                         fill="none", stroke="#222244", stroke_width=2.0))
+
+        # Zone references — columns 1..N (top + bottom)
+        col_w = inner_w / ZONE_COLS
+        for i in range(ZONE_COLS):
+            cx = inner_x + (i + 0.5) * col_w
+            dwg.add(dwg.text(str(i + 1),
+                             insert=(cx, border + zr * 0.65),
+                             font_size=11, fill="#222244",
+                             font_family="Arial", text_anchor="middle",
+                             font_weight="bold"))
+            dwg.add(dwg.text(str(i + 1),
+                             insert=(cx, iy2 + zr * 0.7),
+                             font_size=11, fill="#222244",
+                             font_family="Arial", text_anchor="middle",
+                             font_weight="bold"))
+            if i > 0:
+                xt = inner_x + i * col_w
+                dwg.add(dwg.line(start=(xt, border), end=(xt, inner_y),
+                                 stroke="#222244", stroke_width=0.6))
+                dwg.add(dwg.line(start=(xt, iy2),
+                                 end=(xt, height - border),
+                                 stroke="#222244", stroke_width=0.6))
+
+        # Zone references — rows A..N (left + right)
+        row_h = inner_h / ZONE_ROWS
+        for j in range(ZONE_ROWS):
+            cy = inner_y + (j + 0.5) * row_h
+            letter = chr(ord("A") + j)
+            dwg.add(dwg.text(letter,
+                             insert=(border + zr * 0.5, cy + 4),
+                             font_size=11, fill="#222244",
+                             font_family="Arial", text_anchor="middle",
+                             font_weight="bold"))
+            dwg.add(dwg.text(letter,
+                             insert=(ix2 + zr * 0.5, cy + 4),
+                             font_size=11, fill="#222244",
+                             font_family="Arial", text_anchor="middle",
+                             font_weight="bold"))
+            if j > 0:
+                yt = inner_y + j * row_h
+                dwg.add(dwg.line(start=(border, yt), end=(inner_x, yt),
+                                 stroke="#222244", stroke_width=0.6))
+                dwg.add(dwg.line(start=(ix2, yt),
+                                 end=(width - border, yt),
+                                 stroke="#222244", stroke_width=0.6))
+
+        # Corner brackets (engineering-drawing style)
+        bk = 14
+        for cx, cy, sx, sy in [
+            (border, border, 1, 1),
+            (width - border, border, -1, 1),
+            (border, height - border, 1, -1),
+            (width - border, height - border, -1, -1),
+        ]:
+            dwg.add(dwg.line(start=(cx, cy), end=(cx + sx * bk, cy),
+                             stroke="#222244", stroke_width=2))
+            dwg.add(dwg.line(start=(cx, cy), end=(cx, cy + sy * bk),
+                             stroke="#222244", stroke_width=2))
 
     # ── Title block (EDA-style bottom frame) ────────────────────────────────
 
     def _draw_title_block(self, dwg, circuit_data: Dict, width: int, height: int):
-        y_base = height - 88
-        # Title block background
-        dwg.add(dwg.rect(insert=(0, y_base), size=(width, 88),
-                         fill="#eeeff4", stroke="none"))
-        # Top border of title block
-        dwg.add(dwg.line(start=(0, y_base), end=(width, y_base),
-                         stroke="#444466", stroke_width=1.5))
-        # Vertical dividers
-        divs = [width * 0.45, width * 0.65, width * 0.80]
-        for dx in divs:
-            dwg.add(dwg.line(start=(dx, y_base), end=(dx, height),
-                             stroke="#aaaacc", stroke_width=0.8))
-        # Horizontal mid-line
-        dwg.add(dwg.line(start=(0, y_base+44), end=(width, y_base+44),
-                         stroke="#aaaacc", stroke_width=0.8))
+        """ISO 7200-style title block — anchored to bottom-right corner of inner frame."""
+        border = BORDER_MM * _PX_PER_MM
+        zr     = ZONE_REF_MM * _PX_PER_MM
+        tb_w   = TITLE_BLOCK_W_MM * _PX_PER_MM
+        tb_h   = TITLE_BLOCK_H_MM * _PX_PER_MM
+        # Sit flush with the inner frame, in the bottom-right corner
+        x0 = width - border - zr - tb_w
+        y0 = height - border - zr - tb_h
+        x1, y1 = x0 + tb_w, y0 + tb_h
 
-        name  = circuit_data.get("name", "Sin nombre")
-        desc  = circuit_data.get("description", "")[:80]
-        power = circuit_data.get("power", "")
-        mcu   = circuit_data.get("selected_mcu", "")
-        domain= circuit_data.get("detected_domain", "")
-        n_comp= len(circuit_data.get("components", []))
-
-        # Title
-        dwg.add(dwg.text("TITLE:", insert=(8, y_base+14),
-                         font_size=8, fill="#666688", font_family="Arial"))
-        dwg.add(dwg.text(name, insert=(8, y_base+32),
-                         font_size=15, fill="#111133", font_family="Arial",
-                         font_weight="bold"))
-        dwg.add(dwg.text(desc, insert=(8, y_base+50),
-                         font_size=9, fill="#555577", font_family="Arial"))
-
-        # MCU / power info
-        x2 = width * 0.46
-        dwg.add(dwg.text("MCU:", insert=(x2+6, y_base+14),
-                         font_size=8, fill="#666688", font_family="Arial"))
-        dwg.add(dwg.text(mcu or "—", insert=(x2+6, y_base+30),
-                         font_size=11, fill="#223399", font_family="monospace"))
-        dwg.add(dwg.text("Power:", insert=(x2+6, y_base+48),
-                         font_size=8, fill="#666688", font_family="Arial"))
-        dwg.add(dwg.text(power or "—", insert=(x2+6, y_base+62),
-                         font_size=10, fill="#cc3300", font_family="monospace"))
-
-        # Domain / components
-        x3 = width * 0.66
-        dwg.add(dwg.text("Domain:", insert=(x3+6, y_base+14),
-                         font_size=8, fill="#666688", font_family="Arial"))
-        dwg.add(dwg.text(domain or "generic", insert=(x3+6, y_base+30),
-                         font_size=10, fill="#117755", font_family="monospace"))
-        dwg.add(dwg.text("Components:", insert=(x3+6, y_base+48),
-                         font_size=8, fill="#666688", font_family="Arial"))
-        dwg.add(dwg.text(str(n_comp), insert=(x3+6, y_base+64),
-                         font_size=14, fill="#333355", font_family="monospace",
-                         font_weight="bold"))
-
-        # DRC / warnings badge
-        x4 = width * 0.81
-        warnings = circuit_data.get("warnings", [])
+        name   = circuit_data.get("name", "Sin nombre")[:50]
+        desc   = circuit_data.get("description", "")[:90]
+        power  = circuit_data.get("power", "—") or "—"
+        mcu    = circuit_data.get("selected_mcu", "—") or "—"
+        domain = circuit_data.get("detected_domain", "generic") or "generic"
+        n_comp = len(circuit_data.get("components", []))
+        sheet_name = circuit_data.get("sheet_name", "A4")
         drc = circuit_data.get("drc", {})
         passed = drc.get("passed", True)
-        badge_color = "#1a7a1a" if passed else "#aa1111"
-        label = "✓ DRC OK" if passed else f"✗ {drc.get('counts',{}).get('errors','?')} errores DRC"
-        dwg.add(dwg.rect(insert=(x4+6, y_base+6), size=(width-x4-14, 30),
-                         fill=badge_color, fill_opacity=0.12,
-                         stroke=badge_color, stroke_width=1, rx=4))
-        dwg.add(dwg.text(label, insert=(x4+12, y_base+26),
-                         font_size=11, fill=badge_color, font_family="Arial",
+
+        # Background
+        dwg.add(dwg.rect(insert=(x0, y0), size=(tb_w, tb_h),
+                         fill="#fafbff", stroke="#222244", stroke_width=1.5))
+
+        # Row heights
+        r1 = tb_h * 0.42
+        r2 = tb_h * 0.34
+        r3 = tb_h - r1 - r2
+        dwg.add(dwg.line(start=(x0, y0 + r1), end=(x1, y0 + r1),
+                         stroke="#444466", stroke_width=0.8))
+        dwg.add(dwg.line(start=(x0, y0 + r1 + r2), end=(x1, y0 + r1 + r2),
+                         stroke="#444466", stroke_width=0.8))
+        # Row1: title (75%) + DRC badge (25%)
+        col_drc = x0 + tb_w * 0.74
+        dwg.add(dwg.line(start=(col_drc, y0), end=(col_drc, y0 + r1),
+                         stroke="#444466", stroke_width=0.8))
+        # Row2 cells: MCU | POWER | DOMAIN | COMP
+        col2 = [x0 + tb_w * f for f in (0.25, 0.50, 0.75)]
+        for cx in col2:
+            dwg.add(dwg.line(start=(cx, y0 + r1), end=(cx, y0 + r1 + r2),
+                             stroke="#444466", stroke_width=0.6))
+
+        # TITLE
+        dwg.add(dwg.text("TITLE", insert=(x0 + 8, y0 + 11),
+                         font_size=7, fill="#666688", font_family="Arial"))
+        dwg.add(dwg.text(name, insert=(x0 + 8, y0 + r1 - 8),
+                         font_size=14, fill="#111133", font_family="Arial",
                          font_weight="bold"))
-        if warnings:
-            dwg.add(dwg.text(f"⚠ {len(warnings)} advertencia(s)",
-                             insert=(x4+12, y_base+52),
-                             font_size=9, fill="#885500", font_family="Arial"))
-        # Stratum watermark
-        dwg.add(dwg.text("Stratum EDA", insert=(width-90, height-6),
+
+        # DRC badge
+        badge_color = "#1a7a1a" if passed else "#aa1111"
+        badge_label = "DRC ✓" if passed else "DRC ✗"
+        dwg.add(dwg.rect(insert=(col_drc + 6, y0 + r1 * 0.18),
+                         size=(x1 - col_drc - 12, r1 * 0.62),
+                         fill=badge_color, fill_opacity=0.15,
+                         stroke=badge_color, stroke_width=1, rx=3))
+        dwg.add(dwg.text(badge_label,
+                         insert=((col_drc + x1) / 2, y0 + r1 * 0.62),
+                         font_size=12, fill=badge_color, font_family="Arial",
+                         font_weight="bold", text_anchor="middle"))
+
+        # Row 2 cells
+        cells = [
+            ("MCU",    str(mcu)[:14],    "#223399"),
+            ("POWER",  str(power)[:14],  "#cc3300"),
+            ("DOMAIN", str(domain)[:14], "#117755"),
+            ("COMP",   str(n_comp),      "#333355"),
+        ]
+        cell_xs = [x0] + col2 + [x1]
+        for i, (lbl, val, color) in enumerate(cells):
+            cxL = cell_xs[i]
+            dwg.add(dwg.text(lbl, insert=(cxL + 6, y0 + r1 + 11),
+                             font_size=7, fill="#666688", font_family="Arial"))
+            dwg.add(dwg.text(val, insert=(cxL + 6, y0 + r1 + r2 - 8),
+                             font_size=10, fill=color, font_family="monospace"))
+
+        # Row 3: description (left) + sheet info (right)
+        dwg.add(dwg.text(desc, insert=(x0 + 8, y0 + r1 + r2 + r3 * 0.65),
+                         font_size=8, fill="#555577", font_family="Arial"))
+        dwg.add(dwg.text(f"SHEET {sheet_name}  ·  Stratum EDA",
+                         insert=(x1 - 8, y0 + r1 + r2 + r3 * 0.65),
                          font_size=8, fill="#9999bb", font_family="Arial",
-                         font_style="italic"))
+                         font_style="italic", text_anchor="end"))
 
     # ── F2.4 — Galvanic isolation barrier ───────────────────────────────────
 
@@ -339,8 +432,31 @@ class SchematicRenderer:
                              font_family="monospace", text_anchor="middle",
                              font_weight="bold"))
 
+    @staticmethod
+    def _rects_overlap(a, b) -> bool:
+        return not (a[2] < b[0] or b[2] < a[0] or a[3] < b[1] or b[3] < a[1])
+
+    def _alloc_label_dx(self, label_rects: list, cx: float, cy: float,
+                         label_w: int, direction: str) -> tuple:
+        """Returns (stub_dx, rect) — stub length grown until label rect doesn't collide."""
+        sign = 1 if direction == "right" else -1
+        dx = 18
+        rect = (0, 0, 0, 0)
+        for _ in range(6):
+            text_x0 = cx + sign * (dx + 8)
+            text_x1 = text_x0 + sign * label_w
+            x_left  = min(text_x0, text_x1)
+            x_right = max(text_x0, text_x1)
+            rect = (x_left, cy - 9, x_right, cy + 9)
+            if not any(self._rects_overlap(rect, r) for r in label_rects):
+                return sign * dx, rect
+            dx += 28
+        return sign * dx, rect
+
     def _draw_connections(self, dwg, nets, positions, canvas_w=None, canvas_h=None):
-        """Draw wires or net labels for each net."""
+        """Draw nets — long-distance ones use net-label flags (collision-aware);
+        short ones use a vertical trunk + horizontal stubs (Manhattan tree)."""
+        label_rects: list = []
         for net in nets:
             try:
                 name  = net.get("name", "")
@@ -358,38 +474,74 @@ class SchematicRenderer:
                 span_x = max(xs) - min(xs)
                 span_y = max(ys) - min(ys)
                 threshold = (canvas_w * 0.55) if canvas_w else self._LABEL_DISTANCE_THRESHOLD
-                use_labels = span_x > threshold or span_y > ((canvas_h * 0.4) if canvas_h else threshold)
+                use_labels = (
+                    span_x > threshold
+                    or span_y > ((canvas_h * 0.4) if canvas_h else threshold)
+                )
                 if use_labels:
                     avg_x = sum(xs) / len(xs)
+                    label_w = max(40, len(name) * 6 + 14)
                     for cx, cy in coords:
                         direction = "right" if cx <= avg_x else "left"
-                        stub_dx = 18 if direction == "right" else -18
+                        stub_dx, rect = self._alloc_label_dx(
+                            label_rects, cx, cy, label_w, direction)
                         dwg.add(dwg.line(
                             start=(cx, cy), end=(cx + stub_dx, cy),
                             stroke=color, stroke_width=1.8))
                         self._draw_net_label(dwg, name, (cx + stub_dx, cy),
                                              color, direction=direction)
                         dwg.add(dwg.circle(center=(cx, cy), r=3, fill=color))
+                        label_rects.append(rect)
                 else:
-                    cx_c = sum(x for x, y in coords) / len(coords)
-                    cy_c = sum(y for x, y in coords) / len(coords)
-                    for coord in coords:
-                        path = _route_orthogonal((cx_c, cy_c), coord)
-                        for j in range(len(path) - 1):
+                    # Manhattan tree: vertical trunk at barycenter X, horizontal stubs.
+                    trunk_x = sum(xs) / len(xs)
+                    y_min, y_max = min(ys), max(ys)
+                    if y_max - y_min > 2:
+                        dwg.add(dwg.line(
+                            start=(trunk_x, y_min), end=(trunk_x, y_max),
+                            stroke=color, stroke_width=1.8))
+                    for cx, cy in coords:
+                        if abs(cx - trunk_x) > 1:
                             dwg.add(dwg.line(
-                                start=path[j], end=path[j + 1],
+                                start=(cx, cy), end=(trunk_x, cy),
                                 stroke=color, stroke_width=1.8))
-                    for pt in coords:
-                        dwg.add(dwg.circle(center=pt, r=3.5, fill=color))
-                    lx = (coords[0][0] + coords[-1][0]) // 2
-                    ly = min(ys) - 10
-                    label_w = len(name) * 5 + 8
+                        dwg.add(dwg.circle(center=(cx, cy), r=3.5, fill=color))
+                    # Junction dots where stubs meet the trunk
+                    for cy in ys:
+                        if cy != y_min and cy != y_max:
+                            dwg.add(dwg.circle(center=(trunk_x, cy), r=2.4, fill=color))
+                    # Net name label — placed on the trunk, offset right, with
+                    # collision check against previously placed labels.
+                    # Try positions: trunk top, centroid, bottom (in that order)
+                    # then bump alternately ±16 px until clear.
+                    label_w = len(name) * 5 + 12
+                    lx = int(trunk_x + 6)
+                    candidates = [y_min - 4, (y_min + y_max) // 2, y_max + 14]
+                    rect = (lx - 2, 0, lx + label_w, 0)
+                    chosen_ly = candidates[0]
+                    for cand in candidates:
+                        rect = (lx - 2, cand - 11, lx + label_w, cand + 4)
+                        if not any(self._rects_overlap(rect, r) for r in label_rects):
+                            chosen_ly = cand
+                            break
+                    else:
+                        # All candidates collide — bump up incrementally
+                        chosen_ly = candidates[0]
+                        for k in range(1, 6):
+                            ly = chosen_ly - k * 16
+                            rect = (lx - 2, ly - 11, lx + label_w, ly + 4)
+                            if not any(self._rects_overlap(rect, r) for r in label_rects):
+                                chosen_ly = ly
+                                break
+                    ly = chosen_ly
+                    rect = (lx - 2, ly - 11, lx + label_w, ly + 4)
                     dwg.add(dwg.rect(
                         insert=(lx - 2, ly - 11), size=(label_w, 14),
                         fill="#ffffee", stroke=color, stroke_width=0.7, rx=2))
                     dwg.add(dwg.text(
                         name, insert=(lx + 2, ly),
                         font_size=9, fill=color, font_family="monospace"))
+                    label_rects.append(rect)
             except Exception as ex:
                 logger.warning(
                     f"_draw_connections skipped net '{net.get('name','')}': {ex}")
@@ -1349,34 +1501,43 @@ class SchematicRenderer:
     def _draw_legend(self, dwg, nets: List[Dict], width: int, height: int):
         if not nets:
             return
-        lx, ly = width-185, 12
-        n = min(len(nets), 9)
-        dwg.add(dwg.rect(insert=(lx-4,ly-2), size=(185, n*16+14),
-                         fill="#fffffc", fill_opacity=0.95,
+        inset = (BORDER_MM + ZONE_REF_MM) * _PX_PER_MM
+        lx = int(width - inset - 195)
+        ly = int(inset + 12)
+        n  = min(len(nets), 9)
+        dwg.add(dwg.rect(insert=(lx - 4, ly - 2), size=(190, n * 16 + 14),
+                         fill="#fffffc", fill_opacity=0.92,
                          stroke="#aaaacc", stroke_width=1, rx=3))
-        dwg.add(dwg.text("Net", insert=(lx,ly+9),
+        dwg.add(dwg.text("Nets", insert=(lx, ly + 9),
                          font_size=9, fill="#666688",
                          font_family="monospace", font_weight="bold"))
         for i, net in enumerate(nets[:n]):
-            yy = ly+20+i*15
+            yy = ly + 22 + i * 15
             color = _net_color(net["name"])
-            dwg.add(dwg.line(start=(lx,yy), end=(lx+22,yy),
+            dwg.add(dwg.line(start=(lx, yy), end=(lx + 22, yy),
                              stroke=color, stroke_width=2.2))
-            dwg.add(dwg.circle(center=(lx+11,yy), r=2, fill=color))
-            dwg.add(dwg.text(net["name"][:22], insert=(lx+26,yy+4),
+            dwg.add(dwg.circle(center=(lx + 11, yy), r=2, fill=color))
+            dwg.add(dwg.text(net["name"][:22], insert=(lx + 26, yy + 4),
                              font_size=9, fill=color, font_family="monospace"))
         if len(nets) > 9:
-            dwg.add(dwg.text(f"… +{len(nets)-9} redes",
-                             insert=(lx, ly+22+9*15),
+            dwg.add(dwg.text(f"… +{len(nets) - 9} redes",
+                             insert=(lx, ly + 22 + 9 * 15),
                              font_size=8, fill="#888899", font_family="Arial"))
 
     def _draw_annotations(self, dwg, circuit_data: Dict, width: int, height: int):
-        drc = circuit_data.get("drc",{})
-        issues = drc.get("errors",[])
+        drc = circuit_data.get("drc", {})
+        issues = drc.get("errors", [])
+        if not issues:
+            return
+        # Anchor errors above the title block, on the left side
+        inset = (BORDER_MM + ZONE_REF_MM) * _PX_PER_MM
+        tb_top = height - inset - TITLE_BLOCK_H_MM * _PX_PER_MM
         for i, err in enumerate(issues[:3]):
-            msg = f"⚠ {err.get('code','ERR')}: {err.get('message','')}  "[:65]
-            bw = len(msg)*5+8
-            dwg.add(dwg.rect(insert=(6, height-98-i*16), size=(bw,14),
-                             fill="#fff8e0", stroke="#cc8800", stroke_width=0.7, rx=2))
-            dwg.add(dwg.text(msg, insert=(10, height-88-i*16),
+            msg = f"⚠ {err.get('code', 'ERR')}: {err.get('message', '')}  "[:70]
+            bw = len(msg) * 5 + 12
+            yy = tb_top - 22 - i * 18
+            dwg.add(dwg.rect(insert=(int(inset + 6), yy), size=(bw, 16),
+                             fill="#fff8e0", stroke="#cc8800",
+                             stroke_width=0.7, rx=2))
+            dwg.add(dwg.text(msg, insert=(int(inset + 10), yy + 12),
                              font_size=9, fill="#885500", font_family="monospace"))

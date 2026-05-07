@@ -33,6 +33,29 @@ _SMALL_TYPES = {"resistor", "capacitor", "diode", "led", "led_rgb",
 _LARGE_TYPES = {"relay", "relay_module", "ssr", "motor_driver", "l298n", "drv8825",
                 "display", "oled", "lcd", "battery", "transformer", "smps"}
 
+# ── Footprint render categories ─────────────────────────────────────────────
+# Modules with pin headers along one or both long edges (Arduino/ESP32/sensor breakouts).
+_PCB_MODULE_TYPES = _MCU_TYPES | {
+    "moisture_sensor", "hc_sr04", "ultrasonic", "ultrasonic_sensor",
+    "dht22", "dht11", "am2302",
+    "mq2", "mq135", "gas_sensor", "pir",
+    "ds3231", "ds1307", "rtc", "pcf8523",
+    "mpu6050", "mpu9250", "icm20600", "icm42688", "lsm6ds3",
+    "ina219", "ina226", "ina260", "ads1115", "ads1015",
+    "bmp280", "bme280", "bmp180", "bmp085",
+    "si7021", "htu21d", "sht31", "sht30", "aht20",
+    "vl53l0x", "tof", "apds9960",
+    "oled", "lcd", "display", "tft", "ssd1306",
+    "wifi_module", "bluetooth", "hc05", "hc_05", "nrf24l01", "lora",
+}
+_PCB_RELAY_TYPES   = {"relay", "relay_module", "ssr"}
+_PCB_DRIVER_TYPES  = {"l298n", "drv8825", "motor_driver", "a4988", "tb6600", "uln2003"}
+_PCB_TO220_TYPES   = {"lm7805", "lm317", "voltage_regulator", "regulator"}
+_PCB_TO92_TYPES    = {"transistor", "bc547", "bc557", "2n2222", "ds18b20", "lm35"}
+_PCB_AXIAL_TYPES   = {"resistor", "diode", "1n4007", "1n5819", "1n4148", "fuse", "inductor"}
+_PCB_RADIAL_TYPES  = {"capacitor", "capacitor_electrolytic", "led", "led_rgb",
+                       "varistor", "mov", "x_capacitor", "button", "buzzer"}
+
 # F3.2 — industrial footprint dimensions in mm (W × H)
 _FOOTPRINT: Dict[str, Tuple[float, float]] = {
     # Passives
@@ -558,41 +581,42 @@ def _place_components(components: List[Dict],
 
 def _board_size(components: List[Dict]) -> Tuple[float, float]:
     """
-    F3.4 — board size driven by actual zone widths and the largest vertical stack
-    (typically the relay column). No hard upper cap — boards grow as needed.
+    F3.4 — board size driven by the SUM of active zone widths + gaps + margins,
+    plus the tallest vertical stack. Grows to fit; never clips components.
     """
     if not components:
         return (60.0, 50.0)
 
-    # Per-zone widest footprint = zone column requirement
-    zone_widths: Dict[str, float] = {z: 0.0 for z in ("hv", "mcu", "sensor", "relay", "output", "other")}
-    zone_count:  Dict[str, int]   = {z: 0   for z in ("hv", "mcu", "sensor", "relay", "output", "other")}
+    zone_widths:  Dict[str, float] = {z: 0.0 for z in ("hv", "mcu", "sensor", "relay", "output", "other")}
+    zone_heights: Dict[str, float] = {z: 0.0 for z in ("hv", "mcu", "sensor", "relay", "output", "other")}
+    zone_count:   Dict[str, int]   = {z: 0   for z in ("hv", "mcu", "sensor", "relay", "output", "other")}
 
     for c in components:
         z = _pcb_zone(c)
         w, h = _fp(c.get("resolved_type", c.get("type", "")))
-        zone_widths[z] = max(zone_widths[z], w)
-        zone_count[z] += 1
+        zone_widths[z]  = max(zone_widths[z], w)
+        zone_heights[z] += h + 5.0    # vertical packing per zone (5 mm padding)
+        zone_count[z]   += 1
 
-    # Sum widths plus inter-zone gaps — solo cuenta zonas con contenido
-    gap = 12.0  # mm entre zonas con contenido
+    gap = 12.0
     margin = 8.0
-    relay_cell_extra = 22.0  # diodo+resistor a la izq del relay
+    relay_cell_extra = 22.0  # space for flyback diode + base resistor next to the relay
+
     parts: List[float] = []
     if zone_count["hv"]:     parts.append(zone_widths["hv"])
     if zone_count["mcu"]:    parts.append(zone_widths["mcu"])
+    if zone_count["sensor"]: parts.append(zone_widths["sensor"])
     if zone_count["other"]:  parts.append(zone_widths["other"])
     if zone_count["relay"]:  parts.append(zone_widths["relay"] + relay_cell_extra)
     if zone_count["output"]: parts.append(zone_widths["output"])
 
-    n = len(components)
-    board_w = max(80.0, n * 8.5)
-    board_h = max(80.0, n * 7.0)
-    if zone_count["relay"]:
-        board_w = max(board_w, zone_widths["relay"] * 3 + 40)
-    board_w = min(board_w, 250.0)
-    board_h = min(board_h, 200.0)
+    width_used  = sum(parts) + gap * max(0, len(parts) - 1) + 2 * margin
+    height_used = max(zone_heights.values()) + 2 * margin
 
+    # Floors so we never produce a comically small board, but no upper cap —
+    # large designs grow as needed; the renderer's viewBox follows the board.
+    board_w = max(80.0, width_used)
+    board_h = max(60.0, height_used)
     return (round(board_w, 1), round(board_h, 1))
 
 
@@ -701,6 +725,337 @@ def _trace_color(layer: str, net_name: str) -> str:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Footprint renderers (per package family)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Approximate pin counts for common modules — used only to space the visible
+# header strip. The traces still use the real net data.
+_SENSOR_PIN_COUNT: Dict[str, int] = {
+    "dht22": 4, "dht11": 4, "am2302": 4,
+    "mq2": 4, "mq135": 4, "gas_sensor": 4,
+    "pir": 3,
+    "moisture_sensor": 3,
+    "hc_sr04": 4, "ultrasonic": 4, "ultrasonic_sensor": 4,
+    "ds18b20": 3, "lm35": 3,
+    "ds3231": 6, "ds1307": 5, "rtc": 6, "pcf8523": 6,
+    "mpu6050": 8, "mpu9250": 8, "icm20600": 8,
+    "ina219": 6, "ina226": 6, "ads1115": 6, "ads1015": 6,
+    "vl53l0x": 6, "tof": 6,
+    "bmp280": 6, "bme280": 8, "bmp180": 6, "bmp085": 6,
+    "si7021": 4, "htu21d": 4, "sht31": 4, "sht30": 4, "aht20": 4,
+    "oled": 4, "lcd": 16, "ssd1306": 4, "tft": 8,
+    "wifi_module": 4, "bluetooth": 6, "hc05": 6, "hc_05": 6,
+    "nrf24l01": 8, "lora": 8,
+}
+
+
+def _is_gnd_component(comp: Dict, nets: List[Dict]) -> bool:
+    cid = comp["id"]
+    return any(
+        any(n.split(".")[0] == cid for n in net.get("nodes", []))
+        and any(v in net.get("name", "").lower() for v in ("gnd", "ground"))
+        for net in nets
+    )
+
+
+def _draw_module_footprint(svg: List[str], ctype: str,
+                           cx: float, cy: float, w: float, h: float) -> None:
+    """Module breakout: dark sub-PCB body + gold pin headers along the long edge(s).
+
+    MCUs, motor-drivers and displays get pins on BOTH long edges (DIP-style).
+    Sensors get pins on a single long edge (typical breakout).
+    Adds a USB silver block on Arduino/ESP32 family.
+    """
+    hw, hh = w / 2, h / 2
+    is_mcu = ctype in _MCU_TYPES
+    has_usb = ctype in {"arduino_uno", "arduino_nano", "arduino_mega",
+                        "arduino_micro", "esp32", "esp8266", "stm32",
+                        "pico", "raspberry_pi_pico", "rp2040"}
+    body_color = "#0a1f3a" if is_mcu else ("#222244" if ctype in _PCB_DRIVER_TYPES
+                                            else "#181818")
+    # Sub-PCB body
+    svg.append(
+        f'<rect x="{cx-hw:.3f}" y="{cy-hh:.3f}" width="{w:.3f}" height="{h:.3f}" '
+        f'fill="{body_color}" stroke="#000" stroke-width="0.18" rx="0.6"/>'
+    )
+
+    # Pin header layout
+    long_axis_x = w >= h
+    double_row = is_mcu or ctype in _PCB_DRIVER_TYPES or ctype in {
+        "oled", "lcd", "display", "tft", "ssd1306"
+    }
+    pitch = 2.54
+    if long_axis_x:
+        avail = max(w - 2.0, 1.0)
+    else:
+        avail = max(h - 2.0, 1.0)
+
+    if is_mcu:
+        n_pins = max(6, min(int(avail / pitch), 20))
+    else:
+        n_pins = _SENSOR_PIN_COUNT.get(ctype, max(3, min(int(avail / pitch), 6)))
+
+    actual_pitch = avail / max(n_pins, 1)
+
+    if long_axis_x:
+        pad_w, pad_h = min(actual_pitch * 0.55, 1.6), 1.1
+        ys = ([cy - hh + 0.4, cy + hh - 0.4 - pad_h] if double_row
+              else [cy + hh - 0.4 - pad_h])
+        for i in range(n_pins):
+            px_ = cx - avail / 2 + actual_pitch * (i + 0.5)
+            for py_ in ys:
+                svg.append(
+                    f'<rect x="{px_-pad_w/2:.3f}" y="{py_:.3f}" '
+                    f'width="{pad_w:.3f}" height="{pad_h:.3f}" '
+                    f'class="pad-header" rx="0.15"/>'
+                )
+    else:
+        pad_w, pad_h = 1.1, min(actual_pitch * 0.55, 1.6)
+        xs = ([cx - hw + 0.4, cx + hw - 0.4 - pad_w] if double_row
+              else [cx - hw + 0.4])
+        for i in range(n_pins):
+            py_ = cy - avail / 2 + actual_pitch * (i + 0.5)
+            for px_ in xs:
+                svg.append(
+                    f'<rect x="{px_:.3f}" y="{py_-pad_h/2:.3f}" '
+                    f'width="{pad_w:.3f}" height="{pad_h:.3f}" '
+                    f'class="pad-header" rx="0.15"/>'
+                )
+
+    # USB connector (silver block jutting out of one short edge)
+    if has_usb:
+        usb_w = min((w if not long_axis_x else h) * 0.45, 9.0)
+        usb_d = 4.0
+        if long_axis_x:
+            ux, uy = cx - hw + 4, cy
+            svg.append(
+                f'<rect x="{ux-usb_d/2:.3f}" y="{uy-usb_w/2:.3f}" '
+                f'width="{usb_d:.3f}" height="{usb_w:.3f}" '
+                f'fill="#bcbcbc" stroke="#444" stroke-width="0.12" rx="0.3"/>'
+            )
+        else:
+            ux, uy = cx, cy - hh + 4
+            svg.append(
+                f'<rect x="{ux-usb_w/2:.3f}" y="{uy-usb_d/2:.3f}" '
+                f'width="{usb_w:.3f}" height="{usb_d:.3f}" '
+                f'fill="#bcbcbc" stroke="#444" stroke-width="0.12" rx="0.3"/>'
+            )
+
+    # Pin1 marker — small white dot at top-left inside the body
+    svg.append(
+        f'<circle cx="{cx-hw+1.0:.3f}" cy="{cy-hh+1.0:.3f}" r="0.32" class="pin1-mark"/>'
+    )
+
+    # Module type label (centered, low-key)
+    fs = max(1.4, min(2.6, min(w, h) * 0.18))
+    label = ctype.upper().replace("_", " ")[:14]
+    svg.append(
+        f'<text x="{cx:.3f}" y="{cy+fs*0.35:.3f}" font-size="{fs:.2f}" '
+        f'fill="#88aacc" text-anchor="middle" font-family="monospace" '
+        f'font-weight="bold">{label}</text>'
+    )
+
+
+def _draw_relay_footprint(svg: List[str], cx: float, cy: float,
+                          w: float, h: float) -> None:
+    """Relay module: blue body + 5/6 pin headers on long bottom edge + RELAY silkscreen."""
+    hw, hh = w / 2, h / 2
+    svg.append(
+        f'<rect x="{cx-hw:.3f}" y="{cy-hh:.3f}" width="{w:.3f}" height="{h:.3f}" '
+        f'fill="#1f3fa0" stroke="#0c1f5a" stroke-width="0.18" rx="0.6"/>'
+    )
+    # Top label band (lighter blue)
+    band_h = h * 0.20
+    svg.append(
+        f'<rect x="{cx-hw+0.4:.3f}" y="{cy-hh+0.4:.3f}" '
+        f'width="{w-0.8:.3f}" height="{band_h:.3f}" '
+        f'fill="#2a52c0" rx="0.4"/>'
+    )
+    # Coil indicator on body
+    svg.append(
+        f'<circle cx="{cx:.3f}" cy="{cy:.3f}" r="{min(w,h)*0.15:.3f}" '
+        f'fill="none" stroke="#88aaff" stroke-width="0.25"/>'
+    )
+    # Pin headers on bottom edge
+    pitch = 5.0
+    avail = max(w - 2.0, 1.0)
+    n_pins = 5 if avail >= 5 * pitch else max(3, int(avail / pitch))
+    actual_pitch = avail / max(n_pins, 1)
+    pad_w, pad_h = 1.6, 1.4
+    py_ = cy + hh - 0.4 - pad_h
+    for i in range(n_pins):
+        px_ = cx - avail / 2 + actual_pitch * (i + 0.5)
+        svg.append(
+            f'<rect x="{px_-pad_w/2:.3f}" y="{py_:.3f}" '
+            f'width="{pad_w:.3f}" height="{pad_h:.3f}" '
+            f'class="pad-header" rx="0.2"/>'
+        )
+    # Pin1 dot
+    svg.append(
+        f'<circle cx="{cx-hw+1.0:.3f}" cy="{cy-hh+1.0:.3f}" r="0.32" class="pin1-mark"/>'
+    )
+    # RELAY silkscreen
+    fs = max(1.6, min(2.8, min(w, h) * 0.22))
+    svg.append(
+        f'<text x="{cx:.3f}" y="{cy+fs*0.35:.3f}" font-size="{fs:.2f}" '
+        f'fill="#ffffff" text-anchor="middle" font-family="monospace" '
+        f'font-weight="bold">RELAY</text>'
+    )
+
+
+def _draw_to220_footprint(svg: List[str], cx: float, cy: float,
+                          w: float, h: float) -> None:
+    """TO-220 (LM78xx, LM317): heatsink tab on top + black body + 3 vertical THT pads."""
+    hw, hh = w / 2, h / 2
+    body_top = cy - hh + h * 0.40
+    body_h = h * 0.45
+    # Heatsink tab (silver)
+    tab_h = h * 0.40
+    tab_w = w * 0.85
+    svg.append(
+        f'<rect x="{cx-tab_w/2:.3f}" y="{cy-hh:.3f}" '
+        f'width="{tab_w:.3f}" height="{tab_h:.3f}" '
+        f'fill="#888888" stroke="#444" stroke-width="0.12" rx="0.3"/>'
+    )
+    # Mounting hole
+    svg.append(
+        f'<circle cx="{cx:.3f}" cy="{cy-hh+tab_h*0.5:.3f}" '
+        f'r="{tab_h*0.20:.3f}" fill="#0a1a0a" stroke="#444" stroke-width="0.1"/>'
+    )
+    # Body (black plastic)
+    svg.append(
+        f'<rect x="{cx-hw:.3f}" y="{body_top:.3f}" width="{w:.3f}" height="{body_h:.3f}" '
+        f'fill="#1a1a1a" stroke="#444" stroke-width="0.15" rx="0.4"/>'
+    )
+    # 3 THT pads at bottom (GND | Vin | Vout for LM78xx)
+    pad_y = cy + hh - 0.7
+    for dx in [-w * 0.3, 0.0, w * 0.3]:
+        svg.append(
+            f'<circle cx="{cx+dx:.3f}" cy="{pad_y:.3f}" r="0.85" class="pad-tht"/>'
+        )
+        svg.append(
+            f'<circle cx="{cx+dx:.3f}" cy="{pad_y:.3f}" r="0.38" class="pad-drill"/>'
+        )
+
+
+def _draw_to92_footprint(svg: List[str], cx: float, cy: float,
+                         w: float, h: float) -> None:
+    """TO-92 (BC547, 2N2222): half-circle silhouette + 3 small THT pads."""
+    r = min(w, h) * 0.45
+    hh = h / 2
+    # Half-circle body (D-shape, flat side facing forward)
+    svg.append(
+        f'<path d="M {cx-r:.3f} {cy-r*0.3:.3f} '
+        f'A {r:.3f} {r:.3f} 0 0 1 {cx+r:.3f} {cy-r*0.3:.3f} '
+        f'L {cx+r:.3f} {cy+r*0.5:.3f} L {cx-r:.3f} {cy+r*0.5:.3f} Z" '
+        f'fill="#1a1a1a" stroke="#444" stroke-width="0.12"/>'
+    )
+    # 3 pads (E B C) along bottom
+    pad_y = cy + hh * 0.55
+    for dx in [-w * 0.25, 0.0, w * 0.25]:
+        svg.append(
+            f'<circle cx="{cx+dx:.3f}" cy="{pad_y:.3f}" r="0.55" class="pad-tht"/>'
+        )
+        svg.append(
+            f'<circle cx="{cx+dx:.3f}" cy="{pad_y:.3f}" r="0.24" class="pad-drill"/>'
+        )
+
+
+def _draw_axial_footprint(svg: List[str], ctype: str, cx: float, cy: float,
+                          w: float, h: float, is_gnd: bool) -> None:
+    """Axial passive (resistor/diode/inductor): pill-shaped body + 2 THT pads at extremes."""
+    hw, hh = w / 2, h / 2
+    body_w = w * 0.62
+    body_h = h * 0.85
+    body_color = _body_color(ctype)
+    rx = body_h * 0.5
+    # Body
+    svg.append(
+        f'<rect x="{cx-body_w/2:.3f}" y="{cy-body_h/2:.3f}" '
+        f'width="{body_w:.3f}" height="{body_h:.3f}" '
+        f'fill="{body_color}" stroke="#1a0a00" stroke-width="0.10" rx="{rx:.3f}"/>'
+    )
+    # Resistor color bands (just visual indicators, not values)
+    if ctype == "resistor":
+        for dx in [-body_w * 0.22, -body_w * 0.07, body_w * 0.07, body_w * 0.22]:
+            svg.append(
+                f'<rect x="{cx+dx-0.18:.3f}" y="{cy-body_h*0.45:.3f}" '
+                f'width="0.36" height="{body_h*0.9:.3f}" fill="#1a1a1a"/>'
+            )
+    # Diode cathode band
+    if ctype in ("diode", "1n4007", "1n5819", "1n4148"):
+        svg.append(
+            f'<rect x="{cx+body_w*0.20:.3f}" y="{cy-body_h*0.45:.3f}" '
+            f'width="0.55" height="{body_h*0.9:.3f}" fill="#ffffff"/>'
+        )
+    # Two THT pads at the lead extremes
+    cls = "pad-tht-gnd" if is_gnd else "pad-tht"
+    for px_ in [cx - hw + 0.7, cx + hw - 0.7]:
+        svg.append(
+            f'<circle cx="{px_:.3f}" cy="{cy:.3f}" r="0.85" class="{cls}"/>'
+        )
+        svg.append(
+            f'<circle cx="{px_:.3f}" cy="{cy:.3f}" r="0.38" class="pad-drill"/>'
+        )
+
+
+def _draw_radial_footprint(svg: List[str], ctype: str, cx: float, cy: float,
+                           w: float, h: float, is_gnd: bool) -> None:
+    """Radial passive (cap/LED/varistor/button): round body + 2 close-spaced THT pads."""
+    r = min(w, h) * 0.42
+    body_color = _body_color(ctype)
+    svg.append(
+        f'<circle cx="{cx:.3f}" cy="{cy:.3f}" r="{r:.3f}" '
+        f'fill="{body_color}" stroke="#0a0a0a" stroke-width="0.12"/>'
+    )
+    # Polarity stripe for electrolytic cap (white arc on the negative side)
+    if ctype == "capacitor_electrolytic":
+        svg.append(
+            f'<path d="M {cx-r*0.78:.3f} {cy-r*0.55:.3f} '
+            f'A {r*0.92:.3f} {r*0.92:.3f} 0 0 0 '
+            f'{cx-r*0.78:.3f} {cy+r*0.55:.3f}" '
+            f'fill="none" stroke="#cccccc" stroke-width="0.20"/>'
+        )
+    # LED dome dot
+    if ctype in ("led", "led_rgb"):
+        svg.append(
+            f'<circle cx="{cx-r*0.25:.3f}" cy="{cy-r*0.25:.3f}" r="{r*0.18:.3f}" '
+            f'fill="#ffffff" fill-opacity="0.55"/>'
+        )
+    # 2 THT pads
+    cls = "pad-tht-gnd" if is_gnd else "pad-tht"
+    for px_ in [cx - w * 0.30, cx + w * 0.30]:
+        svg.append(
+            f'<circle cx="{px_:.3f}" cy="{cy:.3f}" r="0.75" class="{cls}"/>'
+        )
+        svg.append(
+            f'<circle cx="{px_:.3f}" cy="{cy:.3f}" r="0.32" class="pad-drill"/>'
+        )
+
+
+def _draw_generic_footprint(svg: List[str], ctype: str, cx: float, cy: float,
+                            w: float, h: float, is_gnd: bool) -> None:
+    """Fallback: rounded-rect body + 2 THT pads + pin1 dot."""
+    hw, hh = w / 2, h / 2
+    body_color = _body_color(ctype)
+    svg.append(
+        f'<rect x="{cx-hw:.3f}" y="{cy-hh:.3f}" width="{w:.3f}" height="{h:.3f}" '
+        f'fill="{body_color}" stroke="#222" stroke-width="0.18" rx="0.4"/>'
+    )
+    cls = "pad-tht-gnd" if is_gnd else "pad-tht"
+    for px_ in [cx - w * 0.32, cx + w * 0.32]:
+        svg.append(
+            f'<circle cx="{px_:.3f}" cy="{cy:.3f}" r="0.85" class="{cls}"/>'
+        )
+        svg.append(
+            f'<circle cx="{px_:.3f}" cy="{cy:.3f}" r="0.38" class="pad-drill"/>'
+        )
+    svg.append(
+        f'<circle cx="{cx-hw+1.0:.3f}" cy="{cy-hh+1.0:.3f}" r="0.30" class="pin1-mark"/>'
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # PCBRenderer class
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -721,11 +1076,21 @@ class PCBRenderer:
             traces     = routing    # alias for drawing code
 
             board_w, board_h = _board_size(components)
+            # Grow (never shrink) the board to fit any component placed past
+            # the initial estimate — clipping was hiding off-board parts before.
             if positions:
-                max_x = max(p[0] for p in positions.values()) + 12.0
-                max_y = max(p[1] for p in positions.values()) + 12.0
-                board_w = min(board_w, max(50.0, max_x))
-                board_h = min(board_h, max(50.0, max_y))
+                max_x = max(
+                    p[0] + _fp(c.get("resolved_type", c.get("type", "")))[0] / 2
+                    for c in components
+                    for p in [positions.get(c["id"], (0, 0))]
+                ) + 4.0
+                max_y = max(
+                    p[1] + _fp(c.get("resolved_type", c.get("type", "")))[1] / 2
+                    for c in components
+                    for p in [positions.get(c["id"], (0, 0))]
+                ) + 4.0
+                board_w = max(board_w, max_x)
+                board_h = max(board_h, max_y)
 
             # DRC error component IDs for highlighting
             drc = circuit_data.get("drc", {})
@@ -733,13 +1098,19 @@ class PCBRenderer:
                 e.get("component", "") for e in drc.get("errors", []) if e.get("component")
             }
 
-            pw = board_w * self.mm2px
-            ph = board_h * self.mm2px
+            # Add a 42mm side panel on the right for legend / DRC / info
+            # so they never overlap copper. Bottom strip 8mm for board info.
+            side_panel = 42.0
+            bot_panel  = 8.0
+            view_w = board_w + side_panel + 6
+            view_h = board_h + bot_panel + 6
+            pw = view_w * self.mm2px
+            ph = view_h * self.mm2px
 
             svg = [
                 f'<svg xmlns="http://www.w3.org/2000/svg" '
                 f'width="{pw:.1f}" height="{ph:.1f}" '
-                f'viewBox="-5 -5 {board_w+10:.2f} {board_h+10:.2f}">',
+                f'viewBox="-3 -3 {view_w:.2f} {view_h:.2f}">',
                 '<defs>',
                 # 45-degree hatch for GND copper pour
                 '  <pattern id="gnd-hatch" patternUnits="userSpaceOnUse" '
@@ -761,6 +1132,21 @@ class PCBRenderer:
                 '    <stop offset="0%" stop-color="#e8d070"/>',
                 '    <stop offset="100%" stop-color="#906000"/>',
                 '  </radialGradient>',
+                # CSS for pads, silkscreen, courtyards
+                '  <style>',
+                '    .pad-smd  { fill:#daa520; stroke:#704c00; stroke-width:0.06; }',
+                '    .pad-smd-gnd { fill:#b87333; stroke:#5a3920; stroke-width:0.06; }',
+                '    .pad-tht  { fill:#daa520; stroke:#5a3920; stroke-width:0.08; }',
+                '    .pad-tht-gnd { fill:#b87333; stroke:#5a3920; stroke-width:0.08; }',
+                '    .pad-drill   { fill:#0a1a0a; }',
+                '    .pad-header  { fill:#e8c060; stroke:#704c00; stroke-width:0.05; }',
+                '    .silk      { fill:#ffffff; font-family:monospace; }',
+                '    .silk-line { stroke:#ffffff; stroke-width:0.18; fill:none; }',
+                '    .silk-thin { stroke:#ffffff; stroke-width:0.10; fill:none; }',
+                '    .pin1-mark { fill:#ffffff; stroke:none; }',
+                '    .courtyard { fill:none; stroke:#ffcc00; stroke-width:0.12; '
+                '                 stroke-dasharray:0.6,0.4; }',
+                '  </style>',
                 '</defs>',
                 f'<!-- PCB: {circuit_data.get("name","Circuit")} — {len(components)} comps -->',
                 # FR4 board fill
@@ -878,130 +1264,160 @@ class PCBRenderer:
             )
             svg.append(f'<circle cx="{vx:.2f}" cy="{vy:.2f}" r="0.32" fill="#0a1a0a"/>')
 
-        # ── Components: footprints, pads, courtyard, silkscreen ───────────────
+        # ── Components: courtyard + dispatcher + silkscreen ──────────────────
         svg.append('<!-- Components -->')
+        nets_local = circuit_data.get("nets", [])
         for comp in components:
             cid    = comp["id"]
             ctype  = comp.get("resolved_type", comp.get("type", "generic")).lower()
             cx, cy = positions.get(cid, (board_w / 2, board_h / 2))
             w, h   = _fp(ctype)
             hw, hh = w / 2, h / 2
-
             is_drc_error = cid in drc_error_comps
-            body_color   = _body_color(ctype)
-            border_color = "#ff3333" if is_drc_error else "#daa520"
-            border_w     = 0.5 if is_drc_error else 0.2
+            is_gnd = _is_gnd_component(comp, nets_local)
 
-            cy_off = 0.5
+            # Courtyard (dashed yellow, 0.5mm clearance)
             svg.append(
-                f'<rect x="{cx-hw-cy_off:.3f}" y="{cy-hh-cy_off:.3f}" '
-                f'width="{w+cy_off*2:.3f}" height="{h+cy_off*2:.3f}" '
-                f'fill="none" stroke="#ffcc00" stroke-width="0.15" stroke-dasharray="0.6,0.4"/>'
-            )
-            svg.append(
-                f'<rect x="{cx-hw:.3f}" y="{cy-hh:.3f}" width="{w:.3f}" height="{h:.3f}" '
-                f'fill="none" stroke="white" stroke-width="0.12" stroke-dasharray="1,0.5" opacity="0.6"/>'
-            )
-            svg.append(
-                f'<rect x="{cx-hw:.3f}" y="{cy-hh:.3f}" width="{w:.3f}" height="{h:.3f}" '
-                f'fill="{body_color}" stroke="{border_color}" stroke-width="{border_w:.2f}" rx="0.5"'
-                + (' filter="url(#glow)"' if is_drc_error else '') + '/>'
-            )
-            svg.append(
-                f'<polygon points="{cx-hw:.2f},{cy-hh:.2f} {cx-hw+1.8:.2f},{cy-hh:.2f} '
-                f'{cx-hw:.2f},{cy-hh+1.8:.2f}" fill="#daa520" fill-opacity="0.8"/>'
+                f'<rect x="{cx-hw-0.5:.3f}" y="{cy-hh-0.5:.3f}" '
+                f'width="{w+1:.3f}" height="{h+1:.3f}" class="courtyard"/>'
             )
 
-            if ctype in _MCU_TYPES or ctype in _LARGE_TYPES:
-                n_pins    = max(2, min(8, int(h / 2.5)))
-                pad_pitch = h / (n_pins + 1)
-                for side_x in [cx - hw, cx + hw]:
-                    for i in range(1, n_pins + 1):
-                        py_ = cy - hh + i * pad_pitch
-                        svg.append(
-                            f'<rect x="{side_x-0.5:.3f}" y="{py_-0.7:.3f}" '
-                            f'width="1.0" height="1.4" class="pad-smd" rx="0.2"/>'
-                        )
+            # Dispatch by package family
+            if ctype in _PCB_RELAY_TYPES:
+                _draw_relay_footprint(svg, cx, cy, w, h)
+            elif ctype in _PCB_MODULE_TYPES or ctype in _PCB_DRIVER_TYPES:
+                _draw_module_footprint(svg, ctype, cx, cy, w, h)
+            elif ctype in _PCB_TO220_TYPES:
+                _draw_to220_footprint(svg, cx, cy, w, h)
+            elif ctype in _PCB_TO92_TYPES:
+                _draw_to92_footprint(svg, cx, cy, w, h)
+            elif ctype in _PCB_AXIAL_TYPES:
+                _draw_axial_footprint(svg, ctype, cx, cy, w, h, is_gnd)
+            elif ctype in _PCB_RADIAL_TYPES:
+                _draw_radial_footprint(svg, ctype, cx, cy, w, h, is_gnd)
             else:
-                is_gnd_comp = any(
-                    any(n.split(".")[0] == cid for n in net.get("nodes", []))
-                    and "gnd" in net.get("name", "").lower()
-                    for net in nets
-                )
-                pad_r_outer = 0.9
-                pad_r_inner = 0.4
-                pad_color   = "#b87333" if is_gnd_comp else "#daa520"
-                for px_, py_ in [(cx - w * 0.3, cy), (cx + w * 0.3, cy)]:
-                    svg.append(
-                        f'<circle cx="{px_:.3f}" cy="{py_:.3f}" r="{pad_r_outer:.2f}" '
-                        f'fill="{pad_color}" stroke="#111" stroke-width="0.1"/>'
-                    )
-                    svg.append(
-                        f'<circle cx="{px_:.3f}" cy="{py_:.3f}" r="{pad_r_inner:.2f}" fill="#0a1a0a"/>'
-                    )
+                _draw_generic_footprint(svg, ctype, cx, cy, w, h, is_gnd)
 
-            fs = max(1.2, min(2.5, w * 0.30))
-            svg.append(
-                f'<text x="{cx:.3f}" y="{cy-hh-0.6:.3f}" '
-                f'font-size="{fs:.2f}" fill="white" text-anchor="middle" '
-                f'font-family="monospace" class="silkscreen">{cid}</text>'
-            )
-            comp_name = (comp.get("name", "") or "")[:10]
-            if comp_name:
-                fs2 = max(0.9, min(1.8, w * 0.22))
-                svg.append(
-                    f'<text x="{cx:.3f}" y="{cy+0.5:.3f}" '
-                    f'font-size="{fs2:.2f}" fill="white" fill-opacity="0.7" '
-                    f'text-anchor="middle" dominant-baseline="middle" '
-                    f'font-family="monospace">{comp_name}</text>'
-                )
+            # DRC error overlay (red glow around courtyard)
             if is_drc_error:
+                svg.append(
+                    f'<rect x="{cx-hw-0.3:.3f}" y="{cy-hh-0.3:.3f}" '
+                    f'width="{w+0.6:.3f}" height="{h+0.6:.3f}" '
+                    f'fill="none" stroke="#ff3333" stroke-width="0.45" '
+                    f'filter="url(#drc-glow)" rx="0.5"/>'
+                )
                 svg.append(
                     f'<rect x="{cx+hw-3:.3f}" y="{cy-hh:.3f}" width="3" height="2.2" '
                     f'fill="#ff3333" rx="0.4"/>'
                 )
                 svg.append(
                     f'<text x="{cx+hw-1.5:.3f}" y="{cy-hh+1.6:.3f}" '
-                    f'font-size="1.4" fill="white" text-anchor="middle" font-weight="bold">!</text>'
+                    f'font-size="1.4" fill="white" text-anchor="middle" '
+                    f'font-weight="bold">!</text>'
                 )
 
-        # ── Legend ────────────────────────────────────────────────────────────
-        drc = circuit_data.get("drc", {})
-        svg.append('<!-- Legend -->')
-        legend_x = board_w - 38.0
-        legend_y = 3.0
-        svg.append(
-            f'<rect x="{legend_x:.2f}" y="{legend_y:.2f}" width="36" height="18" '
-            f'fill="#0d1a0d" fill-opacity="0.85" stroke="#336633" stroke-width="0.2" rx="1"/>'
-        )
-        for i, (color, label) in enumerate([
-            ("#daa520", "Top copper (señales)"),
-            ("#b87333", "Bottom copper (GND/VCC)"),
-            ("#888888", "Vias"),
-        ]):
-            ly = legend_y + 3.5 + i * 4.5
-            svg.append(f'<line x1="{legend_x+2:.2f}" y1="{ly:.2f}" x2="{legend_x+8:.2f}" y2="{ly:.2f}" '
-                       f'stroke="{color}" stroke-width="1"/>')
-            svg.append(f'<text x="{legend_x+10:.2f}" y="{ly+0.6:.2f}" font-size="2" '
-                       f'fill="#88cc88" font-family="monospace">{label}</text>')
+            # Silkscreen — ref designator above body, value below
+            ref_size = max(2.0, min(3.4, min(w, h) * 0.30))
+            svg.append(
+                f'<text x="{cx:.3f}" y="{cy-hh-0.9:.3f}" '
+                f'font-size="{ref_size:.2f}" class="silk" '
+                f'text-anchor="middle" font-weight="bold">{cid}</text>'
+            )
+            val  = comp.get("value", "")
+            unit = comp.get("unit", "")
+            if val:
+                vsz = max(1.2, min(1.9, min(w, h) * 0.20))
+                svg.append(
+                    f'<text x="{cx:.3f}" y="{cy+hh+vsz+0.3:.3f}" '
+                    f'font-size="{vsz:.2f}" class="silk" '
+                    f'fill-opacity="0.85" text-anchor="middle">{val}{unit}</text>'
+                )
 
-        # ── DRC summary ───────────────────────────────────────────────────────
+        # ── Side panel: Legend + DRC + Info (off-board, never overlaps copper) ──
+        drc = circuit_data.get("drc", {})
         n_err     = len(drc.get("errors", []))
         drc_color = "#ff4444" if n_err else "#44ff44"
         drc_text  = f"DRC: {n_err} error(es)" if n_err else "DRC: OK"
+
+        sp_x = board_w + 4
+        sp_w = 38.0
+        svg.append('<!-- Side panel -->')
         svg.append(
-            f'<rect x="1" y="{board_h-4:.2f}" width="30" height="3" '
-            f'fill="{drc_color}" fill-opacity="0.2" rx="0.5"/>'
+            f'<rect x="{sp_x:.2f}" y="0" width="{sp_w:.2f}" height="{board_h:.2f}" '
+            f'fill="#0d1a0d" fill-opacity="0.92" stroke="#336633" stroke-width="0.25" rx="1"/>'
+        )
+        # Title
+        svg.append(
+            f'<text x="{sp_x+sp_w/2:.2f}" y="3.6" font-size="2.2" fill="#aaffaa" '
+            f'text-anchor="middle" font-family="monospace" font-weight="bold">PCB INFO</text>'
         )
         svg.append(
-            f'<text x="2" y="{board_h-2:.2f}" font-size="1.8" fill="{drc_color}" '
-            f'font-family="monospace">{drc_text}</text>'
+            f'<line x1="{sp_x+1.5:.2f}" y1="5.0" x2="{sp_x+sp_w-1.5:.2f}" y2="5.0" '
+            f'stroke="#336633" stroke-width="0.2"/>'
+        )
+        # DRC badge
+        svg.append(
+            f'<rect x="{sp_x+1.5:.2f}" y="6.5" width="{sp_w-3:.2f}" height="4" '
+            f'fill="{drc_color}" fill-opacity="0.25" stroke="{drc_color}" '
+            f'stroke-width="0.2" rx="0.5"/>'
         )
         svg.append(
-            f'<text x="{board_w/2:.2f}" y="{board_h-0.8:.2f}" '
-            f'font-size="1.4" fill="#88cc88" text-anchor="middle" font-family="monospace">'
-            f'Stratum PCB · {circuit_data.get("name","")[:35]} · '
-            f'{board_w:.0f}×{board_h:.0f}mm · {len(components)} comps</text>'
+            f'<text x="{sp_x+sp_w/2:.2f}" y="9.6" font-size="2.4" fill="{drc_color}" '
+            f'text-anchor="middle" font-family="monospace" font-weight="bold">{drc_text}</text>'
+        )
+        # Layer legend
+        for i, (color, label) in enumerate([
+            ("#daa520", "Top copper"),
+            ("#b87333", "Bottom copper"),
+            ("#888888", "Vias"),
+            ("#ffcc00", "Edge.Cuts"),
+        ]):
+            ly = 14 + i * 3.6
+            svg.append(
+                f'<line x1="{sp_x+1.8:.2f}" y1="{ly:.2f}" x2="{sp_x+8:.2f}" y2="{ly:.2f}" '
+                f'stroke="{color}" stroke-width="1.2"/>'
+            )
+            svg.append(
+                f'<text x="{sp_x+9:.2f}" y="{ly+0.7:.2f}" font-size="1.9" '
+                f'fill="#88cc88" font-family="monospace">{label}</text>'
+            )
+        # Stats block
+        stats_y = 30
+        svg.append(
+            f'<line x1="{sp_x+1.5:.2f}" y1="{stats_y-1.5:.2f}" '
+            f'x2="{sp_x+sp_w-1.5:.2f}" y2="{stats_y-1.5:.2f}" '
+            f'stroke="#336633" stroke-width="0.2"/>'
+        )
+        for i, (lbl, val) in enumerate([
+            ("BOARD",    f"{board_w:.0f}×{board_h:.0f} mm"),
+            ("COMPS",    str(len(components))),
+            ("NETS",     str(len(circuit_data.get("nets", [])))),
+            ("LAYERS",   "2 (Top/Bot)"),
+        ]):
+            sy = stats_y + i * 3.6
+            svg.append(
+                f'<text x="{sp_x+1.8:.2f}" y="{sy:.2f}" font-size="1.6" '
+                f'fill="#669966" font-family="monospace">{lbl}</text>'
+            )
+            svg.append(
+                f'<text x="{sp_x+sp_w-1.8:.2f}" y="{sy:.2f}" font-size="1.9" '
+                f'fill="#aaffaa" font-family="monospace" text-anchor="end">{val}</text>'
+            )
+        # Bottom strip — title block
+        bot_y = board_h + 1
+        svg.append(
+            f'<rect x="0" y="{bot_y:.2f}" width="{board_w + 4 + sp_w:.2f}" height="6" '
+            f'fill="#0d1a0d" stroke="#336633" stroke-width="0.2" rx="0.5"/>'
+        )
+        svg.append(
+            f'<text x="2" y="{bot_y+4:.2f}" font-size="2.0" fill="#aaffaa" '
+            f'font-family="monospace" font-weight="bold">'
+            f'STRATUM PCB</text>'
+        )
+        svg.append(
+            f'<text x="{board_w/2:.2f}" y="{bot_y+4:.2f}" font-size="1.8" '
+            f'fill="#88cc88" text-anchor="middle" font-family="monospace">'
+            f'{circuit_data.get("name","")[:50]}</text>'
         )
 
     # ── Helpers ───────────────────────────────────────────────────────────────

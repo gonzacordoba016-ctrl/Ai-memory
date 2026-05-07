@@ -4,7 +4,30 @@ Mirrors KiCad's internal separation of layout data from drawing.
 """
 
 MARGIN_MM = 10.0
-TITLE_BLOCK_H = 20.0  # height of title block at bottom
+TITLE_BLOCK_H = 32.0  # height of title block strip excluded from drawing area
+
+# Engineering frame (ISO 7200 / ANSI Y14.1 inspired)
+BORDER_MM        = 5.0    # gap between paper edge and outer frame
+ZONE_REF_MM      = 6.0    # zone reference band (between outer and inner frame)
+TITLE_BLOCK_W_MM = 180.0  # title block width (corner-anchored, bottom-right)
+TITLE_BLOCK_H_MM = 32.0   # title block height
+ZONE_COLS        = 8      # 1..8 columns
+ZONE_ROWS        = 4      # A..D rows
+
+
+def usable_drawing_area(sheet: dict) -> tuple:
+    """Returns (x_mm, y_mm, w_mm, h_mm) of the drawing area inside the inner frame.
+
+    Excludes outer border, zone reference band, and the bottom title-block strip.
+    """
+    inset = BORDER_MM + ZONE_REF_MM
+    return (
+        inset,
+        inset,
+        sheet["w"] - 2 * inset,
+        sheet["h"] - 2 * inset - TITLE_BLOCK_H_MM,
+    )
+
 
 PCB_CLEARANCE = {
     "signal":  0.2,   # mm between signal traces
