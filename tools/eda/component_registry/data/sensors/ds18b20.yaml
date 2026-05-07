@@ -1,0 +1,17 @@
+type: ds18b20
+category: sensor
+display_name: DS18B20 (temperatura One-Wire)
+aliases: [ds18b20, 18b20, dallas temperature, onewire temperatura]
+voltage: { vcc_min: 3.0, vcc_max: 5.5 }
+footprint_library: Package_TO_SOT_THT
+footprint_name: TO-92_Inline
+symbol_library: Sensor_Temperature
+symbol_name: DS18B20
+smd: false
+pins:
+  - { number: '1', name: GND, electrical_type: power_in,     functions: [GROUND] }
+  - { number: '2', name: DQ,  electrical_type: bidirectional, functions: [SIGNAL, ONEWIRE_DATA] }
+  - { number: '3', name: VDD, electrical_type: power_in,     functions: [POWER] }
+wiring_requirements:
+  - { kind: pullup, pin: DQ, target: VDD, value: 4.7k, severity: error,
+      reason: Sin pull-up el bus One-Wire nunca sube → sensor no responde. }

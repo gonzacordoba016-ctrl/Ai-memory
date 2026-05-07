@@ -1,0 +1,36 @@
+type: stm32
+category: mcu
+display_name: STM32 (genérico Blue Pill F103)
+aliases: [stm32, blue pill, stm32f103, bluepill]
+voltage:
+  vcc_min: 2.0
+  vcc_max: 3.6
+  logic: 3.3
+footprint_library: Connector_PinHeader_2.54mm
+footprint_name: PinHeader_2x20_P2.54mm_Vertical
+symbol_library: MCU_ST_STM32F1
+symbol_name: STM32F103C8Tx
+smd: true
+mcu:
+  forbidden_pins: []
+  input_only_pins: []
+  boot_strapping_pins: [PA13, PA14]  # SWD pins
+  adc_pins: [PA0, PA1, PA2, PA3, PA4, PA5, PA6, PA7, PB0, PB1]
+  pwm_pins: ['*']
+  preferred_buses:
+    i2c: { sda: PB7, scl: PB6 }
+    spi: { sck: PA5, miso: PA6, mosi: PA7, cs: PA4 }
+    uart: { tx: PA9, rx: PA10 }
+pins:
+  - { number: PA0,  name: PA0,  electrical_type: bidirectional, functions: [GPIO, ADC] }
+  - { number: PA1,  name: PA1,  electrical_type: bidirectional, functions: [GPIO, ADC] }
+  - { number: PA9,  name: PA9,  electrical_type: bidirectional, functions: [GPIO, UART_TX] }
+  - { number: PA10, name: PA10, electrical_type: bidirectional, functions: [GPIO, UART_RX] }
+  - { number: PB6,  name: PB6,  electrical_type: bidirectional, functions: [GPIO, I2C_SCL] }
+  - { number: PB7,  name: PB7,  electrical_type: bidirectional, functions: [GPIO, I2C_SDA] }
+  - { number: VCC,  name: 3V3,  electrical_type: power_in, functions: [POWER] }
+  - { number: GND,  name: GND,  electrical_type: power_in, functions: [GROUND] }
+  - { number: NRST, name: NRST, electrical_type: input,    functions: [RESET] }
+notes:
+  - Pines tipo PA0-PA15, PB0-PB15, PC13-PC15 (Blue Pill).
+  - Tolerantes a 5V solo en algunos pines — verificar datasheet.

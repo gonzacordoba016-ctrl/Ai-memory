@@ -1,0 +1,44 @@
+type: esp8266
+category: mcu
+display_name: ESP8266 NodeMCU v1.0
+aliases: [esp8266, nodemcu, nodemcu v1, esp-12, esp12]
+voltage:
+  vcc_min: 3.0
+  vcc_max: 3.6
+  logic: 3.3
+footprint_library: Module
+footprint_name: NodeMCU-v1.0
+symbol_library: RF_Module
+symbol_name: ESP-12E
+smd: true
+mcu:
+  forbidden_pins: [GPIO6, GPIO7, GPIO8, GPIO9, GPIO10, GPIO11]
+  input_only_pins: []
+  boot_strapping_pins: [GPIO0, GPIO2, GPIO15]
+  adc_pins: [A0]
+  pwm_pins: ['*']
+  preferred_buses:
+    i2c: { sda: GPIO4, scl: GPIO5 }
+    spi: { sck: GPIO14, miso: GPIO12, mosi: GPIO13, cs: GPIO15 }
+    uart: { tx: GPIO1, rx: GPIO3 }
+pins:
+  - { number: GPIO0,  name: D3,  electrical_type: bidirectional, functions: [GPIO, BOOT_STRAP] }
+  - { number: GPIO2,  name: D4,  electrical_type: bidirectional, functions: [GPIO, BOOT_STRAP, LED_BUILTIN] }
+  - { number: GPIO4,  name: D2,  electrical_type: bidirectional, functions: [GPIO, I2C_SDA] }
+  - { number: GPIO5,  name: D1,  electrical_type: bidirectional, functions: [GPIO, I2C_SCL] }
+  - { number: GPIO12, name: D6,  electrical_type: bidirectional, functions: [GPIO, SPI_MISO] }
+  - { number: GPIO13, name: D7,  electrical_type: bidirectional, functions: [GPIO, SPI_MOSI] }
+  - { number: GPIO14, name: D5,  electrical_type: bidirectional, functions: [GPIO, SPI_SCK] }
+  - { number: GPIO15, name: D8,  electrical_type: bidirectional, functions: [GPIO, BOOT_STRAP, SPI_CS] }
+  - { number: GPIO16, name: D0,  electrical_type: bidirectional, functions: [GPIO, WAKE] }
+  - { number: A0,    name: A0,  electrical_type: input,         functions: [ADC, INPUT_ONLY] }
+  - { number: VCC,   name: 3V3, electrical_type: power_in,  functions: [POWER] }
+  - { number: VIN,   name: VIN, electrical_type: power_in,  functions: [POWER] }
+  - { number: GND,   name: GND, electrical_type: power_in,  functions: [GROUND] }
+  - { number: EN,    name: EN,  electrical_type: input,     functions: [RESET] }
+wiring_requirements:
+  - { kind: bulk_cap, target: VCC, value: 100uF, severity: warning,
+      reason: WiFi peak current causa brownout sin bulk cap. }
+notes:
+  - GPIO6-11 reservados para SPI flash interno.
+  - A0 acepta solo 0-1V en el chip (el módulo trae divisor 0-3.3V).

@@ -1,0 +1,29 @@
+type: l298n
+category: ic
+display_name: L298N (driver motor DC/stepper dual hasta 2A)
+aliases: [l298n, l298, driver motor, puente h, h-bridge]
+voltage: { vcc_min: 4.5, vcc_max: 5.5, logic: 5.0 }
+footprint_library: Package_DIP
+footprint_name: DIP-16_W7.62mm
+symbol_library: Driver_Motor
+symbol_name: L298N
+smd: false
+pins:
+  - { number: '1', name: VCC,  electrical_type: power_in,  functions: [POWER] }
+  - { number: '2', name: GND,  electrical_type: power_in,  functions: [GROUND] }
+  - { number: '3', name: VS,   electrical_type: power_in,  functions: [POWER] }
+  - { number: '4', name: IN1,  electrical_type: input,     functions: [SIGNAL] }
+  - { number: '5', name: IN2,  electrical_type: input,     functions: [SIGNAL] }
+  - { number: '6', name: IN3,  electrical_type: input,     functions: [SIGNAL] }
+  - { number: '7', name: IN4,  electrical_type: input,     functions: [SIGNAL] }
+  - { number: '8', name: ENA,  electrical_type: input,     functions: [SIGNAL, PWM] }
+  - { number: '9', name: ENB,  electrical_type: input,     functions: [SIGNAL, PWM] }
+  - { number: '10', name: OUT1, electrical_type: output, functions: [POWER_OUT] }
+  - { number: '11', name: OUT2, electrical_type: output, functions: [POWER_OUT] }
+  - { number: '12', name: OUT3, electrical_type: output, functions: [POWER_OUT] }
+  - { number: '13', name: OUT4, electrical_type: output, functions: [POWER_OUT] }
+wiring_requirements:
+  - { kind: bulk_cap, target: VS, value: 470uF, severity: warning,
+      reason: Bulk cap entre VS y GND para absorber picos del motor. }
+critical:
+  - Corriente máxima 2A/canal — motores más grandes requieren TB6600.

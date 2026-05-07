@@ -1,0 +1,19 @@
+type: ds3231
+category: ic
+display_name: DS3231 (RTC alta precisión I2C)
+aliases: [ds3231, ds 3231, rtc, reloj tiempo real, real time clock, ds1307]
+voltage: { vcc_min: 3.3, vcc_max: 5.5 }
+footprint_library: Package_DIP
+footprint_name: DIP-16_W7.62mm
+symbol_library: Timer_RTC
+symbol_name: DS3231
+smd: false
+pins:
+  - { number: '1', name: VCC, electrical_type: power_in,     functions: [POWER] }
+  - { number: '2', name: GND, electrical_type: power_in,     functions: [GROUND] }
+  - { number: '3', name: SCL, electrical_type: input,         functions: [I2C_SCL] }
+  - { number: '4', name: SDA, electrical_type: bidirectional, functions: [I2C_SDA] }
+  - { number: '5', name: SQW, electrical_type: open_collector, functions: [SIGNAL] }
+notes:
+  - I2C address 0x68 (fija).
+  - Módulo trae batería CR2032 para mantener hora.

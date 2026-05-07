@@ -1,0 +1,19 @@
+type: mpu6050
+category: sensor
+display_name: MPU-6050 (acelerómetro+giroscopio I2C)
+aliases: [mpu6050, mpu-6050, mpu 6050, acelerometro, giroscopio, imu]
+voltage: { vcc_min: 3.3, vcc_max: 5.0, logic: 3.3 }
+footprint_library: Connector_PinHeader_2.54mm
+footprint_name: PinHeader_1x08_P2.54mm_Vertical
+symbol_library: Sensor_Motion
+symbol_name: MPU-6050
+smd: true
+pins:
+  - { number: '1', name: VCC, electrical_type: power_in,     functions: [POWER] }
+  - { number: '2', name: GND, electrical_type: power_in,     functions: [GROUND] }
+  - { number: '3', name: SCL, electrical_type: input,         functions: [I2C_SCL] }
+  - { number: '4', name: SDA, electrical_type: bidirectional, functions: [I2C_SDA] }
+  - { number: '5', name: AD0, electrical_type: input,         functions: [CONFIG] }
+  - { number: '6', name: INT, electrical_type: output,        functions: [SIGNAL] }
+notes:
+  - I2C address 0x68 (AD0=GND) o 0x69 (AD0=VCC).

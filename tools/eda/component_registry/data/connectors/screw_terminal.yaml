@@ -1,0 +1,13 @@
+type: connector
+category: connector
+display_name: Bornera de tornillo 2P
+aliases: [connector, terminal_block, screw_terminal, bornera, header]
+voltage: null
+footprint_library: TerminalBlock
+footprint_name: TerminalBlock_bornier-2_P5.08mm
+symbol_library: Connector
+symbol_name: Screw_Terminal_01x02
+smd: false
+pins:
+  - { number: '1', name: '1', electrical_type: passive, functions: [] }
+  - { number: '2', name: '2', electrical_type: passive, functions: [] }

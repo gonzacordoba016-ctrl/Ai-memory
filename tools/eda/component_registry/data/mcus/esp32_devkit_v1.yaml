@@ -1,0 +1,69 @@
+type: esp32
+category: mcu
+display_name: ESP32 DevKit V1 (WROOM-32)
+aliases: [esp32, esp-32, esp32 wroom, esp32_wroom_32, esp32_devkit_v1, esp32devkit]
+voltage:
+  vcc_min: 3.0
+  vcc_max: 3.6
+  logic: 3.3
+footprint_library: Module
+footprint_name: ESP32-WROOM-32
+symbol_library: RF_Module
+symbol_name: ESP32-WROOM-32
+smd: true
+mcu:
+  # GPIO6-11 conectan al SPI flash interno — usarlos cuelga el chip.
+  forbidden_pins: [GPIO6, GPIO7, GPIO8, GPIO9, GPIO10, GPIO11]
+  # Estos solo entran al chip, no manejan output.
+  input_only_pins: [GPIO34, GPIO35, GPIO36, GPIO39]
+  # Strapping pins — afectan boot al estar HIGH/LOW.
+  boot_strapping_pins: [GPIO0, GPIO2, GPIO5, GPIO12, GPIO15]
+  # ADC2 (GPIO0/2/4/12-15/25-27) no funciona con WiFi activo.
+  adc_pins: [GPIO32, GPIO33, GPIO34, GPIO35, GPIO36, GPIO39]
+  dac_pins: [GPIO25, GPIO26]
+  pwm_pins: ['*']  # cualquier GPIO (LEDC interno)
+  preferred_buses:
+    i2c: { sda: GPIO21, scl: GPIO22 }
+    spi: { sck: GPIO18, miso: GPIO19, mosi: GPIO23, cs: GPIO5 }
+    uart: { tx: GPIO1, rx: GPIO3 }
+pins:
+  - { number: GPIO0,  name: GPIO0,  electrical_type: bidirectional, functions: [GPIO, BOOT_STRAP, ADC2] }
+  - { number: GPIO1,  name: GPIO1,  electrical_type: bidirectional, functions: [GPIO, UART_TX] }
+  - { number: GPIO2,  name: GPIO2,  electrical_type: bidirectional, functions: [GPIO, BOOT_STRAP, ADC2, LED_BUILTIN] }
+  - { number: GPIO3,  name: GPIO3,  electrical_type: bidirectional, functions: [GPIO, UART_RX] }
+  - { number: GPIO4,  name: GPIO4,  electrical_type: bidirectional, functions: [GPIO, ADC2] }
+  - { number: GPIO5,  name: GPIO5,  electrical_type: bidirectional, functions: [GPIO, BOOT_STRAP, SPI_CS] }
+  - { number: GPIO12, name: GPIO12, electrical_type: bidirectional, functions: [GPIO, BOOT_STRAP, ADC2] }
+  - { number: GPIO13, name: GPIO13, electrical_type: bidirectional, functions: [GPIO, ADC2] }
+  - { number: GPIO14, name: GPIO14, electrical_type: bidirectional, functions: [GPIO, ADC2] }
+  - { number: GPIO15, name: GPIO15, electrical_type: bidirectional, functions: [GPIO, BOOT_STRAP, ADC2] }
+  - { number: GPIO16, name: GPIO16, electrical_type: bidirectional, functions: [GPIO] }
+  - { number: GPIO17, name: GPIO17, electrical_type: bidirectional, functions: [GPIO] }
+  - { number: GPIO18, name: GPIO18, electrical_type: bidirectional, functions: [GPIO, SPI_SCK] }
+  - { number: GPIO19, name: GPIO19, electrical_type: bidirectional, functions: [GPIO, SPI_MISO] }
+  - { number: GPIO21, name: GPIO21, electrical_type: bidirectional, functions: [GPIO, I2C_SDA] }
+  - { number: GPIO22, name: GPIO22, electrical_type: bidirectional, functions: [GPIO, I2C_SCL] }
+  - { number: GPIO23, name: GPIO23, electrical_type: bidirectional, functions: [GPIO, SPI_MOSI] }
+  - { number: GPIO25, name: GPIO25, electrical_type: bidirectional, functions: [GPIO, ADC2, DAC] }
+  - { number: GPIO26, name: GPIO26, electrical_type: bidirectional, functions: [GPIO, ADC2, DAC] }
+  - { number: GPIO27, name: GPIO27, electrical_type: bidirectional, functions: [GPIO, ADC2] }
+  - { number: GPIO32, name: GPIO32, electrical_type: bidirectional, functions: [GPIO, ADC1] }
+  - { number: GPIO33, name: GPIO33, electrical_type: bidirectional, functions: [GPIO, ADC1] }
+  - { number: GPIO34, name: GPIO34, electrical_type: input,         functions: [INPUT_ONLY, ADC1] }
+  - { number: GPIO35, name: GPIO35, electrical_type: input,         functions: [INPUT_ONLY, ADC1] }
+  - { number: GPIO36, name: GPIO36, electrical_type: input,         functions: [INPUT_ONLY, ADC1] }
+  - { number: GPIO39, name: GPIO39, electrical_type: input,         functions: [INPUT_ONLY, ADC1] }
+  - { number: VCC,   name: 3V3, electrical_type: power_in,  functions: [POWER] }
+  - { number: VIN,   name: VIN, electrical_type: power_in,  functions: [POWER] }
+  - { number: V5,    name: 5V,  electrical_type: power_in,  functions: [POWER] }
+  - { number: GND,   name: GND, electrical_type: power_in,  functions: [GROUND] }
+  - { number: EN,    name: EN,  electrical_type: input,     functions: [RESET] }
+wiring_requirements:
+  - { kind: bulk_cap, target: VCC, value: 100uF, severity: warning,
+      reason: WiFi genera picos de 350mA — sin bulk cap el módulo entra en brownout. }
+notes:
+  - GPIO6-11 reservados para el SPI flash interno — cualquier uso cuelga el chip.
+  - GPIO34-39 son input-only (no pueden manejar salidas).
+  - ADC2 no funciona con WiFi activo — usar GPIO32-39 para lecturas durante WiFi.
+critical:
+  - Con WiFi activo NO usar GPIO0/2/4/12-15/25-27 para ADC (ADC2 deshabilitado).

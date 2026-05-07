@@ -1,0 +1,15 @@
+type: capacitor_electrolytic
+category: passive
+display_name: Capacitor electrolítico radial
+aliases: [capacitor_electrolytic, cap_electrolytic, electrolytic, capacitor_polarized]
+voltage: null
+footprint_library: Capacitor_THT
+footprint_name: CP_Radial_D8.0mm_P3.50mm
+symbol_library: Device
+symbol_name: C_Polarized
+smd: false
+pins:
+  - { number: '1', name: '+', electrical_type: passive, functions: [POSITIVE] }
+  - { number: '2', name: '-', electrical_type: passive, functions: [NEGATIVE] }
+notes:
+  - Polaridad obligatoria — invertido se infla y revienta.

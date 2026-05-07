@@ -1,0 +1,13 @@
+type: resistor
+category: passive
+display_name: Resistor (axial THT)
+aliases: [resistor, resistencia, res]
+voltage: null
+footprint_library: Resistor_THT
+footprint_name: R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal
+symbol_library: Device
+symbol_name: R
+smd: false
+pins:
+  - { number: '1', name: '1', electrical_type: passive, functions: [] }
+  - { number: '2', name: '2', electrical_type: passive, functions: [] }

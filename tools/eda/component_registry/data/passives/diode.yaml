@@ -1,0 +1,13 @@
+type: diode
+category: passive
+display_name: Diodo rectificador (1N4007)
+aliases: [diode, 1n4007, 1n4148, 1n5819, schottky_diode, flyback_diode]
+voltage: null
+footprint_library: Diode_THT
+footprint_name: D_DO-41_SOD81_P10.16mm_Horizontal
+symbol_library: Device
+symbol_name: D
+smd: false
+pins:
+  - { number: '1', name: anode,   electrical_type: passive, functions: [POSITIVE] }
+  - { number: '2', name: cathode, electrical_type: passive, functions: [NEGATIVE] }

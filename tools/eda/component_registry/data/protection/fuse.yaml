@@ -1,0 +1,13 @@
+type: fuse
+category: passive
+display_name: Fusible 5×20mm (cartucho)
+aliases: [fuse, fusible, polyfuse, resettable_fuse]
+voltage: null
+footprint_library: Fuse
+footprint_name: Fuse_5x20mm_Holder_TE_3-1634504-1
+symbol_library: Device
+symbol_name: Fuse
+smd: false
+pins:
+  - { number: '1', name: '1', electrical_type: passive, functions: [] }
+  - { number: '2', name: '2', electrical_type: passive, functions: [] }

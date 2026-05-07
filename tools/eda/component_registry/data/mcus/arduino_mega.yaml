@@ -1,0 +1,46 @@
+type: arduino_mega
+category: mcu
+display_name: Arduino Mega 2560
+aliases: [mega, arduino mega, arduino_mega2560]
+voltage:
+  vcc_min: 4.5
+  vcc_max: 5.5
+  logic: 5.0
+footprint_library: Module
+footprint_name: Arduino_Mega2560_THT
+symbol_library: MCU_Module
+symbol_name: Arduino_Mega2560
+smd: false
+mcu:
+  forbidden_pins: []
+  input_only_pins: []
+  adc_pins: [A0, A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13, A14, A15]
+  pwm_pins: [D2, D3, D4, D5, D6, D7, D8, D9, D10, D11, D12, D13, D44, D45, D46]
+  preferred_buses:
+    i2c: { sda: D20, scl: D21 }
+    spi: { sck: D52, miso: D50, mosi: D51, cs: D53 }
+    uart: { tx: D1, rx: D0 }
+pins:
+  # D0-D53
+  - { number: D0,  name: D0,  electrical_type: bidirectional, functions: [GPIO, UART_RX] }
+  - { number: D1,  name: D1,  electrical_type: bidirectional, functions: [GPIO, UART_TX] }
+  - { number: D2,  name: D2,  electrical_type: bidirectional, functions: [GPIO, PWM, INT] }
+  - { number: D3,  name: D3,  electrical_type: bidirectional, functions: [GPIO, PWM, INT] }
+  - { number: D18, name: D18, electrical_type: bidirectional, functions: [GPIO, INT, UART1_TX] }
+  - { number: D19, name: D19, electrical_type: bidirectional, functions: [GPIO, INT, UART1_RX] }
+  - { number: D20, name: D20, electrical_type: bidirectional, functions: [GPIO, I2C_SDA] }
+  - { number: D21, name: D21, electrical_type: bidirectional, functions: [GPIO, I2C_SCL] }
+  - { number: D50, name: D50, electrical_type: bidirectional, functions: [GPIO, SPI_MISO] }
+  - { number: D51, name: D51, electrical_type: bidirectional, functions: [GPIO, SPI_MOSI] }
+  - { number: D52, name: D52, electrical_type: bidirectional, functions: [GPIO, SPI_SCK] }
+  - { number: D53, name: D53, electrical_type: bidirectional, functions: [GPIO, SPI_CS] }
+  # Power
+  - { number: VCC,   name: 5V,    electrical_type: power_out, functions: [POWER] }
+  - { number: VIN,   name: VIN,   electrical_type: power_in,  functions: [POWER] }
+  - { number: V3V3,  name: 3V3,   electrical_type: power_out, functions: [POWER] }
+  - { number: GND,   name: GND,   electrical_type: power_in,  functions: [GROUND] }
+  - { number: AREF,  name: AREF,  electrical_type: input,     functions: [REFERENCE] }
+  - { number: RESET, name: RESET, electrical_type: input,     functions: [RESET] }
+notes:
+  - 54 pines digitales (D0-D53), 16 ADC (A0-A15), 4 UART, 6 INT externos.
+  - Para validación rápida usar solo los pines explícitos; el resto se acepta por rango D0-D53/A0-A15.

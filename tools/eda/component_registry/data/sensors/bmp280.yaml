@@ -1,0 +1,22 @@
+type: bmp280
+category: sensor
+display_name: BMP280 / BME280 (presión+temperatura I2C)
+aliases: [bmp280, bme280, bmp 280, bme 280, presion barometrica]
+voltage: { vcc_min: 1.8, vcc_max: 3.6, logic: 3.3 }
+footprint_library: Connector_PinHeader_2.54mm
+footprint_name: PinHeader_1x04_P2.54mm_Vertical
+symbol_library: Sensor
+symbol_name: BMP280
+smd: true
+pins:
+  - { number: '1', name: VCC, electrical_type: power_in, functions: [POWER] }
+  - { number: '2', name: GND, electrical_type: power_in, functions: [GROUND] }
+  - { number: '3', name: SCL, electrical_type: input,         functions: [I2C_SCL, SIGNAL] }
+  - { number: '4', name: SDA, electrical_type: bidirectional, functions: [I2C_SDA, SIGNAL] }
+wiring_requirements:
+  - { kind: pullup, pin: SDA, target: VCC, value: 4.7k, severity: warning,
+      reason: Pull-up I2C en SDA si el módulo no la incluye. }
+  - { kind: pullup, pin: SCL, target: VCC, value: 4.7k, severity: warning,
+      reason: Pull-up I2C en SCL si el módulo no la incluye. }
+notes:
+  - I2C address 0x76 (SDO=GND) o 0x77 (SDO=VCC).

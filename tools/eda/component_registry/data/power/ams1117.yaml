@@ -1,0 +1,19 @@
+type: ams1117
+category: power
+display_name: AMS1117 (LDO 3.3V o 5V)
+aliases: [ams1117, ams 1117, ldo 3.3v, '1117']
+voltage: { vcc_min: 4.5, vcc_max: 15.0 }
+footprint_library: Package_TO_SOT_THT
+footprint_name: SOT-223-3_TabPin2
+symbol_library: Regulator_Linear
+symbol_name: AMS1117-3.3
+smd: true
+pins:
+  - { number: '1', name: GND, electrical_type: power_in,  functions: [GROUND] }
+  - { number: '2', name: OUT, electrical_type: power_out, functions: [POWER] }
+  - { number: '3', name: IN,  electrical_type: power_in,  functions: [POWER] }
+wiring_requirements:
+  - { kind: bypass_cap, target: IN,  value: 10uF, severity: warning }
+  - { kind: bypass_cap, target: OUT, value: 10uF, severity: warning }
+notes:
+  - Dropout ~1.2V — ideal para baterías LiPo.

@@ -1,0 +1,20 @@
+type: hc_sr04
+category: sensor
+display_name: HC-SR04 (ultrasonido distancia)
+aliases: [hc-sr04, hcsr04, hc sr04, ultrasonico, ultrasonic, sr04]
+voltage: { vcc_min: 4.5, vcc_max: 5.5, logic: 5.0 }
+footprint_library: Connector_PinHeader_2.54mm
+footprint_name: PinHeader_1x04_P2.54mm_Vertical
+symbol_library: Sensor
+symbol_name: HC-SR04
+smd: false
+pins:
+  - { number: '1', name: VCC,  electrical_type: power_in, functions: [POWER] }
+  - { number: '2', name: TRIG, electrical_type: input,    functions: [SIGNAL] }
+  - { number: '3', name: ECHO, electrical_type: output,   functions: [SIGNAL] }
+  - { number: '4', name: GND,  electrical_type: power_in, functions: [GROUND] }
+wiring_requirements:
+  - { kind: level_shifter, pin: ECHO, severity: error,
+      reason: ECHO retorna 5V — divisor 1k+2k a GND si MCU es 3.3V. }
+critical:
+  - ECHO a 5V directo en GPIO de ESP32/Pico → quema el pin (max 3.3V).

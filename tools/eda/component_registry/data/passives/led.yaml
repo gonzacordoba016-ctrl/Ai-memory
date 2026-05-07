@@ -1,0 +1,16 @@
+type: led
+category: passive
+display_name: LED 5mm THT
+aliases: [led, diodo_led, led_red, led_green, led_blue, led_yellow, led_white]
+voltage: { vcc_min: 1.8, vcc_max: 3.6 }  # forward voltage típico
+footprint_library: LED_THT
+footprint_name: LED_D5.0mm
+symbol_library: Device
+symbol_name: LED
+smd: false
+pins:
+  - { number: '1', name: anode,   electrical_type: passive, functions: [POSITIVE] }
+  - { number: '2', name: cathode, electrical_type: passive, functions: [NEGATIVE] }
+wiring_requirements:
+  - { kind: series_resistor, severity: error,
+      reason: LED sin resistencia de limitación se quema. R = (Vsupply - Vf) / 20mA. }

@@ -1,5 +1,6 @@
 # Core
 fastapi==0.115.0
+starlette>=0.37.2,<0.39.0
 uvicorn[standard]==0.30.0
 python-dotenv==1.0.1
 requests==2.32.3
@@ -31,6 +32,10 @@ pyserial==3.5
 # Hardware Design
 svgwrite==1.4.3
 httpx==0.27.2
+
+# EDA pipeline (IR + registry)
+pydantic>=2.6,<3.0
+PyYAML>=6.0,<7.0
 
 # Auth (multi-usuario JWT)
 python-jose[cryptography]==3.3.0

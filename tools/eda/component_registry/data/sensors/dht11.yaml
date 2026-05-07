@@ -1,0 +1,18 @@
+type: dht11
+category: sensor
+display_name: DHT11 (temperatura+humedad básico)
+aliases: [dht11, dht 11]
+voltage: { vcc_min: 3.3, vcc_max: 5.5 }
+footprint_library: Connector_PinHeader_2.54mm
+footprint_name: PinHeader_1x04_P2.54mm_Vertical
+symbol_library: Sensor
+symbol_name: DHT11
+smd: false
+pins:
+  - { number: '1', name: VCC,  electrical_type: power_in,     functions: [POWER] }
+  - { number: '2', name: DATA, electrical_type: bidirectional, functions: [SIGNAL] }
+  - { number: '3', name: NC,   electrical_type: nc,            functions: [] }
+  - { number: '4', name: GND,  electrical_type: power_in,     functions: [GROUND] }
+wiring_requirements:
+  - { kind: pullup, pin: DATA, target: VCC, value: 10k, severity: error,
+      reason: Pull-up obligatoria entre DATA y VCC. }

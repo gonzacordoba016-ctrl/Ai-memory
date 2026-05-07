@@ -1,0 +1,22 @@
+type: relay_module
+category: ic
+display_name: Módulo Relay 5V (1 canal con optoacoplador)
+aliases: [relay_module, relay, rele, relé, modulo relay]
+voltage: { vcc_min: 4.5, vcc_max: 5.5, logic: 5.0 }
+footprint_library: Relay_THT
+footprint_name: Relay_SPDT_Omron_G5LE-1
+symbol_library: Relay
+symbol_name: G5LE-1
+smd: false
+pins:
+  - { number: '1', name: VCC, electrical_type: power_in,  functions: [POWER] }
+  - { number: '2', name: GND, electrical_type: power_in,  functions: [GROUND] }
+  - { number: '3', name: IN,  electrical_type: input,     functions: [SIGNAL] }
+  - { number: '4', name: COM, electrical_type: passive,   functions: [SWITCH] }
+  - { number: '5', name: 'NO', electrical_type: passive,   functions: [SWITCH] }
+  - { number: '6', name: NC,  electrical_type: passive,   functions: [SWITCH] }
+notes:
+  - Activo LOW — IN=LOW activa el relay.
+  - Módulo trae optoacoplador y diodo flyback integrado.
+critical:
+  - NUNCA mezclar la tierra de la carga AC con la del control.

@@ -1,0 +1,44 @@
+type: raspberry_pi_pico
+category: mcu
+display_name: Raspberry Pi Pico (RP2040)
+aliases: [pico, rp2040, raspberry pi pico, raspberry_pi_pico]
+voltage:
+  vcc_min: 1.8
+  vcc_max: 5.5  # VSYS rango
+  logic: 3.3
+footprint_library: Module
+footprint_name: RPi_Pico
+symbol_library: MCU_Module
+symbol_name: RP2040_Pico
+smd: true
+mcu:
+  forbidden_pins: []
+  input_only_pins: []
+  adc_pins: [GP26, GP27, GP28]
+  pwm_pins: ['*']
+  preferred_buses:
+    i2c: { sda: GP4, scl: GP5 }
+    spi: { sck: GP18, miso: GP16, mosi: GP19, cs: GP17 }
+    uart: { tx: GP0, rx: GP1 }
+pins:
+  - { number: GP0,  name: GP0,  electrical_type: bidirectional, functions: [GPIO, UART_TX, I2C_SDA] }
+  - { number: GP1,  name: GP1,  electrical_type: bidirectional, functions: [GPIO, UART_RX, I2C_SCL] }
+  - { number: GP2,  name: GP2,  electrical_type: bidirectional, functions: [GPIO] }
+  - { number: GP3,  name: GP3,  electrical_type: bidirectional, functions: [GPIO] }
+  - { number: GP4,  name: GP4,  electrical_type: bidirectional, functions: [GPIO, I2C_SDA] }
+  - { number: GP5,  name: GP5,  electrical_type: bidirectional, functions: [GPIO, I2C_SCL] }
+  - { number: GP16, name: GP16, electrical_type: bidirectional, functions: [GPIO, SPI_MISO] }
+  - { number: GP17, name: GP17, electrical_type: bidirectional, functions: [GPIO, SPI_CS] }
+  - { number: GP18, name: GP18, electrical_type: bidirectional, functions: [GPIO, SPI_SCK] }
+  - { number: GP19, name: GP19, electrical_type: bidirectional, functions: [GPIO, SPI_MOSI] }
+  - { number: GP26, name: GP26, electrical_type: bidirectional, functions: [GPIO, ADC] }
+  - { number: GP27, name: GP27, electrical_type: bidirectional, functions: [GPIO, ADC] }
+  - { number: GP28, name: GP28, electrical_type: bidirectional, functions: [GPIO, ADC] }
+  - { number: VCC,   name: 3V3,  electrical_type: power_out, functions: [POWER] }
+  - { number: VBUS,  name: VBUS, electrical_type: power_in,  functions: [POWER] }
+  - { number: VSYS,  name: VSYS, electrical_type: power_in,  functions: [POWER] }
+  - { number: GND,   name: GND,  electrical_type: power_in,  functions: [GROUND] }
+  - { number: RUN,   name: RUN,  electrical_type: input,     functions: [RESET] }
+notes:
+  - 26 GPIO totales (GP0-GP22 + GP26-GP28). GP23-GP25 son internos (LED/SMPS).
+  - Lógica 3.3V — para 5V usar level shifter.

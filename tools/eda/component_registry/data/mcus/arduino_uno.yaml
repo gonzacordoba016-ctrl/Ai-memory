@@ -1,0 +1,52 @@
+type: arduino_uno
+category: mcu
+display_name: Arduino UNO R3 (ATmega328P)
+aliases: [arduino, uno, arduino uno, arduino_uno_r3]
+voltage:
+  vcc_min: 4.5
+  vcc_max: 5.5
+  logic: 5.0
+footprint_library: Module
+footprint_name: Arduino_UNO_SMD
+symbol_library: MCU_Module
+symbol_name: Arduino_UNO_R3
+smd: false
+mcu:
+  forbidden_pins: []
+  input_only_pins: []
+  adc_pins: [A0, A1, A2, A3, A4, A5]
+  pwm_pins: [D3, D5, D6, D9, D10, D11]
+  preferred_buses:
+    i2c: { sda: A4, scl: A5 }
+    spi: { sck: D13, miso: D12, mosi: D11, cs: D10 }
+    uart: { tx: D1, rx: D0 }
+pins:
+  - { number: D0,  name: D0,  electrical_type: bidirectional, functions: [GPIO, UART_RX] }
+  - { number: D1,  name: D1,  electrical_type: bidirectional, functions: [GPIO, UART_TX] }
+  - { number: D2,  name: D2,  electrical_type: bidirectional, functions: [GPIO, INT] }
+  - { number: D3,  name: D3,  electrical_type: bidirectional, functions: [GPIO, PWM, INT] }
+  - { number: D4,  name: D4,  electrical_type: bidirectional, functions: [GPIO] }
+  - { number: D5,  name: D5,  electrical_type: bidirectional, functions: [GPIO, PWM] }
+  - { number: D6,  name: D6,  electrical_type: bidirectional, functions: [GPIO, PWM] }
+  - { number: D7,  name: D7,  electrical_type: bidirectional, functions: [GPIO] }
+  - { number: D8,  name: D8,  electrical_type: bidirectional, functions: [GPIO] }
+  - { number: D9,  name: D9,  electrical_type: bidirectional, functions: [GPIO, PWM] }
+  - { number: D10, name: D10, electrical_type: bidirectional, functions: [GPIO, PWM, SPI_CS] }
+  - { number: D11, name: D11, electrical_type: bidirectional, functions: [GPIO, PWM, SPI_MOSI] }
+  - { number: D12, name: D12, electrical_type: bidirectional, functions: [GPIO, SPI_MISO] }
+  - { number: D13, name: D13, electrical_type: bidirectional, functions: [GPIO, SPI_SCK] }
+  - { number: A0,  name: A0,  electrical_type: bidirectional, functions: [GPIO, ADC] }
+  - { number: A1,  name: A1,  electrical_type: bidirectional, functions: [GPIO, ADC] }
+  - { number: A2,  name: A2,  electrical_type: bidirectional, functions: [GPIO, ADC] }
+  - { number: A3,  name: A3,  electrical_type: bidirectional, functions: [GPIO, ADC] }
+  - { number: A4,  name: A4,  electrical_type: bidirectional, functions: [GPIO, ADC, I2C_SDA] }
+  - { number: A5,  name: A5,  electrical_type: bidirectional, functions: [GPIO, ADC, I2C_SCL] }
+  - { number: VCC,   name: 5V,    electrical_type: power_out, functions: [POWER] }
+  - { number: VIN,   name: VIN,   electrical_type: power_in,  functions: [POWER] }
+  - { number: V3V3,  name: 3V3,   electrical_type: power_out, functions: [POWER] }
+  - { number: GND,   name: GND,   electrical_type: power_in,  functions: [GROUND] }
+  - { number: AREF,  name: AREF,  electrical_type: input,     functions: [REFERENCE] }
+  - { number: RESET, name: RESET, electrical_type: input,     functions: [RESET] }
+notes:
+  - Lógica 5V — incompatible con sensores 3.3V que no toleren 5V en señal.
+  - PWM solo en D3, D5, D6, D9, D10, D11.

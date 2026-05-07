@@ -1,0 +1,13 @@
+type: capacitor
+category: passive
+display_name: Capacitor cerámico (THT disco)
+aliases: [capacitor, cap, capacitor_ceramic]
+voltage: null
+footprint_library: Capacitor_THT
+footprint_name: C_Disc_D5.0mm_W2.5mm_P5.00mm
+symbol_library: Device
+symbol_name: C
+smd: false
+pins:
+  - { number: '1', name: '1', electrical_type: passive, functions: [] }
+  - { number: '2', name: '2', electrical_type: passive, functions: [] }

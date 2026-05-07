@@ -1,0 +1,21 @@
+type: lm7805
+category: power
+display_name: LM7805 (regulador 5V fijo)
+aliases: [lm7805, '7805', lm 7805, regulador 5v fijo, voltage_regulator]
+voltage: { vcc_min: 7.0, vcc_max: 35.0 }
+footprint_library: Package_TO_SOT_THT
+footprint_name: TO-220-3_Vertical
+symbol_library: Regulator_Linear
+symbol_name: L7805
+smd: false
+pins:
+  - { number: '1', name: IN,  electrical_type: power_in,  functions: [POWER] }
+  - { number: '2', name: GND, electrical_type: power_in,  functions: [GROUND] }
+  - { number: '3', name: OUT, electrical_type: power_out, functions: [POWER] }
+wiring_requirements:
+  - { kind: bypass_cap, target: IN,  value: 0.33uF, severity: warning,
+      reason: Cap cerámico en IN para estabilidad. }
+  - { kind: bypass_cap, target: OUT, value: 0.1uF,  severity: warning,
+      reason: Cap cerámico en OUT para estabilidad. }
+critical:
+  - Dropout ~2V — Vin debe ser ≥ 7V para 5V estable.
