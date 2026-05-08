@@ -249,3 +249,23 @@ def test_wiring_requirement_value_accepts_float():
 def test_wiring_requirement_value_accepts_str():
     w = WiringRequirement(kind="pullup", pin="DATA", target="VCC", value="10k")
     assert w.value == "10k"
+
+
+# ── MQ gas sensors ──────────────────────────────────────────────────────────
+
+
+def test_registry_has_mq_sensors():
+    reg = get_registry()
+    for t in ("mq2", "mq7", "mq135"):
+        spec = reg.get(t)
+        assert spec is not None, f"MQ sensor faltante: {t}"
+        assert spec.category == "sensor"
+        assert any("explosivas" in c.lower() for c in spec.critical), \
+            f"{t} sin warning de atmósferas explosivas"
+        assert any("calentamiento" in c.lower() or "pre-calentamiento" in c.lower()
+                   for c in spec.critical), f"{t} sin warning de pre-calentamiento"
+
+
+def test_find_in_text_resolves_sensor_gas():
+    reg = get_registry()
+    assert reg.find_in_text("sensor gas") != []

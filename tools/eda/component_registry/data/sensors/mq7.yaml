@@ -1,0 +1,22 @@
+type: mq7
+category: sensor
+display_name: MQ-7 (sensor monóxido de carbono CO)
+aliases: [mq7, mq-7, mq 7, sensor co, sensor monoxido, monoxido de carbono, carbon monoxide]
+voltage: { vcc_min: 4.9, vcc_max: 5.1, logic: 5.0 }
+footprint_library: Connector_PinHeader_2.54mm
+footprint_name: PinHeader_1x04_P2.54mm_Vertical
+symbol_library: Sensor_Gas
+symbol_name: MQ-7
+smd: false
+pins:
+  - { number: '1', name: VCC, electrical_type: power_in, functions: [POWER] }
+  - { number: '2', name: GND, electrical_type: power_in, functions: [GROUND] }
+  - { number: '3', name: DO,  electrical_type: output,   functions: [SIGNAL] }
+  - { number: '4', name: AO,  electrical_type: output,   functions: [ANALOG, SIGNAL] }
+notes:
+  - El MQ-7 alterna heater 5V/1.4V para detectar CO — el módulo con LM393 ya gestiona el ciclo.
+  - Umbral del DO se ajusta con el trimpot del módulo.
+  - 'AO en ESP32 con WiFi: usar solo ADC1 (GPIO32-39).'
+critical:
+  - Pre-calentamiento 2-3 minutos al arrancar antes de lecturas confiables (24-48h en primer uso).
+  - NO usar en atmósferas explosivas reales — sensor económico no certificado intrínsecamente seguro.
