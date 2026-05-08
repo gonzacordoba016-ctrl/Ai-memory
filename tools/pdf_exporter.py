@@ -190,8 +190,9 @@ def generate_project_pdf(
 
     # ── DRC Report ───────────────────────────────────────────────────────────
     try:
-        from tools.electrical_drc import run_drc
-        drc = design.get("drc") or run_drc(design)
+        from tools.eda.constraint_engine import run_drc
+        from tools.eda.ir.legacy import dict_to_ir
+        drc = design.get("drc") or run_drc(dict_to_ir(design))
         story.append(Paragraph("VERIFICACIÓN DRC", style_h2))
         story.append(Paragraph(drc.get("summary", ""), style_normal))
         story.append(Spacer(1, 2*mm))

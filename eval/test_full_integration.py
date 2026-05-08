@@ -113,7 +113,8 @@ def test_kicad_connectivity():
     Usa un .kicad_sch sintético con 2 componentes (R1 + LED1), 3 wires y 3 net labels.
     """
     from tools.schematic_parser import parse_kicad
-    from tools.electrical_drc import run_drc
+    from tools.eda.constraint_engine import run_drc
+    from tools.eda.ir.legacy import dict_to_ir
 
     # Esquemático mínimo KiCad 6:
     #   R1 (Test:R) en (100,100,0°): pin1 en (100,95), pin2 en (100,105)
@@ -205,7 +206,7 @@ def test_kicad_connectivity():
         ],
         "nets": result["nets"],   # nets con nodes poblados
     }
-    drc = run_drc(circuit_for_drc)
+    drc = run_drc(dict_to_ir(circuit_for_drc))
 
     # Resultado válido
     assert "errors"   in drc, "DRC debe retornar 'errors'"

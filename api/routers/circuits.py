@@ -433,14 +433,15 @@ async def parse_circuit_async(request: Request, description: str, mcu: str = "Ar
 @limiter.limit("10/minute")
 async def run_circuit_drc(request: Request, circuit_id: int):
     """Ejecuta el DRC (Design Rule Check) eléctrico sobre un circuito."""
-    from tools.electrical_drc import run_drc
+    from tools.eda.constraint_engine import run_drc
+    from tools.eda.ir.legacy import dict_to_ir
 
     agent        = _get_circuit_agent()
     circuit_data = agent.get_circuit_by_id(circuit_id)
     if not circuit_data:
         raise HTTPException(status_code=404, detail="Circuito no encontrado")
 
-    result = run_drc(circuit_data)
+    result = run_drc(dict_to_ir(circuit_data))
     result["circuit_id"]   = circuit_id
     result["circuit_name"] = circuit_data.get("name", "")
     return JSONResponse(content=result)
@@ -539,7 +540,8 @@ async def export_circuit_zip(circuit_id: int):
     from tools.kicad_exporter import export_kicad_schematic
     from tools.bom_generator import generate_bom, bom_to_csv
     from database.component_stock import get_stock_db
-    from tools.electrical_drc import run_drc
+    from tools.eda.constraint_engine import run_drc
+    from tools.eda.ir.legacy import dict_to_ir
 
     agent        = _get_circuit_agent()
     circuit_data = agent.get_circuit_by_id(circuit_id)
@@ -549,7 +551,7 @@ async def export_circuit_zip(circuit_id: int):
     cname = (circuit_data.get("name") or "circuit").replace(" ", "_")[:40]
 
     bom    = generate_bom(circuit_data, get_stock_db().get_all())
-    drc    = run_drc(circuit_data)
+    drc    = run_drc(dict_to_ir(circuit_data))
     gerber = PCBRenderer().generate_gerber_files(circuit_data)
 
     drc_lines = []

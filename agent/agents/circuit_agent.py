@@ -531,15 +531,16 @@ class CircuitAgent:
         CAPA 2 — DRC eléctrico con hasta 2 intentos de auto-fix.
         Retorna (circuit_data, drc_result, intentos_usados).
         """
-        from tools.electrical_drc import run_drc
-        from tools.mcu_pinout_validator import validate_pinout
+        from tools.eda.constraint_engine import run_drc
+        from tools.eda.ir.legacy import dict_to_ir
 
         attempts = 0
         drc_result = {"errors": [], "warnings": [], "passed": True}
         for attempt in range(3):
             attempts = attempt + 1
             try:
-                drc_result = run_drc(circuit_data)
+                drc_result = run_drc(dict_to_ir(circuit_data))
+                drc_result["passed"] = not drc_result.get("errors")
             except Exception as e:
                 logger.warning("[CircuitAgent] CAPA2: DRC falló (intento %d): %s", attempts, e)
                 break
@@ -553,11 +554,12 @@ class CircuitAgent:
                     len(drc_result.get("errors", [])), attempt + 1,
                 )
 
-        pinout_warnings = []
-        try:
-            pinout_warnings = validate_pinout(circuit_data)
-        except Exception:
-            pass
+        pinout_warnings = [
+            f"[Pinout] {i['message']}"
+            for bucket in ("errors", "warnings")
+            for i in drc_result.get(bucket, [])
+            if i.get("code") in {"PIN_INVALID", "PIN_FORBIDDEN"}
+        ]
 
         circuit_data["drc"] = drc_result
         for pw in pinout_warnings:
@@ -858,11 +860,22 @@ class CircuitAgent:
                 circuit_data.setdefault("warnings", []).extend(warnings)
 
             # DRC eléctrico
-            from tools.electrical_drc import run_drc
-            from tools.mcu_pinout_validator import validate_pinout
+            from tools.eda.constraint_engine import run_drc
+            from tools.eda.ir.legacy import dict_to_ir
+
+            def _run_drc_and_pinout(cd):
+                r = run_drc(dict_to_ir(cd))
+                r["passed"] = not r.get("errors")
+                pw = [
+                    f"[Pinout] {i['message']}"
+                    for bucket in ("errors", "warnings")
+                    for i in r.get(bucket, [])
+                    if i.get("code") in {"PIN_INVALID", "PIN_FORBIDDEN"}
+                ]
+                return r, pw
+
             try:
-                drc_result = run_drc(circuit_data)
-                pinout_warnings = validate_pinout(circuit_data)
+                drc_result, pinout_warnings = _run_drc_and_pinout(circuit_data)
             except Exception as drc_err:
                 logger.warning(f"DRC/pinout falló: {drc_err}")
                 drc_result = {"errors": [], "warnings": [], "passed": True}
@@ -877,8 +890,7 @@ class CircuitAgent:
                     circuit_data = reviewed
                     # Re-correr DRC + pinout sobre la versión revisada
                     try:
-                        drc_result = run_drc(circuit_data)
-                        pinout_warnings = validate_pinout(circuit_data)
+                        drc_result, pinout_warnings = _run_drc_and_pinout(circuit_data)
                     except Exception as drc_err:
                         logger.warning(f"DRC/pinout post-review falló: {drc_err}")
 
@@ -1336,8 +1348,8 @@ class CircuitAgent:
           • Reduce el número de errores DRC.
         Si no cumple, devuelve None y mantenemos la versión original.
         """
-        from tools.electrical_drc import run_drc
-        from tools.mcu_pinout_validator import validate_pinout
+        from tools.eda.constraint_engine import run_drc
+        from tools.eda.ir.legacy import dict_to_ir
 
         original_errors = len(drc_result.get("errors", [])) + len(pinout_warnings)
         issues_summary = []
@@ -1426,12 +1438,17 @@ SIN markdown, SIN explicaciones."""
 
         # Re-correr DRC sobre la versión revisada
         try:
-            new_drc = run_drc(reviewed)
+            new_drc = run_drc(dict_to_ir(reviewed))
         except Exception as e:
             logger.warning(f"[CircuitAgent.review] DRC sobre revisión falló: {e}")
             return None
 
-        new_pinout = validate_pinout(reviewed)
+        new_pinout = [
+            f"[Pinout] {i['message']}"
+            for bucket in ("errors", "warnings")
+            for i in new_drc.get(bucket, [])
+            if i.get("code") in {"PIN_INVALID", "PIN_FORBIDDEN"}
+        ]
         new_errors = len(new_drc.get("errors", [])) + len(new_pinout)
         if new_errors >= original_errors:
             logger.info(
