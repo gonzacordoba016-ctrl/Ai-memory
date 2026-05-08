@@ -1,0 +1,36 @@
+type: a4988
+category: ic
+display_name: A4988 (driver paso a paso Pololu)
+aliases: [a4988, a 4988, pololu stepper]
+voltage: { vcc_min: 8.0, vcc_max: 35.0, logic: 5.0 }
+footprint_library: Package_DIP
+footprint_name: DIP-16_W7.62mm
+symbol_library: Driver_Motor
+symbol_name: A4988
+smd: false
+pins:
+  - { number: '1',  name: EN,    electrical_type: input,    functions: [SIGNAL] }
+  - { number: '2',  name: MS1,   electrical_type: input,    functions: [SIGNAL] }
+  - { number: '3',  name: MS2,   electrical_type: input,    functions: [SIGNAL] }
+  - { number: '4',  name: MS3,   electrical_type: input,    functions: [SIGNAL] }
+  - { number: '5',  name: RST,   electrical_type: input,    functions: [SIGNAL, RESET] }
+  - { number: '6',  name: SLP,   electrical_type: input,    functions: [SIGNAL] }
+  - { number: '7',  name: STEP,  electrical_type: input,    functions: [SIGNAL] }
+  - { number: '8',  name: DIR,   electrical_type: input,    functions: [SIGNAL] }
+  - { number: '9',  name: GND,   electrical_type: power_in, functions: [GROUND] }
+  - { number: '10', name: VMOT,  electrical_type: power_in, functions: [POWER] }
+  - { number: '11', name: '2B',  electrical_type: output,   functions: [POWER_OUT] }
+  - { number: '12', name: '2A',  electrical_type: output,   functions: [POWER_OUT] }
+  - { number: '13', name: '1A',  electrical_type: output,   functions: [POWER_OUT] }
+  - { number: '14', name: '1B',  electrical_type: output,   functions: [POWER_OUT] }
+  - { number: '15', name: VDD,   electrical_type: power_in, functions: [POWER] }
+  - { number: '16', name: GND_LOGIC, electrical_type: power_in, functions: [GROUND] }
+wiring_requirements:
+  - { kind: bulk_cap, target: VMOT, value: 100uF, severity: error,
+      reason: Sin cap 100uF en VMOT el driver se destruye por picos inductivos. }
+notes:
+  - RST y SLP conectar juntos a VDD.
+  - Ajustar corriente por trimpot antes de conectar el motor.
+critical:
+  - NUNCA desconectar el motor con alimentacion activa.
+  - SIN cap 100uF en VMOT el driver se destruye por picos inductivos.

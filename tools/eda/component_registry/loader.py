@@ -84,7 +84,7 @@ class WiringRequirement(BaseModel):
         kind=flyback_diode, kind_polarity=cathode_to_control
         kind=level_shifter, pin=ECHO, from=5V, to=3.3V
     """
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", coerce_numbers_to_str=True)
 
     kind: str = Field(min_length=1)
     pin: str | None = None
@@ -201,6 +201,29 @@ class Registry(BaseModel):
             raise ValueError(f"Componente duplicado en registry: {spec.type}")
         self.components[spec.type] = spec
 
+    def find_in_text(self, text: str) -> list[ComponentSpec]:
+        """Extrae componentes mencionados en una descripción libre (substring).
+
+        A diferencia de `get()` (lookup exacto), este método barre `type` y
+        `aliases` como substrings sobre el texto en minúsculas. Pensado para
+        construir el contexto del prompt LLM a partir de la descripción del
+        usuario. Devuelve cada match una sola vez, en orden de definición.
+        """
+        if not text:
+            return []
+        haystack = text.lower()
+        matched: dict[str, ComponentSpec] = {}
+        for spec in self.components.values():
+            keys = [spec.type, *spec.aliases]
+            for k in keys:
+                k_l = k.lower().strip()
+                if not k_l:
+                    continue
+                if k_l in haystack:
+                    matched[spec.type] = spec
+                    break
+        return list(matched.values())
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # Carga
@@ -237,3 +260,64 @@ def get_registry() -> Registry:
 def resolve(type_or_alias: str) -> ComponentSpec | None:
     """Atajo: resolver una clave contra el registry default."""
     return get_registry().get(type_or_alias)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Prompt formatting
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _voltage_str(v: VoltageSpec | None) -> str:
+    if v is None:
+        return ""
+    if v.vcc_min == v.vcc_max:
+        return f"{v.vcc_min:g}V"
+    return f"{v.vcc_min:g}V–{v.vcc_max:g}V"
+
+
+def _wiring_line(w: WiringRequirement) -> str:
+    parts: list[str] = [w.kind]
+    if w.pin and w.target:
+        parts.append(f"{w.pin}→{w.target}")
+    elif w.pin:
+        parts.append(f"pin={w.pin}")
+    elif w.target:
+        parts.append(f"target={w.target}")
+    if w.value:
+        parts.append(f"= {w.value}")
+    head = " ".join(parts)
+    suffix = f" [{w.severity}]"
+    body = f": {w.reason}" if w.reason else ""
+    return f"{head}{suffix}{body}"
+
+
+def format_pinouts_for_prompt(specs: list[ComponentSpec]) -> str:
+    """Formato del bloque inyectado en el prompt LLM antes de la netlist.
+
+    Reemplaza `tools.component_pinouts.get_pinout_context_for_prompt` consumiendo
+    el Component Registry como fuente de verdad. Devuelve "" si la lista es vacía.
+    """
+    if not specs:
+        return ""
+
+    lines = ["PINOUTS VERIFICADOS — usá estos datos exactos en la netlist:"]
+    for spec in specs:
+        label = spec.display_name or spec.type
+        voltage = _voltage_str(spec.voltage)
+        header = f"\n▶ {label}" + (f" ({voltage})" if voltage else "")
+        lines.append(header)
+        for pin in spec.pins:
+            tags: list[str] = []
+            if pin.functions:
+                tags.extend(pin.functions)
+            tag_str = f" [{', '.join(tags)}]" if tags else ""
+            desc = f" — {pin.description}" if pin.description else ""
+            lines.append(f"   {pin.name} (pin {pin.number}){tag_str}{desc}")
+        for w in spec.wiring_requirements:
+            lines.append(f"   → {_wiring_line(w)}")
+        for note in spec.notes:
+            lines.append(f"   • {note}")
+        for warn in spec.critical:
+            lines.append(f"   ⚠ CRÍTICO: {warn}")
+
+    return "\n".join(lines)

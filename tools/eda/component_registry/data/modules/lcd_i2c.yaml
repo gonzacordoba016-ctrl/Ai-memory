@@ -1,0 +1,20 @@
+type: lcd_i2c
+category: display
+display_name: LCD I2C 16x2 (backpack PCF8574)
+aliases: [lcd, lcd_i2c, lcd i2c, lcd 16x2, pantalla lcd, liquidcrystal i2c, liquid crystal]
+voltage: { vcc_min: 4.5, vcc_max: 5.5, logic: 5.0 }
+footprint_library: Connector_PinHeader_2.54mm
+footprint_name: PinHeader_1x04_P2.54mm_Vertical
+symbol_library: Display_Character
+symbol_name: LCD_I2C_PCF8574
+smd: false
+pins:
+  - { number: '1', name: GND, electrical_type: power_in,      functions: [GROUND] }
+  - { number: '2', name: VCC, electrical_type: power_in,      functions: [POWER] }
+  - { number: '3', name: SDA, electrical_type: bidirectional, functions: [I2C_SDA, DATA] }
+  - { number: '4', name: SCL, electrical_type: input,         functions: [I2C_SCL, CLOCK] }
+notes:
+  - Direccion I2C 0x27 (PCF8574) o 0x3F (PCF8574A) - verificar con I2C scanner.
+  - Trimpot azul ajusta contraste.
+critical:
+  - Con 3.3V el backlight no enciende y el contraste puede ser insuficiente.

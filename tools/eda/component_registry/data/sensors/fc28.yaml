@@ -1,7 +1,7 @@
 type: fc28
 category: sensor
 display_name: FC-28 / YL-69 (humedad de suelo analógico)
-aliases: [fc28, fc-28, yl-69, yl69, humedad suelo, soil moisture, moisture sensor, moisture_sensor]
+aliases: [fc28, fc-28, yl-69, yl69, yl-83, humedad suelo, soil moisture, moisture sensor, moisture_sensor, sensor lluvia]
 voltage: { vcc_min: 3.3, vcc_max: 5.0 }
 footprint_library: Connector_PinHeader_2.54mm
 footprint_name: PinHeader_1x04_P2.54mm_Vertical

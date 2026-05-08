@@ -1,0 +1,30 @@
+type: nrf24l01
+category: ic
+display_name: nRF24L01+ (transceiver 2.4GHz SPI)
+aliases: [nrf24l01, nrf24, '2.4ghz transceiver', nordic, nrf]
+voltage: { vcc_min: 1.9, vcc_max: 3.6, logic: 3.3 }
+footprint_library: Connector_PinHeader_2.54mm
+footprint_name: PinHeader_2x04_P2.54mm_Vertical
+symbol_library: RF
+symbol_name: nRF24L01
+smd: false
+pins:
+  - { number: '1', name: GND,  electrical_type: power_in,      functions: [GROUND] }
+  - { number: '2', name: VCC,  electrical_type: power_in,      functions: [POWER] }
+  - { number: '3', name: CE,   electrical_type: input,         functions: [SIGNAL] }
+  - { number: '4', name: CSN,  electrical_type: input,         functions: [SPI_CS, SIGNAL] }
+  - { number: '5', name: SCK,  electrical_type: input,         functions: [SPI_SCK, CLOCK] }
+  - { number: '6', name: MOSI, electrical_type: input,         functions: [SPI_MOSI, DATA] }
+  - { number: '7', name: MISO, electrical_type: output,        functions: [SPI_MISO, DATA] }
+  - { number: '8', name: IRQ,  electrical_type: output,        functions: [SIGNAL] }
+wiring_requirements:
+  - { kind: bulk_cap, target: VCC, value: 10uF, severity: error,
+      reason: Cap 10uF junto al VCC - sin el modulo se reinicia al transmitir. }
+  - { kind: bypass_cap, target: VCC, value: 100nF, severity: error,
+      reason: Ceramico 100nF junto al electrolitico para alta frecuencia. }
+notes:
+  - CE y CSN son GPIO arbitrarios del MCU (no SPI hardware obligatoriamente).
+  - Con MCU 5V usar level shifter en CE/CSN/SCK/MOSI o modulo con adaptador 3.3V.
+critical:
+  - VCC maximo 3.6V - 5V destruye el modulo de inmediato.
+  - SIN caps de desacople junto al VCC el modulo se reinicia al transmitir.

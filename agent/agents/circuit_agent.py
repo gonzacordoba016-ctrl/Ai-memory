@@ -7,7 +7,7 @@ from core.logger import get_logger
 from core.config import LLM_MODEL_SMART, LLM_MODEL_FAST
 from database.circuit_design import CircuitDesignManager
 from tools.hardware_detector import resolve_component_type
-from tools.component_pinouts import get_pinout_context_for_prompt
+from tools.eda.component_registry import format_pinouts_for_prompt, get_registry
 from tools.circuit_synthesizer import CircuitSynthesizer, BLOCK_TYPE_ALIASES
 from llm.openrouter_client import call_llm_sync
 
@@ -772,7 +772,7 @@ class CircuitAgent:
             domain_hint = DOMAIN_HINTS.get(domain, "")
 
             # Inject verified component pinouts BEFORE the LLM generates the netlist
-            pinout_context = get_pinout_context_for_prompt([description])
+            pinout_context = format_pinouts_for_prompt(get_registry().find_in_text(description))
             if pinout_context:
                 logger.info(f"[CircuitAgent] Pinout context inyectado ({len(pinout_context)} chars)")
 

@@ -1,0 +1,27 @@
+type: ne555
+category: ic
+display_name: NE555 (temporizador)
+aliases: [ne555, ne 555, '555', timer 555, temporizador, oscilador 555]
+voltage: { vcc_min: 4.5, vcc_max: 16.0, logic: 5.0 }
+footprint_library: Package_DIP
+footprint_name: DIP-8_W7.62mm
+symbol_library: Timer
+symbol_name: NE555
+smd: false
+pins:
+  - { number: '1', name: GND,  electrical_type: power_in,        functions: [GROUND] }
+  - { number: '2', name: TRIG, electrical_type: input,           functions: [SIGNAL] }
+  - { number: '3', name: OUT,  electrical_type: output,          functions: [SIGNAL] }
+  - { number: '4', name: RST,  electrical_type: input,           functions: [SIGNAL, RESET] }
+  - { number: '5', name: CV,   electrical_type: input,           functions: [SIGNAL] }
+  - { number: '6', name: THR,  electrical_type: input,           functions: [SIGNAL] }
+  - { number: '7', name: DIS,  electrical_type: open_collector,  functions: [SIGNAL] }
+  - { number: '8', name: VCC,  electrical_type: power_in,        functions: [POWER] }
+wiring_requirements:
+  - { kind: bypass_cap, pin: CV, target: GND, value: 10nF, severity: info,
+      reason: Cap 10nF en CV a GND filtra ruido del divisor interno. }
+notes:
+  - RST a VCC si no se usa - flotante puede resetear espontaneamente.
+  - Astable - R1 entre VCC-DIS, R2 entre DIS-TRIG/THR, C entre TRIG/THR-GND.
+  - Monoestable - C entre THR-GND, R entre VCC-THR. t=1.1xRxC.
+critical: []

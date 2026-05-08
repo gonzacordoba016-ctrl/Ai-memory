@@ -22,6 +22,7 @@ from .loader import (
     Registry,
     VoltageSpec,
     WiringRequirement,
+    format_pinouts_for_prompt,
     get_registry,
     resolve,
 )
@@ -34,6 +35,7 @@ __all__ = [
     "Registry",
     "VoltageSpec",
     "WiringRequirement",
+    "format_pinouts_for_prompt",
     "get_registry",
     "resolve",
 ]

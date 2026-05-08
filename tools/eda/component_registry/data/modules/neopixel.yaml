@@ -1,0 +1,25 @@
+type: neopixel
+category: actuator
+display_name: NeoPixel WS2812B (LED RGB direccionable)
+aliases: [neopixel, ws2812, ws2812b, led rgb, led direccionable, rgb strip]
+voltage: { vcc_min: 4.5, vcc_max: 5.5, logic: 5.0 }
+footprint_library: LED_SMD
+footprint_name: LED_WS2812B_PLCC4_5.0x5.0mm_P3.2mm
+symbol_library: LED
+symbol_name: WS2812B
+smd: true
+pins:
+  - { number: '1', name: VCC,  electrical_type: power_in, functions: [POWER] }
+  - { number: '2', name: DOUT, electrical_type: output,   functions: [SIGNAL, DATA] }
+  - { number: '3', name: GND,  electrical_type: power_in, functions: [GROUND] }
+  - { number: '4', name: DIN,  electrical_type: input,    functions: [SIGNAL, DATA] }
+wiring_requirements:
+  - { kind: series_resistor, pin: DIN, value: '470', severity: error,
+      reason: R 300-500 ohm en DATA evita corrupcion y dano del primer LED. }
+  - { kind: bulk_cap, target: VCC, value: 1000uF, severity: warning,
+      reason: Cap 1000uF al inicio de la tira para picos de corriente. }
+notes:
+  - Cada LED consume hasta 60mA al maximo brillo.
+  - Tiras largas - alimentar tambien desde el final para evitar caida.
+critical:
+  - SIN resistencia 300-500 ohm en DATA - picos EMI pueden danar el primer LED.

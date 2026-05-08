@@ -1,0 +1,19 @@
+type: pir
+category: sensor
+display_name: PIR HC-SR501 (detector de movimiento)
+aliases: [pir, hc-sr501, hc_sr501, sensor movimiento, detector movimiento, motion sensor]
+voltage: { vcc_min: 4.5, vcc_max: 12.0, logic: 3.3 }
+footprint_library: Connector_PinHeader_2.54mm
+footprint_name: PinHeader_1x03_P2.54mm_Vertical
+symbol_library: Sensor
+symbol_name: HC-SR501
+smd: false
+pins:
+  - { number: '1', name: VCC, electrical_type: power_in, functions: [POWER] }
+  - { number: '2', name: OUT, electrical_type: output,   functions: [SIGNAL] }
+  - { number: '3', name: GND, electrical_type: power_in, functions: [GROUND] }
+notes:
+  - Salida OUT 3.3V con VCC=5V - compatible con ESP32/Pico.
+  - Tiempo de calentamiento ~30s tras encender antes de lecturas validas.
+  - Trimpots ajustan tiempo de retencion y sensibilidad.
+critical: []

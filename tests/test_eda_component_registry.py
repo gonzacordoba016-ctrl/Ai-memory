@@ -6,6 +6,8 @@ import pytest
 from tools.eda.component_registry import (
     ComponentSpec,
     PinSpec,
+    WiringRequirement,
+    format_pinouts_for_prompt,
     get_registry,
     resolve,
 )
@@ -172,3 +174,78 @@ def test_component_spec_no_dup_pins():
                 PinSpec(number="1", name="b"),
             ],
         )
+
+
+# ── format_pinouts_for_prompt ──────────────────────────────────────────────
+
+
+def test_format_pinouts_empty_returns_empty_string():
+    assert format_pinouts_for_prompt([]) == ""
+
+
+def test_format_pinouts_renders_known_component():
+    reg = get_registry()
+    spec = reg.require("dht22")
+    out = format_pinouts_for_prompt([spec])
+    assert out.startswith("PINOUTS VERIFICADOS")
+    assert "DHT22" in out
+    assert "DATA" in out and "VCC" in out
+    assert "pullup" in out
+    assert "10k" in out
+    assert "CRÍTICO" in out
+
+
+def test_format_pinouts_multiple_components():
+    reg = get_registry()
+    specs = [reg.require("dht22"), reg.require("hc_sr04")]
+    out = format_pinouts_for_prompt(specs)
+    assert "DHT22" in out
+    assert "HC-SR04" in out or "hc_sr04" in out.lower()
+    assert out.count("▶") == 2
+
+
+# ── Registry.find_in_text (substring extraction) ──────────────────────────
+
+
+def test_find_in_text_empty():
+    reg = get_registry()
+    assert reg.find_in_text("") == []
+
+
+def test_find_in_text_single_match():
+    reg = get_registry()
+    found = reg.find_in_text("Quiero un sensor DHT22 conectado al ESP32")
+    types = {s.type for s in found}
+    assert "dht22" in types
+    assert "esp32" in types
+
+
+def test_find_in_text_returns_each_component_once():
+    reg = get_registry()
+    found = reg.find_in_text("dht22 dht22 dht22")
+    types = [s.type for s in found]
+    assert types.count("dht22") == 1
+
+
+def test_find_in_text_no_match():
+    reg = get_registry()
+    assert reg.find_in_text("xyzzy plugh nonsense") == []
+
+
+# ── WiringRequirement value coercion ──────────────────────────────────────
+
+
+def test_wiring_requirement_value_accepts_int():
+    """value=470 (int) debe coercionarse a "470" sin lanzar."""
+    w = WiringRequirement(kind="bulk_cap", target="VCC", value=470)
+    assert w.value == "470"
+
+
+def test_wiring_requirement_value_accepts_float():
+    w = WiringRequirement(kind="pullup", pin="DATA", target="VCC", value=4.7)
+    assert w.value == "4.7"
+
+
+def test_wiring_requirement_value_accepts_str():
+    w = WiringRequirement(kind="pullup", pin="DATA", target="VCC", value="10k")
+    assert w.value == "10k"

@@ -1,0 +1,38 @@
+type: drv8825
+category: ic
+display_name: DRV8825 (driver paso a paso microstepping)
+aliases: [drv8825, drv 8825, stepper driver, driver paso a paso]
+voltage: { vcc_min: 8.2, vcc_max: 45.0, logic: 5.0 }
+footprint_library: Package_DIP
+footprint_name: DIP-16_W7.62mm
+symbol_library: Driver_Motor
+symbol_name: DRV8825
+smd: false
+pins:
+  - { number: '1',  name: EN,    electrical_type: input,    functions: [SIGNAL] }
+  - { number: '2',  name: M0,    electrical_type: input,    functions: [SIGNAL] }
+  - { number: '3',  name: M1,    electrical_type: input,    functions: [SIGNAL] }
+  - { number: '4',  name: M2,    electrical_type: input,    functions: [SIGNAL] }
+  - { number: '5',  name: RST,   electrical_type: input,    functions: [SIGNAL, RESET] }
+  - { number: '6',  name: SLP,   electrical_type: input,    functions: [SIGNAL] }
+  - { number: '7',  name: STEP,  electrical_type: input,    functions: [SIGNAL] }
+  - { number: '8',  name: DIR,   electrical_type: input,    functions: [SIGNAL] }
+  - { number: '9',  name: GND,   electrical_type: power_in, functions: [GROUND] }
+  - { number: '10', name: VMOT,  electrical_type: power_in, functions: [POWER] }
+  - { number: '11', name: B2,    electrical_type: output,   functions: [POWER_OUT] }
+  - { number: '12', name: B1,    electrical_type: output,   functions: [POWER_OUT] }
+  - { number: '13', name: A1,    electrical_type: output,   functions: [POWER_OUT] }
+  - { number: '14', name: A2,    electrical_type: output,   functions: [POWER_OUT] }
+  - { number: '15', name: VDD,   electrical_type: power_in, functions: [POWER] }
+  - { number: '16', name: GND_LOGIC, electrical_type: power_in, functions: [GROUND] }
+wiring_requirements:
+  - { kind: bulk_cap, target: VMOT, value: 100uF, severity: error,
+      reason: Sin cap 100uF en VMOT los picos EMF del motor destruyen el driver. }
+  - { kind: bypass_cap, target: VMOT, value: 100nF, severity: warning,
+      reason: Ceramico 100nF junto al electrolitico para alta frecuencia. }
+notes:
+  - SLP y RST conectar juntos a VDD para operacion normal.
+  - Ajustar Vref por trimpot ANTES de conectar el motor.
+critical:
+  - NUNCA conectar/desconectar el motor con alimentacion activa - destruye el IC.
+  - SIN cap 100uF en VMOT los picos EMF del motor destruyen el driver.

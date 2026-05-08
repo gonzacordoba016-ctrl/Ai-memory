@@ -1,0 +1,24 @@
+type: hx711
+category: sensor
+display_name: HX711 (ADC para celda de carga)
+aliases: [hx711, hx 711, celda de carga, balanza, load cell, peso]
+voltage: { vcc_min: 4.5, vcc_max: 5.5, logic: 5.0 }
+footprint_library: Connector_PinHeader_2.54mm
+footprint_name: PinHeader_2x05_P2.54mm_Vertical
+symbol_library: Sensor
+symbol_name: HX711
+smd: false
+pins:
+  - { number: '1', name: VCC, electrical_type: power_in,  functions: [POWER] }
+  - { number: '2', name: GND, electrical_type: power_in,  functions: [GROUND] }
+  - { number: '3', name: DT,  electrical_type: output,    functions: [SIGNAL, DATA] }
+  - { number: '4', name: SCK, electrical_type: input,     functions: [SIGNAL, CLOCK] }
+  - { number: '5', name: 'E+', electrical_type: power_out, functions: [POWER_OUT] }
+  - { number: '6', name: 'E-', electrical_type: power_out, functions: [POWER_OUT] }
+  - { number: '7', name: 'A+', electrical_type: input,     functions: [SIGNAL] }
+  - { number: '8', name: 'A-', electrical_type: input,     functions: [SIGNAL] }
+notes:
+  - Protocolo propietario - libreria HX711 maneja timing bit a bit.
+  - DT y SCK van a GPIOs digitales libres.
+critical:
+  - NO conectar DT/SCK a pines I2C del MCU - protocolo incompatible con I2C.

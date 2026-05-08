@@ -1,7 +1,7 @@
 type: esp8266
 category: mcu
 display_name: ESP8266 NodeMCU v1.0
-aliases: [esp8266, nodemcu, nodemcu v1, esp-12, esp12]
+aliases: [esp8266, nodemcu, nodemcu v1, esp-12, esp12, modulo wifi, módulo wifi]
 voltage:
   vcc_min: 3.0
   vcc_max: 3.6
