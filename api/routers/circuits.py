@@ -109,7 +109,8 @@ async def get_circuit(circuit_id: int):
 
 
 @router.get("/{circuit_id}/schematic.svg")
-async def get_schematic_svg(circuit_id: int):
+async def get_schematic_svg(circuit_id: int, progress: bool = Query(default=False)):
+    started = time.perf_counter()
     agent        = _get_circuit_agent()
     circuit_data = agent.get_circuit_by_id(circuit_id)
     if not circuit_data:
@@ -119,7 +120,11 @@ async def get_schematic_svg(circuit_id: int):
     if svg is None:
         svg = SchematicRenderer().render_schematic_svg(circuit_data)
         _svg_cache_set(circuit_id, updated_at, svg)
-    return HTMLResponse(content=svg, media_type="image/svg+xml")
+    headers = {}
+    if progress:
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+        headers["X-Render-Time-Ms"] = str(elapsed_ms)
+    return HTMLResponse(content=svg, media_type="image/svg+xml", headers=headers)
 
 
 @router.get("/{circuit_id}/report.pdf")

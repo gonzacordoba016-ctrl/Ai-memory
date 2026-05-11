@@ -493,7 +493,8 @@ class SchematicRenderer:
                         dwg.add(dwg.circle(center=(cx, cy), r=3, fill=color))
                         label_rects.append(rect)
                 else:
-                    # Manhattan tree: vertical trunk at barycenter X, horizontal stubs.
+                    # Bus routing: nets with multiple nodes share a vertical trunk
+                    # and each component connects with a perpendicular stub.
                     trunk_x = sum(xs) / len(xs)
                     y_min, y_max = min(ys), max(ys)
                     if y_max - y_min > 2:
@@ -507,9 +508,10 @@ class SchematicRenderer:
                                 stroke=color, stroke_width=1.8))
                         dwg.add(dwg.circle(center=(cx, cy), r=3.5, fill=color))
                     # Junction dots where stubs meet the trunk
-                    for cy in ys:
-                        if cy != y_min and cy != y_max:
-                            dwg.add(dwg.circle(center=(trunk_x, cy), r=2.4, fill=color))
+                    if len(coords) >= 3:
+                        for cy in ys:
+                            dwg.add(dwg.circle(center=(trunk_x, cy), r=3,
+                                               fill="#111111"))
                     # Net name label — placed on the trunk, offset right, with
                     # collision check against previously placed labels.
                     # Try positions: trunk top, centroid, bottom (in that order)
@@ -660,6 +662,9 @@ class SchematicRenderer:
             "ds18b20":               self._sym_ds18b20,
             "hc_sr04":               self._sym_hc_sr04,
             "hc-sr04":               self._sym_hc_sr04,
+            "pir":                   self._sym_pir,
+            "ina219":                self._sym_ina219,
+            "hx711":                 self._sym_hx711,
             "ultrasonic":            self._sym_ultrasonic,
             "ultrasonic_sensor":     self._sym_ultrasonic,
             "display":               self._sym_display,
@@ -679,7 +684,7 @@ class SchematicRenderer:
             "bluetooth":             self._sym_rf_module,
             "hc05":                  self._sym_rf_module,
             "hc_05":                 self._sym_rf_module,
-            "nrf24l01":              self._sym_rf_module,
+            "nrf24l01":              self._sym_nrf24l01,
             "rf_module":             self._sym_rf_module,
             "lora":                  self._sym_rf_module,
             "connector":             self._sym_connector,
@@ -692,7 +697,7 @@ class SchematicRenderer:
             "lipo":                  self._sym_battery,
             # RTC modules
             "rtc":                   self._sym_rtc,
-            "ds3231":                self._sym_rtc,
+            "ds3231":                self._sym_ds3231,
             "ds1307":                self._sym_rtc,
             "pcf8523":               self._sym_rtc,
             # Explicit diode part numbers
@@ -824,6 +829,40 @@ class SchematicRenderer:
 
     def _sym_mcu(self, dwg, x, y, comp):
         """MCU / module — IC box with pin stubs."""
+        ctype = (comp.get("resolved_type", comp.get("type", "")) or "").lower()
+        if ctype == "esp32":
+            W, H = 120, 80
+            dwg.add(dwg.rect(insert=(x-W//2, y-H//2), size=(W, H),
+                             fill="#0a2f4f", stroke="#071f34", stroke_width=2, rx=3))
+            dwg.add(dwg.rect(insert=(x-40, y-30), size=(80, 50),
+                             fill="#b8bec6", stroke="#69727d", stroke_width=1.2, rx=2))
+            dwg.add(dwg.text("ESP32", insert=(x, y-2),
+                             font_size=14, fill="#102033",
+                             font_family="monospace", font_weight="bold",
+                             text_anchor="middle"))
+            dwg.add(dwg.rect(insert=(x-12, y+H//2-7), size=(24, 7),
+                             fill="#c8c8c8", stroke="#555555", stroke_width=0.8, rx=1))
+            left = ["3V3", "GND", "EN", "GPIO34", "GPIO35",
+                    "GPIO32", "GPIO33", "GPIO25", "GPIO26"]
+            right = ["GPIO23(MOSI)", "GPIO22(SCL)", "GPIO21(SDA)",
+                     "GPIO19(MISO)", "GPIO18(SCK)", "GPIO5(SS)",
+                     "GPIO4", "GPIO2"]
+            for i, lbl in enumerate(left):
+                py_ = y - 30 + i * 7.5
+                dwg.add(dwg.line(start=(x-W//2-10, py_), end=(x-W//2, py_),
+                                 stroke=self._PIN_COLOR, stroke_width=1))
+                dwg.add(dwg.text(lbl, insert=(x-W//2+3, py_+2.2),
+                                 font_size=5.5, fill="#d8ecff",
+                                 font_family="monospace"))
+            for i, lbl in enumerate(right):
+                py_ = y - 26 + i * 7.5
+                dwg.add(dwg.line(start=(x+W//2, py_), end=(x+W//2+10, py_),
+                                 stroke=self._PIN_COLOR, stroke_width=1))
+                dwg.add(dwg.text(lbl, insert=(x+W//2-3, py_+2.2),
+                                 font_size=5.2, fill="#d8ecff",
+                                 font_family="monospace", text_anchor="end"))
+            return
+
         W, H = 90, 60
         name = comp.get("name", comp.get("id","MCU"))
         # Body
@@ -1129,6 +1168,138 @@ class SchematicRenderer:
             dwg.add(dwg.text(lbl, insert=(px, y+H//2+19),
                              font_size=6, fill=self._TEXT_COLOR,
                              font_family="monospace", text_anchor="middle"))
+
+    def _sym_pir(self, dwg, x, y, comp):
+        """PIR motion sensor module."""
+        W, H = 50, 45
+        dwg.add(dwg.rect(insert=(x-W//2, y-H//2), size=(W, H),
+                         fill="#e9f7ee", stroke="#227744", stroke_width=1.8, rx=3))
+        dwg.add(dwg.path(
+            d=f"M {x-17} {y-6} A 17 17 0 0 1 {x+17} {y-6} L {x+17} {y+7} L {x-17} {y+7} Z",
+            fill="#dbe7ff", stroke="#7788aa", stroke_width=1.2))
+        dwg.add(dwg.text("PIR", insert=(x, y+19),
+                         font_size=10, fill="#116633",
+                         font_family="monospace", font_weight="bold",
+                         text_anchor="middle"))
+        dwg.add(dwg.text("Motion", insert=(x, y+29),
+                         font_size=7, fill="#338855",
+                         font_family="monospace", text_anchor="middle"))
+        for i, lbl in enumerate(("VCC", "OUT", "GND")):
+            px = x - 16 + i * 16
+            dwg.add(dwg.line(start=(px, y+H//2), end=(px, y+H//2+11),
+                             stroke=self._PIN_COLOR, stroke_width=1.5))
+            dwg.add(dwg.text(lbl, insert=(px, y+H//2+19),
+                             font_size=6, fill=self._TEXT_COLOR,
+                             font_family="monospace", text_anchor="middle"))
+
+    def _sym_ina219(self, dwg, x, y, comp):
+        """INA219 current/voltage monitor breakout."""
+        W, H = 60, 45
+        dwg.add(dwg.rect(insert=(x-W//2, y-H//2), size=(W, H),
+                         fill="#151515", stroke="#000000", stroke_width=1.8, rx=2))
+        dwg.add(dwg.rect(insert=(x-10, y-9), size=(20, 18),
+                         fill="#2e2e2e", stroke="#777777", stroke_width=0.8))
+        for i, lbl in enumerate(("VCC", "GND", "SDA", "SCL")):
+            py = y - 15 + i * 10
+            dwg.add(dwg.line(start=(x-W//2-10, py), end=(x-W//2, py),
+                             stroke=self._PIN_COLOR, stroke_width=1.5))
+            dwg.add(dwg.text(lbl, insert=(x-W//2+3, py+3),
+                             font_size=6, fill="#dddddd", font_family="monospace"))
+        for i, lbl in enumerate(("VIN+", "VIN-")):
+            py = y - 6 + i * 12
+            dwg.add(dwg.line(start=(x+W//2, py), end=(x+W//2+10, py),
+                             stroke=self._PIN_COLOR, stroke_width=1.5))
+            dwg.add(dwg.text(lbl, insert=(x+W//2-3, py+3),
+                             font_size=6, fill="#dddddd",
+                             font_family="monospace", text_anchor="end"))
+        dwg.add(dwg.text("INA219", insert=(x, y+17),
+                         font_size=9, fill="#ffffff", font_family="monospace",
+                         font_weight="bold", text_anchor="middle"))
+        dwg.add(dwg.text("I/V Monitor", insert=(x, y+28),
+                         font_size=7, fill="#aaaaaa",
+                         font_family="monospace", text_anchor="middle"))
+
+    def _sym_hx711(self, dwg, x, y, comp):
+        """HX711 load-cell amplifier."""
+        W, H = 60, 40
+        dwg.add(dwg.rect(insert=(x-W//2, y-H//2), size=(W, H),
+                         fill="#eaf4ff", stroke="#225588", stroke_width=1.8, rx=2))
+        dwg.add(dwg.rect(insert=(x-11, y-8), size=(22, 16),
+                         fill="#222222", stroke="#666666", stroke_width=0.8))
+        for i, lbl in enumerate(("VCC", "GND", "DT", "SCK")):
+            py = y - 15 + i * 10
+            dwg.add(dwg.line(start=(x-W//2-10, py), end=(x-W//2, py),
+                             stroke=self._PIN_COLOR, stroke_width=1.5))
+            dwg.add(dwg.text(lbl, insert=(x-W//2+3, py+3),
+                             font_size=6, fill="#225588", font_family="monospace"))
+        for i, lbl in enumerate(("E+", "E-", "A+", "A-")):
+            py = y - 15 + i * 10
+            dwg.add(dwg.line(start=(x+W//2, py), end=(x+W//2+10, py),
+                             stroke=self._PIN_COLOR, stroke_width=1.5))
+            dwg.add(dwg.text(lbl, insert=(x+W//2-3, py+3),
+                             font_size=6, fill="#225588",
+                             font_family="monospace", text_anchor="end"))
+        dwg.add(dwg.text("HX711", insert=(x, y+5),
+                         font_size=9, fill="#225588", font_family="monospace",
+                         font_weight="bold", text_anchor="middle"))
+        dwg.add(dwg.text("Load Cell", insert=(x, y+16),
+                         font_size=7, fill="#4477aa",
+                         font_family="monospace", text_anchor="middle"))
+
+    def _sym_ds3231(self, dwg, x, y, comp):
+        """DS3231 RTC breakout."""
+        W, H = 70, 50
+        dwg.add(dwg.rect(insert=(x-W//2, y-H//2), size=(W, H),
+                         fill="#e8f0ff", stroke="#224488", stroke_width=1.8, rx=2))
+        dwg.add(dwg.circle(center=(x+18, y), r=11,
+                           fill="#c8c8c8", stroke="#777777", stroke_width=1.2))
+        for i, lbl in enumerate(("VCC", "GND", "SDA", "SCL")):
+            py = y - 16 + i * 11
+            dwg.add(dwg.line(start=(x-W//2-10, py), end=(x-W//2, py),
+                             stroke=self._PIN_COLOR, stroke_width=1.5))
+            dwg.add(dwg.text(lbl, insert=(x-W//2+3, py+3),
+                             font_size=6, fill="#224488", font_family="monospace"))
+        for i, lbl in enumerate(("SQW", "32K", "RST")):
+            py = y - 11 + i * 11
+            dwg.add(dwg.line(start=(x+W//2, py), end=(x+W//2+10, py),
+                             stroke=self._PIN_COLOR, stroke_width=1.5))
+            dwg.add(dwg.text(lbl, insert=(x+W//2-3, py+3),
+                             font_size=6, fill="#224488",
+                             font_family="monospace", text_anchor="end"))
+        dwg.add(dwg.text("DS3231", insert=(x-10, y-4),
+                         font_size=9, fill="#224488", font_family="monospace",
+                         font_weight="bold", text_anchor="middle"))
+        dwg.add(dwg.text("RTC", insert=(x-10, y+8),
+                         font_size=8, fill="#446699",
+                         font_family="monospace", text_anchor="middle"))
+
+    def _sym_nrf24l01(self, dwg, x, y, comp):
+        """nRF24L01 2.4 GHz transceiver."""
+        W, H = 70, 55
+        dwg.add(dwg.rect(insert=(x-W//2, y-H//2), size=(W, H),
+                         fill="#e8f0ff", stroke="#663399", stroke_width=1.8, rx=3))
+        ant = [(x+18, y-H//2+8), (x+25, y-H//2+8), (x+25, y-H//2+14),
+               (x+31, y-H//2+14), (x+31, y-H//2+20)]
+        dwg.add(dwg.polyline(ant, fill="none", stroke="#cc9900", stroke_width=2))
+        for i, lbl in enumerate(("VCC(3.3V)", "GND")):
+            py = y - 8 + i * 12
+            dwg.add(dwg.line(start=(x-W//2-10, py), end=(x-W//2, py),
+                             stroke=self._PIN_COLOR, stroke_width=1.5))
+            dwg.add(dwg.text(lbl, insert=(x-W//2+3, py+3),
+                             font_size=5.5, fill="#663399", font_family="monospace"))
+        for i, lbl in enumerate(("CE", "CSN", "SCK", "MOSI", "MISO", "IRQ")):
+            py = y - 22 + i * 8.5
+            dwg.add(dwg.line(start=(x+W//2, py), end=(x+W//2+10, py),
+                             stroke=self._PIN_COLOR, stroke_width=1.3))
+            dwg.add(dwg.text(lbl, insert=(x+W//2-3, py+2.5),
+                             font_size=5.5, fill="#663399",
+                             font_family="monospace", text_anchor="end"))
+        dwg.add(dwg.text("nRF24L01", insert=(x, y+4),
+                         font_size=9, fill="#663399", font_family="monospace",
+                         font_weight="bold", text_anchor="middle"))
+        dwg.add(dwg.text("2.4GHz", insert=(x, y+16),
+                         font_size=7, fill="#8855aa",
+                         font_family="monospace", text_anchor="middle"))
 
     def _sym_oled(self, dwg, x, y, comp):
         """OLED 128×64 — rectángulo con pantalla interior y pines abajo."""

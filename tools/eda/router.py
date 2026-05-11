@@ -21,6 +21,69 @@ def route_orthogonal(p1: Tuple[int, int], p2: Tuple[int, int]) -> List[Tuple[int
     return [(x1, y1), (mid_x, y1), (mid_x, y2), (x2, y2)]
 
 
+def route_schematic(
+    nets: List[Dict],
+    positions: Dict[str, Tuple[float, float]],
+) -> List[Dict]:
+    """Return schematic wire segments, junctions and directional labels.
+
+    Nets with more than three positioned nodes use a shared vertical bus.
+    Smaller nets keep simple orthogonal point-to-point routing.
+    """
+    routed: List[Dict] = []
+    for net in nets:
+        name = net.get("name", "")
+        coords = [
+            positions[node.split(".")[0]]
+            for node in net.get("nodes", [])
+            if node.split(".")[0] in positions
+        ]
+        if len(coords) < 2:
+            continue
+
+        cx = sum(p[0] for p in coords) / len(coords)
+        cy = sum(p[1] for p in coords) / len(coords)
+
+        if len(coords) > 3:
+            bus_x = cx
+            y_min = min(p[1] for p in coords)
+            y_max = max(p[1] for p in coords)
+            routed.append({
+                "kind": "wire", "net": name,
+                "points": [(bus_x, y_min), (bus_x, y_max)],
+            })
+            for x, y in coords:
+                routed.append({
+                    "kind": "wire", "net": name,
+                    "points": [(x, y), (bus_x, y)],
+                })
+                routed.append({
+                    "kind": "junction", "net": name,
+                    "point": (bus_x, y),
+                })
+                direction = "right" if x <= cx else "left"
+                routed.append({
+                    "kind": "label", "net": name,
+                    "point": (x, y), "direction": direction,
+                })
+        else:
+            anchor = coords[0]
+            for x, y in coords[1:]:
+                routed.append({
+                    "kind": "wire", "net": name,
+                    "points": route_orthogonal(anchor, (x, y)),
+                })
+            if len(coords) == 3:
+                routed.append({"kind": "junction", "net": name, "point": anchor})
+            for x, y in coords:
+                direction = "right" if x <= cx else "left"
+                routed.append({
+                    "kind": "label", "net": name,
+                    "point": (x, y), "direction": direction,
+                })
+    return routed
+
+
 def route_traces(nets: List[Dict],
                  positions: Dict[str, Tuple[float, float]]) -> List[Dict]:
     """Returns PCB trace segments: {x1,y1,x2,y2,net,layer,width}.
