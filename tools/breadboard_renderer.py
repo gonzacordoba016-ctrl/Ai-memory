@@ -3,6 +3,8 @@
 from typing import Dict, Any, List, Tuple
 import json
 from core.logger import get_logger
+from tools.design_rules import get_sheet_size
+from tools.eda.pcb_draw import _compute_pcb_placement
 
 logger = get_logger(__name__)
 
@@ -108,12 +110,11 @@ class BreadboardRenderer:
         components_3d = []
         
         # Asignar posiciones iniciales (esto sería más sofisticado en producción)
-        base_x, base_y = 100, 100
-        spacing = 50
+        components = circuit_data.get("components", [])
+        placement = self._compute_3d_placement(components, circuit_data.get("nets", []))
         
-        for i, component in enumerate(circuit_data.get("components", [])):
-            x = base_x + (i % 8) * spacing
-            y = base_y + (i // 8) * spacing
+        for i, component in enumerate(components):
+            x, y = placement.get(component["id"], (100 + (i % 8) * 50, 100 + (i // 8) * 50))
             z = 5  # Altura sobre el breadboard
             
             comp_3d = {
@@ -130,6 +131,27 @@ class BreadboardRenderer:
             components_3d.append(comp_3d)
             
         return components_3d
+
+    def _compute_3d_placement(
+        self,
+        components: List[Dict[str, Any]],
+        nets: List[Dict[str, Any]],
+    ) -> Dict[str, Tuple[float, float]]:
+        """Reusa el placement PCB y lo centra para la escena 3D."""
+        if not components:
+            return {}
+        try:
+            pcb_pos = _compute_pcb_placement(components, nets, get_sheet_size(len(components)))
+        except Exception as exc:
+            logger.warning(f"[3D] fallback placement: {exc}")
+            return {}
+        if not pcb_pos:
+            return {}
+        xs = [p[0] for p in pcb_pos.values()]
+        ys = [p[1] for p in pcb_pos.values()]
+        cx = (min(xs) + max(xs)) / 2
+        cy = (min(ys) + max(ys)) / 2
+        return {cid: (x - cx, y - cy) for cid, (x, y) in pcb_pos.items()}
 
     def _get_component_model(self, component: Dict[str, Any]) -> Dict[str, Any]:
         """Obtiene el modelo 3D para un componente."""
@@ -157,10 +179,71 @@ class BreadboardRenderer:
                 "dimensions": {"width": 70, "height": 50, "depth": 5}
             },
             "esp32": {
-                "geometry": "box",
-                "material": {"color": "#143018", "headers": "#d4a017",
-                             "silkscreen": "ESP32"},
-                "dimensions": {"width": 25, "height": 48, "depth": 4}
+                "geometry": "esp32_devkit",
+                "material": {"color": "#0a2f4f", "shield": "#b8bec6",
+                             "headers": "#d4a017", "antenna": "#c8a000",
+                             "usb": "#888888", "silkscreen": "ESP32"},
+                "dimensions": {"width": 25, "height": 48, "depth": 1.5}
+            },
+            "bmp280": {
+                "geometry": "bmp280_breakout",
+                "material": {"color": "#0a5c0a", "die": "#050505",
+                             "pads": "#d4a017", "silkscreen": "BMP280"},
+                "dimensions": {"width": 14, "height": 14, "depth": 1}
+            },
+            "dht22": {
+                "geometry": "dht22",
+                "material": {"color": "#f4f4f0", "slots": "#111111",
+                             "pins": "#c0c0c0", "silkscreen": "DHT22"},
+                "dimensions": {"width": 15, "height": 25, "depth": 7}
+            },
+            "mpu6050": {
+                "geometry": "mpu6050_breakout",
+                "material": {"color": "#0033aa", "die": "#050505",
+                             "pads": "#d4a017", "silkscreen": "MPU6050"},
+                "dimensions": {"width": 20, "height": 20, "depth": 1}
+            },
+            "ds18b20": {
+                "geometry": "to92",
+                "material": {"color": "#111111", "pins": "#c0c0c0",
+                             "silkscreen": "DS18B20"},
+                "dimensions": {"radius": 2.5, "height": 4.5, "pin_length": 8}
+            },
+            "hc_sr04": {
+                "geometry": "hc_sr04",
+                "material": {"color": "#0a5c0a", "transducers": "#c0c0c0",
+                             "pins": "#d4a017", "silkscreen": "HC-SR04"},
+                "dimensions": {"width": 45, "height": 20, "depth": 1}
+            },
+            "relay": {
+                "geometry": "relay_module",
+                "material": {"color": "#0a5c0a", "relay": "#111111",
+                             "coil": "#8a4a22", "led": "#cc1111"},
+                "dimensions": {"width": 50, "height": 26, "depth": 1}
+            },
+            "relay_module": {
+                "geometry": "relay_module",
+                "material": {"color": "#0a5c0a", "relay": "#111111",
+                             "coil": "#8a4a22", "led": "#cc1111"},
+                "dimensions": {"width": 50, "height": 26, "depth": 1}
+            },
+            "nrf24l01": {
+                "geometry": "nrf24l01",
+                "material": {"color": "#0033aa", "chip": "#050505",
+                             "antenna": "#c8a000", "silkscreen": "NRF24L01"},
+                "dimensions": {"width": 15, "height": 29, "depth": 1}
+            },
+            "oled": {
+                "geometry": "oled_128x64",
+                "material": {"color": "#111111", "screen": "#001133",
+                             "pixels": "#0088ff", "pins": "#d4a017"},
+                "dimensions": {"width": 27, "height": 27, "depth": 2}
+            },
+            "lcd": {
+                "geometry": "lcd_i2c_16x2",
+                "material": {"color": "#0a5c0a", "display": "#a8d65a",
+                             "characters": "#3a2a10", "pins": "#d4a017"},
+                "dimensions": {"width": 80, "height": 36, "depth": 1}
             },
             "button": {
                 "geometry": "box",
@@ -226,6 +309,10 @@ class BreadboardRenderer:
         """Genera conexiones entre componentes basadas en nets."""
         wires = []
         colors = ["#ff5555", "#55ff55", "#5555ff", "#ffff55", "#ff55ff"]
+        positions = self._compute_3d_placement(
+            circuit_data.get("components", []),
+            circuit_data.get("nets", []),
+        )
         
         for i, net in enumerate(circuit_data.get("nets", [])):
             color = colors[i % len(colors)]
@@ -240,7 +327,7 @@ class BreadboardRenderer:
                 "id": f"wire_{i}",
                 "net_name": net.get("name", f"net_{i}"),
                 "color": color,
-                "paths": self._calculate_wire_paths(nodes, circuit_data),
+                "paths": self._calculate_wire_paths(nodes, positions, net.get("name", "")),
                 "type": "jumper"  # Tipo de cable
             }
             
@@ -248,17 +335,36 @@ class BreadboardRenderer:
             
         return wires
 
-    def _calculate_wire_paths(self, nodes: List[str], circuit_data: Dict[str, Any]) -> List[List[float]]:
+    def _calculate_wire_paths(
+        self,
+        nodes: List[str],
+        positions: Dict[str, Tuple[float, float]],
+        net_name: str = "",
+    ) -> List[Dict[str, Any]]:
         """Calcula las rutas de los cables entre nodos."""
         # Esta sería una implementación simplificada
         # En realidad necesitaría mapear nodos a pines específicos
         paths = []
+        nl = net_name.lower()
+        radius = 0.8 if any(k in nl for k in ("gnd", "vcc", "5v", "3v3", "vin")) else 0.4
         
         # Por simplicidad, conectamos puntos medios
         for i in range(len(nodes) - 1):
             # Coordenadas dummy para demostración
-            start = [100 + i*20, 150, 5]
-            end = [120 + i*20, 150, 5]
-            paths.append([start, end])
+            id1 = nodes[i].split(".")[0]
+            id2 = nodes[i + 1].split(".")[0]
+            if id1 not in positions or id2 not in positions:
+                continue
+            x1, y1 = positions[id1]
+            x2, y2 = positions[id2]
+            paths.append({
+                "radius": radius,
+                "points": [
+                    [x1, y1, 1],
+                    [x1, y1, 5],
+                    [x2, y2, 5],
+                    [x2, y2, 1],
+                ],
+            })
             
         return paths
