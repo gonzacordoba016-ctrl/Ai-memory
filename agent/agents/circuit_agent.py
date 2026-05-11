@@ -10,6 +10,8 @@ from tools.hardware_detector import resolve_component_type
 from tools.eda.component_registry import format_pinouts_for_prompt, get_registry
 from tools.circuit_synthesizer import CircuitSynthesizer, BLOCK_TYPE_ALIASES
 from llm.openrouter_client import call_llm_sync
+from llm.json_utils import strip_fences
+from agent.schemas import CircuitSpec, LLMCircuitOutput
 
 logger = get_logger(__name__)
 
@@ -655,7 +657,7 @@ class CircuitAgent:
                 timeout=15,
             )
             raw = response["choices"][0]["message"]["content"]
-            spec = json.loads(raw)
+            spec = CircuitSpec.model_validate_json(strip_fences(raw)).model_dump()
             if not spec.get("blocks"):
                 return None
             return spec
@@ -831,8 +833,7 @@ class CircuitAgent:
                 logger.error("[CircuitAgent] LLM devolvió contenido vacío")
                 return None
 
-            content = self._clean_json_content(raw_content)
-            circuit_data = json.loads(content)
+            circuit_data = LLMCircuitOutput.model_validate_json(strip_fences(raw_content)).model_dump()
 
             # Validate required keys
             for key in ["name", "description", "components", "nets"]:
@@ -930,8 +931,9 @@ class CircuitAgent:
             logger.info(f"Circuito '{circuit_data['name']}' guardado con ID {design_id} (dominio: {domain})")
             return circuit_data
 
-        except json.JSONDecodeError as e:
-            _preview = repr(content[:400]) if 'content' in locals() else 'N/A'
+        except (json.JSONDecodeError, ValueError) as e:
+            _raw = raw_content if 'raw_content' in locals() else ''
+            _preview = repr(strip_fences(_raw)[:400]) if _raw else 'N/A'
             logger.error(f"[CircuitAgent] JSONDecodeError: {e} | content={_preview}")
             return None
         except ValueError as e:
@@ -947,17 +949,6 @@ class CircuitAgent:
     # ──────────────────────────────────────────────────────────────────────────
     # Internal helpers
     # ──────────────────────────────────────────────────────────────────────────
-
-    def _clean_json_content(self, content: str) -> str:
-        match = re.search(r'```(?:json)?\s*(\{.*\})\s*```', content, re.DOTALL)
-        if match:
-            return match.group(1)
-        # Fallback: find first { to last }
-        start = content.find('{')
-        end = content.rfind('}')
-        if start != -1 and end != -1:
-            return content[start:end+1]
-        return content
 
     def _calculate_missing_values(self, circuit_data: Dict[str, Any]) -> None:
         """Auto-agrega componentes de protección que el LLM omitió."""
@@ -1410,9 +1401,8 @@ SIN markdown, SIN explicaciones."""
             return None
 
         try:
-            content = self._clean_json_content(raw)
-            reviewed = json.loads(content)
-        except json.JSONDecodeError as e:
+            reviewed = LLMCircuitOutput.model_validate_json(strip_fences(raw)).model_dump()
+        except (json.JSONDecodeError, ValueError) as e:
             logger.warning(f"[CircuitAgent.review] JSON inválido: {e}")
             return None
 

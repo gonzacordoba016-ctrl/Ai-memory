@@ -7,8 +7,11 @@
 import json
 import math
 import re
+from typing import Any
+from pydantic import TypeAdapter
 from core.logger import logger
 from llm.async_client import call_llm_text
+from llm.json_utils import strip_fences
 from tools.electrical_formulas import FORMULA_REGISTRY
 from agent.prompts.electrical_calc_prompts import (
     CLASSIFY_PROMPT,
@@ -17,6 +20,8 @@ from agent.prompts.electrical_calc_prompts import (
     REQUIRED_PARAMS,
     PARAM_LABELS,
 )
+
+_PARAMS_ADAPTER = TypeAdapter(dict[str, Any])
 
 
 class ElectricalCalcAgent:
@@ -159,14 +164,17 @@ class ElectricalCalcAgent:
 
     def _parse_json_response(self, raw: str) -> dict | None:
         """Extrae y parsea el primer objeto JSON de una respuesta LLM en texto libre."""
-        json_match = re.search(r'\{[^{}]+\}', raw, re.DOTALL)
-        if not json_match:
+        clean = strip_fences(raw)
+        start = clean.find("{")
+        end = clean.rfind("}") + 1
+        if start == -1 or end == 0:
             logger.warning(f"[ElectricalCalc] No se pudo extraer JSON de: {raw[:100]}")
             return None
+        content = clean[start:end]
         try:
-            params = json.loads(json_match.group())
+            params = _PARAMS_ADAPTER.validate_json(content)
             return {k: v for k, v in params.items() if v is not None}
-        except json.JSONDecodeError as e:
+        except ValueError as e:
             logger.warning(f"[ElectricalCalc] JSON inválido: {e}")
             return None
 

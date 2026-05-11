@@ -1,11 +1,12 @@
 # agent/agents/hardware_design.py — mixin de diseño, debug y formateo para HardwareAgent
 
-import json as _json
 import os
 import httpx
 
 from core.config import LLM_API, LLM_MODEL, get_llm_headers
 from core.logger import logger
+from llm.json_utils import strip_fences
+from agent.schemas import HardwareDebugResult
 from tools.hardware_detector import detect_devices
 from tools.firmware_flasher import compile_firmware, flash_firmware
 from tools.serial_monitor import read_serial
@@ -168,11 +169,10 @@ class _DesignMixin:
             )
             response.raise_for_status()
             content      = response.json()["choices"][0]["message"]["content"].strip()
-            content      = content.replace("```json", "").replace("```", "").strip()
-            debug_result = _json.loads(content)
+            debug_result = HardwareDebugResult.model_validate_json(strip_fences(content))
 
-            diagnosis  = debug_result.get("diagnosis", "No pude diagnosticar")
-            fixed_code = debug_result.get("fixed_code", "")
+            diagnosis  = debug_result.diagnosis
+            fixed_code = debug_result.fixed_code
 
             if not fixed_code:
                 return f"Diagnóstico: {diagnosis}\n\nNo pude generar código corregido."

@@ -12,6 +12,8 @@ import httpx
 from core.logger import logger
 from core.config import get_llm_headers, _env
 from database.hardware_memory import hardware_memory
+from llm.json_utils import strip_fences
+from agent.schemas import VisionCircuit
 
 # Modelo de visión para Ollama
 VISION_MODEL_OLLAMA  = _env("VISION_MODEL", "llava:7b")
@@ -218,14 +220,14 @@ class VisionAgent:
     def _parse_circuit(self, raw: str) -> dict:
         """Parsea la respuesta del modelo y extrae el JSON del circuito."""
         try:
-            clean = raw.strip().replace("```json", "").replace("```", "").strip()
+            clean = strip_fences(raw)
             start = clean.find("{")
             end   = clean.rfind("}") + 1
             if start == -1 or end == 0:
                 logger.warning("[VisionAgent] No se encontró JSON en la respuesta")
                 return {}
 
-            circuit = _json.loads(clean[start:end])
+            circuit = VisionCircuit.model_validate_json(clean[start:end]).model_dump()
 
             if not isinstance(circuit.get("components"), list):
                 circuit["components"] = []
@@ -238,7 +240,7 @@ class VisionAgent:
 
             return circuit
 
-        except _json.JSONDecodeError as e:
+        except ValueError as e:
             logger.error(f"[VisionAgent] Error parseando JSON: {e}\nRaw: {raw[:200]}")
             return {}
 
