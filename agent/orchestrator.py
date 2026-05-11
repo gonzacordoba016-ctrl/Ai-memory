@@ -1,43 +1,32 @@
 # agent/orchestrator.py
 
-import json
 import asyncio
+import contextvars
+import hashlib
 from core.logger import logger
-from core.config import LLM_MODEL_FAST
-from llm.async_client import call_llm_async, call_llm_text
+from llm.async_client import call_llm_async
 
 from agent.agents.research_agent import ResearchAgent
 from agent.agents.code_agent import CodeAgent
 from agent.agents.memory_agent import MemoryAgent
 
 
-ROUTING_PROMPT = """Analizá la siguiente consulta del usuario y decidí qué agentes invocar.
+_ROUTE_CACHE: dict[str, list[str]] = {}
 
-Agentes disponibles:
-- research: buscar información web, noticias, datos actuales, clima, precios, deportes
-- code: ejecutar código Python, cálculos matemáticos, leer/escribir archivos
-- memory: consultar memoria del usuario, historial, hechos conocidos sobre el usuario
-- hardware: programar Arduino/ESP32/ESP8266/PIC/STM32, consultar dispositivos, historial de firmware, guardar decisiones de diseño, circuitos de potencia, PLCs, automatización
-- circuit_design: DISEÑAR un circuito nuevo desde cero (generar netlist, esquemático, PCB, BOM) cuando el usuario pide que SE CREE/DISEÑE/GENERE un circuito completo
-- direct: responder directamente sin sub-agentes (saludos, opiniones, conversación general)
 
-Devolvé ÚNICAMENTE un JSON con:
-{{
-  "agents": ["lista", "de", "agentes"],
-  "reason": "por qué elegiste estos agentes"
-}}
+def _route_key(query: str) -> str:
+    return hashlib.md5(query.lower().strip().encode()).hexdigest()[:8]
 
-Reglas estrictas:
-- Si pregunta por eventos actuales, noticias, precios, resultados deportivos → research
-- Si pregunta por cálculos, código Python, archivos → code
-- Si pregunta por datos del usuario, historial de conversación → memory
-- Si pide DISEÑAR/CREAR/GENERAR/ARMAR un circuito, esquemático o PCB nuevo → circuit_design
-- Si menciona Arduino, ESP32, microcontrolador, LED, sensor, pin, firmware, circuito eléctrico, PLC, ladder, automatización, variador, transformador, potencia, relay, contactor, decisión de diseño → hardware
-- Si es saludo, opinión o pregunta general de conocimiento → direct
 
-Consulta: "{query}"
+def _cached_route(query: str) -> list[str] | None:
+    cached = _ROUTE_CACHE.get(_route_key(query))
+    return list(cached) if cached else None
 
-JSON:"""
+
+def _cache_route(query: str, result: list[str]) -> None:
+    if len(_ROUTE_CACHE) > 500:
+        _ROUTE_CACHE.pop(next(iter(_ROUTE_CACHE)))
+    _ROUTE_CACHE[_route_key(query)] = list(result)
 
 
 # Keywords que indican EXPLÍCITAMENTE un cálculo eléctrico.
@@ -213,6 +202,15 @@ class Orchestrator:
         """
         q = query.lower()
 
+        if any(w in q for w in ("que dia", "que día", "fecha", "hora", "que hora", "qué hora")):
+            return ["fast_date"]
+
+        if any(w in q for w in ("como estas", "cómo estás", "todo bien", "como andas", "cómo andas")):
+            return ["fast_greeting"]
+
+        if any(w in q for w in ("que puedes hacer", "qué podés hacer", "que podes hacer", "ayuda", "help", "comandos")):
+            return ["fast_help"]
+
         # 1) Literal de circuit_design tiene prioridad absoluta
         if any(kw in q for kw in KEYWORD_ROUTES["circuit_design"]):
             return ["circuit_design"]
@@ -284,43 +282,22 @@ class Orchestrator:
     async def route(self, query: str) -> list[str]:
         """
         Determina qué agentes invocar.
-        1. Intenta keywords estáticos (zero-LLM, sin latencia)
-        2. Si no matchea, consulta al LLM async
-        3. Fallback a 'direct' si falla todo
+        1. Keywords estáticos (zero-LLM, sin latencia)
+        2. Si no matchea → 'direct'
         """
-        # Paso 1: keywords estáticos (prioridad, sin LLM)
+        cached = _cached_route(query)
+        if cached:
+            logger.info(f"[Orchestrator] Cached route → {cached}")
+            return cached
+
         kw = self._keyword_route(query)
         if kw:
             logger.info(f"[Orchestrator] Keyword route → {kw}")
+            _cache_route(query, kw)
             return kw
-
-        # Paso 2: LLM async para casos ambiguos
-        try:
-            content = await call_llm_text(
-                messages=[{
-                    "role":    "user",
-                    "content": ROUTING_PROMPT.format(query=query),
-                }],
-                model=LLM_MODEL_FAST,
-                temperature=0,
-                timeout=30,
-                agent_id="orchestrator",
-                agent_name="Orchestrator",
-            )
-
-            if not content:
-                return ["direct"]
-
-            content = content.replace("```json", "").replace("```", "").strip()
-            data    = json.loads(content)
-            agents  = data.get("agents", ["direct"])
-
-            logger.info(f"[Orchestrator] LLM route → {agents} | {data.get('reason', '')}")
-            return agents
-
-        except Exception as e:
-            logger.error(f"[Orchestrator] Error en routing LLM: {e}")
-            return ["direct"]
+        result = ["direct"]
+        _cache_route(query, result)
+        return result
 
     async def run(self, query: str, context: str = "", history: list = None,
                   on_phase=None) -> dict:
@@ -338,24 +315,28 @@ class Orchestrator:
                 except Exception:
                     pass
 
+        # ContextVar snapshot — propagado a través de to_thread para que
+        # asyncio.run() en BaseAgent.run() vea logger/request_id del caller.
+        ctx = contextvars.copy_context()
+
         agents_to_run = await self.route(query)
         results       = {}
         context_parts = []
 
         if "memory" in agents_to_run:
-            result = await asyncio.to_thread(self.memory_agent.run, query, context)
+            result = await asyncio.to_thread(ctx.run, self.memory_agent.run, query, context)
             results["memory"] = result
             if result and "No se encontró" not in result:
                 context_parts.append(f"[Memoria]\n{result}")
 
         if "research" in agents_to_run:
-            result = await asyncio.to_thread(self.research_agent.run, query, context)
+            result = await asyncio.to_thread(ctx.run, self.research_agent.run, query, context)
             results["research"] = result
             if result:
                 context_parts.append(f"[Investigación web]\n{result}")
 
         if "code" in agents_to_run:
-            result = await asyncio.to_thread(self.code_agent.run, query, context)
+            result = await asyncio.to_thread(ctx.run, self.code_agent.run, query, context)
             results["code"] = result
             if result:
                 context_parts.append(f"[Código/Archivos]\n{result}")
@@ -426,7 +407,7 @@ class Orchestrator:
                     elif "pico" in hist_text:    mcu = "Raspberry Pi Pico"
                     elif "stm32" in hist_text:   mcu = "STM32"
 
-                circuit = await asyncio.to_thread(ca.parse_circuit, description, mcu)
+                circuit = await asyncio.to_thread(ctx.run, ca.parse_circuit, description, mcu)
                 if circuit:
                     await _phase("validating")
                     results["circuit_design"] = circuit
@@ -482,7 +463,7 @@ class Orchestrator:
                 # HardwareAgent para firmware, circuitos, dispositivos, etc.
                 from agent.agents.hardware_agent import get_hardware_agent
                 hw_agent = get_hardware_agent()
-                result = await asyncio.to_thread(hw_agent.run, query, context)
+                result = await asyncio.to_thread(ctx.run, hw_agent.run, query, context)
                 results["hardware"] = result
                 if result:
                     context_parts.append(f"[Hardware]\n{result}")

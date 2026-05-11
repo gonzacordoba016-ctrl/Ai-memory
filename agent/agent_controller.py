@@ -2,6 +2,7 @@
 
 import asyncio
 import contextvars
+from datetime import datetime
 from agent.agent_state import AgentState
 from agent.session_store import SessionStore
 from memory.vector_memory import store_memory, search_memory
@@ -22,6 +23,14 @@ from llm.async_client import call_llm_async, stream_llm_async
 # acoplar la firma de cada método/mixin. process_input() lo setea al entrar.
 _current_session: contextvars.ContextVar[str] = contextvars.ContextVar(
     "current_session_id", default="_default"
+)
+
+_DAYS_ES = (
+    "lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"
+)
+_MONTHS_ES = (
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
 )
 
 
@@ -122,6 +131,16 @@ class AgentController:
                 await on_token(_trivial)
             asyncio.create_task(asyncio.to_thread(self._store_episode, user_input, _trivial))
             return {"text": _trivial, "agents_used": ["greeting"]}
+
+        _fast = self._maybe_fast_route_response(user_input)
+        if _fast is not None:
+            route, response = _fast
+            await _phase("responding")
+            self.state.add_message("assistant", response)
+            if on_token:
+                await on_token(response)
+            asyncio.create_task(asyncio.to_thread(self._store_episode, user_input, response))
+            return {"text": response, "agents_used": [route]}
 
         # 2. Extraer hechos y relaciones en paralelo (async, no bloquean)
         # F1.4 — skip en queries técnicas: ahorra 2 LLM calls (~6s con gpt-4o-mini).
@@ -377,7 +396,8 @@ class AgentController:
     # F1.4 — heurística para skip extract_facts/relations en queries técnicas.
     # Reusa el routing keyword-first del orchestrator: si el input cae en
     # circuit_design / hardware / code / research, no contiene facts personales.
-    _TECHNICAL_ROUTES = {"circuit_design", "hardware", "code", "research"}
+    _TECHNICAL_ROUTES = {"circuit_design", "hardware", "code", "research",
+                         "fast_date", "fast_greeting", "fast_help"}
 
     _FIRMWARE_INTENT_KEYWORDS = (
         "control", "controlar", "automátic", "automatic", "automatización", "automatizar",
@@ -411,6 +431,38 @@ class AgentController:
             if q in triggers:
                 logger.info(f"[FastPath] Greeting → respuesta directa ({len(response)}c)")
                 return response
+        return None
+
+    def _maybe_fast_route_response(self, user_input: str) -> tuple[str, str] | None:
+        try:
+            route = self.orchestrator._keyword_route(user_input)
+        except Exception:
+            return None
+        if not route:
+            return None
+
+        if route[0] == "fast_date":
+            now = datetime.now()
+            day = _DAYS_ES[now.weekday()]
+            month = _MONTHS_ES[now.month - 1]
+            q = user_input.lower()
+            if "hora" in q:
+                return "fast_date", (
+                    f"Hoy es {day} {now.day} de {month} de {now.year}. "
+                    f"La hora local es {now:%H:%M}."
+                )
+            return "fast_date", f"Hoy es {day} {now.day} de {month} de {now.year}."
+
+        if route[0] == "fast_greeting":
+            return "fast_greeting", "Todo bien. Decime que circuito, firmware o calculo queres resolver."
+
+        if route[0] == "fast_help":
+            return "fast_help", (
+                "Puedo ayudarte con circuitos y esquematicos, PCB/BOM/KiCad, calculos electricos, "
+                "firmware para Arduino/ESP32/ESP8266/RP2040/STM32, memoria de proyectos, stock de "
+                "componentes, analisis de imagenes de circuitos, busqueda tecnica y exportaciones."
+            )
+
         return None
 
     def _build_base_context(self) -> str:
