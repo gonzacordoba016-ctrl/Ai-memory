@@ -849,7 +849,9 @@ class CircuitSynthesizer:
         idx   = rl_id[2:]
         label = f"RL{idx}"
 
-        b.add_component(rl_id, f"Relay {block.get('model', 'SRD-05VDC')}", "relay",
+        model = str(block.get("model") or "").strip()
+        relay_name = f"Relay {model}" if model and model.lower() != "relay" else "Relay SRD-05VDC"
+        b.add_component(rl_id, relay_name, "relay",
                         value="5V", current_ma=70.0)
 
         # Bobina: COIL_A → VCC, COIL_B → colector del transistor

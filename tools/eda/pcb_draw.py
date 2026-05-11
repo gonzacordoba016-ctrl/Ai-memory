@@ -115,8 +115,8 @@ _FOOTPRINT: Dict[str, Tuple[float, float]] = {
 
     # ── Sensor ICs & modules (GAP 4) ────────────────────────────────────────
     # Pressure / humidity / temperature
-    "bmp280":   (2.5, 2.5),    # QFN-8 (or 10×10mm breakout board)
-    "bme280":   (2.5, 2.5),
+    "bmp280":   (14.0, 14.0),  # breakout board with readable silkscreen
+    "bme280":   (14.0, 14.0),
     "bmp180":   (3.5, 3.5),
     "bmp085":   (3.5, 3.5),
     "dht22":    (15.5, 25.0),  # DIP-4 rectangular white body
@@ -129,7 +129,7 @@ _FOOTPRINT: Dict[str, Tuple[float, float]] = {
     "aht20":    (3.0, 3.0),
 
     # IMU / accelerometer
-    "mpu6050":  (4.0, 4.0),    # QFN-24
+    "mpu6050":  (20.0, 20.0),  # breakout board with readable silkscreen
     "mpu9250":  (3.0, 3.0),
     "icm20600": (3.0, 3.0),
     "lsm6ds3":  (3.5, 3.5),
@@ -165,6 +165,7 @@ _FOOTPRINT: Dict[str, Tuple[float, float]] = {
     # RTC
     "ds3231":   (38.0, 22.0),  # breakout with coin cell
     "ds1307":   (8.5, 8.0),    # DIP-8
+    "nrf24l01": (15.0, 29.0),
 }
 
 _DEFAULT_FP = (10.0, 8.0)
