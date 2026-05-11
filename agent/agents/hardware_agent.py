@@ -50,8 +50,9 @@ class HardwareAgent(_FirmwareMixin, _MemoryOpsMixin, _DesignMixin, _DiffMixin):
                     "model":       LLM_MODEL,
                     "messages":    [{"role": "user", "content": INTENT_PROMPT.format(task=task)}],
                     "temperature": 0,
+                    "max_tokens": 128,
                 },
-                timeout=15
+                timeout=15,
             )
             response.raise_for_status()
             intent = response.json()["choices"][0]["message"]["content"].strip().lower()

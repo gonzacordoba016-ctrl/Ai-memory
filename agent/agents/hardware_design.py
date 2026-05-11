@@ -6,6 +6,7 @@ import httpx
 from core.config import LLM_API, LLM_MODEL, get_llm_headers
 from core.logger import logger
 from llm.json_utils import strip_fences
+from llm.openrouter_client import DEFAULT_MAX_TOKENS
 from agent.schemas import HardwareDebugResult
 from tools.hardware_detector import detect_devices
 from tools.firmware_flasher import compile_firmware, flash_firmware
@@ -94,8 +95,9 @@ class _DesignMixin:
                         {"role": "user",   "content": user_content},
                     ],
                     "temperature": 0.3,
+                    "max_tokens": DEFAULT_MAX_TOKENS,
                 },
-                timeout=180
+                timeout=180,
             )
             response.raise_for_status()
             answer = response.json()["choices"][0]["message"]["content"].strip()
@@ -164,8 +166,9 @@ class _DesignMixin:
                         }
                     ],
                     "temperature": 0.2,
+                    "max_tokens": DEFAULT_MAX_TOKENS,
                 },
-                timeout=180
+                timeout=180,
             )
             response.raise_for_status()
             content      = response.json()["choices"][0]["message"]["content"].strip()

@@ -12,6 +12,8 @@ from typing import Callable, Awaitable, Any
 from core.config import get_llm_headers, get_llm_api, get_llm_model
 from core.logger import logger
 
+DEFAULT_MAX_TOKENS = 4096
+
 # Shared client with connection pooling — instantiated once at import.
 # 120s for firmware generation, connect timeout 10s.
 _client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0))
@@ -66,6 +68,7 @@ async def call_llm_async(
     agent_name:  str   = "Stratum",
     tools:       list[dict[str, Any]] | None = None,
     model:       str   = None,
+    max_tokens:  int | None = None,
 ) -> dict[str, Any]:
     """
     Async LLM call. Returns the full response dict.
@@ -75,6 +78,7 @@ async def call_llm_async(
         "model":       model or get_llm_model(),
         "messages":    messages,
         "temperature": temperature,
+        "max_tokens":  max_tokens or DEFAULT_MAX_TOKENS,
     }
     if tools:
         payload["tools"]       = tools
@@ -109,6 +113,7 @@ async def call_llm_text(
     agent_name:  str   = "Stratum",
     model:       str   = None,
     use_cache:   bool  = True,
+    max_tokens:  int | None = None,
 ) -> str:
     """
     Convenience wrapper that returns the response text directly.
@@ -134,6 +139,7 @@ async def call_llm_text(
             agent_id=agent_id,
             agent_name=agent_name,
             model=resolved_model,
+            max_tokens=max_tokens,
         )
         text = data["choices"][0]["message"].get("content", "").strip()
 
@@ -157,6 +163,7 @@ async def stream_llm_async(
     agent_id:    str   = "stratum",
     agent_name:  str   = "Stratum",
     model:       str   = None,
+    max_tokens:  int | None = None,
 ) -> str:
     """
     Async token-by-token streaming.
@@ -174,6 +181,7 @@ async def stream_llm_async(
                 "messages":    messages,
                 "temperature": temperature,
                 "stream":      True,
+                "max_tokens":  max_tokens or DEFAULT_MAX_TOKENS,
             },
         ) as response:
             response.raise_for_status()

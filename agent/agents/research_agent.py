@@ -6,6 +6,7 @@ from tools.tool_registry import TOOL_DEFINITIONS, execute_tool
 from knowledge.knowledge_base import search_knowledge
 from core.config import LLM_API, LLM_MODEL, get_llm_headers
 from core.logger import logger
+from llm.openrouter_client import DEFAULT_MAX_TOKENS
 
 _TOOLS = [t for t in TOOL_DEFINITIONS
           if t["function"]["name"] in ("web_search", "get_datetime")]
@@ -63,8 +64,9 @@ class ResearchAgent(BaseAgent):
                         "model":       LLM_MODEL,
                         "messages":    messages,
                         "temperature": 0.3,
+                        "max_tokens": DEFAULT_MAX_TOKENS,
                     },
-                    timeout=30
+                    timeout=30,
                 )
                 response.raise_for_status()
                 answer = response.json()["choices"][0]["message"].get("content", "")

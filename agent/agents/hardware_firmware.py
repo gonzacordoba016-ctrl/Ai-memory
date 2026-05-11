@@ -5,6 +5,7 @@ import re
 import httpx
 from core.config import LLM_API, LLM_MODEL, get_llm_headers
 from core.logger import logger
+from llm.openrouter_client import DEFAULT_MAX_TOKENS
 from tools.hardware_detector import detect_devices
 from tools.firmware_generator import generate_firmware
 from tools.firmware_flasher import flash_firmware, compile_firmware, install_missing_libraries
@@ -308,8 +309,9 @@ class _FirmwareMixin:
                         }
                     ],
                     "temperature": 0.05 if attempt > 0 else 0.1,
+                    "max_tokens": DEFAULT_MAX_TOKENS,
                 },
-                timeout=180
+                timeout=180,
             )
             response.raise_for_status()
             fixed = response.json()["choices"][0]["message"]["content"].strip()

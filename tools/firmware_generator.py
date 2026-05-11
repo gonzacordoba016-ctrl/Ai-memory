@@ -8,6 +8,7 @@ import httpx
 from pathlib import Path
 from core.config import LLM_API, LLM_MODEL_SMART as LLM_MODEL, get_llm_headers
 from core.logger import logger
+from llm.openrouter_client import DEFAULT_MAX_TOKENS
 from tools.firmware_validator import validate_firmware
 
 FIRMWARE_DIR = os.path.abspath("./agent_files/firmware")
@@ -474,8 +475,9 @@ def generate_firmware(
                     {"role": "user",   "content": user_message},
                 ],
                 "temperature": 0.2,
+                "max_tokens": DEFAULT_MAX_TOKENS,
             },
-            timeout=180
+            timeout=180,
         )
         response.raise_for_status()
         code = response.json()["choices"][0]["message"]["content"].strip()
@@ -597,8 +599,9 @@ Genera el firmware C++ que controle exactamente este circuito."""
                     {"role": "user",   "content": user_message},
                 ],
                 "temperature": 0.2,
+                "max_tokens": DEFAULT_MAX_TOKENS,
             },
-            timeout=180
+            timeout=180,
         )
         response.raise_for_status()
         code = response.json()["choices"][0]["message"]["content"].strip()

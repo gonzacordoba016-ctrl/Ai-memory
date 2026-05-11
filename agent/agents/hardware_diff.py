@@ -6,6 +6,7 @@ import httpx
 
 from core.config import LLM_API, LLM_MODEL, get_llm_headers
 from core.logger import logger
+from llm.openrouter_client import DEFAULT_MAX_TOKENS
 
 
 class _DiffMixin:
@@ -53,6 +54,7 @@ class _DiffMixin:
                         {"role": "user",   "content": user_content},
                     ],
                     "temperature": 0.2,
+                    "max_tokens": DEFAULT_MAX_TOKENS,
                 },
                 timeout=120,
             )
