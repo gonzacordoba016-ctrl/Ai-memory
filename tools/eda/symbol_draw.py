@@ -654,7 +654,12 @@ class SchematicRenderer:
             "buzzer":                self._sym_buzzer,
             "sensor":                self._sym_sensor,
             "moisture_sensor":       self._sym_moisture,
-            "hc_sr04":               self._sym_ultrasonic,
+            "dht22":                 self._sym_dht22,
+            "dht11":                 self._sym_dht22,
+            "mpu6050":               self._sym_mpu6050,
+            "ds18b20":               self._sym_ds18b20,
+            "hc_sr04":               self._sym_hc_sr04,
+            "hc-sr04":               self._sym_hc_sr04,
             "ultrasonic":            self._sym_ultrasonic,
             "ultrasonic_sensor":     self._sym_ultrasonic,
             "display":               self._sym_display,
@@ -989,8 +994,8 @@ class SchematicRenderer:
                          font_family="monospace", text_anchor="middle"))
 
     def _sym_bmp280(self, dwg, x, y, comp):
-        """BMP280 — IC negra 60×40 con pines I2C/SPI."""
-        W, H = 60, 40
+        """BMP280 — pressure/temperature sensor with I2C/SPI pins."""
+        W, H = 60, 45
         dwg.add(dwg.rect(insert=(x-W//2, y-H//2), size=(W, H),
                          fill="#1a1a1a", stroke="#000000", stroke_width=1.8, rx=2))
         # Pin 1 marker
@@ -1019,6 +1024,111 @@ class SchematicRenderer:
         dwg.add(dwg.text("Temp/Press", insert=(x, y+9),
                          font_size=7, fill="#aaaaaa",
                          font_family="monospace", text_anchor="middle"))
+
+    def _sym_dht22(self, dwg, x, y, comp):
+        """DHT22/DHT11 humidity and temperature sensor."""
+        W, H = 55, 40
+        dwg.add(dwg.rect(insert=(x-W//2, y-H//2), size=(W, H),
+                         fill="#123456", stroke="#08213a", stroke_width=1.8, rx=3))
+        for i in range(6):
+            sx = x - W//2 + 8 + i * 7
+            dwg.add(dwg.rect(insert=(sx, y-H//2+7), size=(3, 17),
+                             fill="#d8ecff", fill_opacity=0.75, rx=1))
+        dwg.add(dwg.text("DHT22", insert=(x, y+4),
+                         font_size=10, fill="#ffffff",
+                         font_family="monospace", text_anchor="middle",
+                         font_weight="bold"))
+        dwg.add(dwg.text("T/H", insert=(x, y+15),
+                         font_size=7, fill="#b9dcff",
+                         font_family="monospace", text_anchor="middle"))
+        for i, lbl in enumerate(("VCC", "DATA", "GND")):
+            px = x - 18 + i * 18
+            dwg.add(dwg.line(start=(px, y+H//2), end=(px, y+H//2+12),
+                             stroke=self._PIN_COLOR, stroke_width=1.5))
+            dwg.add(dwg.text(lbl, insert=(px, y+H//2+20),
+                             font_size=6, fill=self._TEXT_COLOR,
+                             font_family="monospace", text_anchor="middle"))
+
+    def _sym_mpu6050(self, dwg, x, y, comp):
+        """MPU6050 6-axis IMU module."""
+        W, H = 65, 50
+        dwg.add(dwg.rect(insert=(x-W//2, y-H//2), size=(W, H),
+                         fill="#101010", stroke="#000000", stroke_width=1.8, rx=2))
+        dwg.add(dwg.rect(insert=(x-11, y-11), size=(22, 22),
+                         fill="#333333", stroke="#777777", stroke_width=1))
+        dwg.add(dwg.circle(center=(x-W//2+5, y-H//2+5), r=1.7, fill="#cccccc"))
+        for i, lbl in enumerate(("VCC", "GND", "SDA", "SCL")):
+            py = y - 18 + i * 12
+            dwg.add(dwg.line(start=(x-W//2-10, py), end=(x-W//2, py),
+                             stroke=self._PIN_COLOR, stroke_width=1.5))
+            dwg.add(dwg.text(lbl, insert=(x-W//2+3, py+3),
+                             font_size=6.5, fill="#dddddd",
+                             font_family="monospace"))
+        for i, lbl in enumerate(("INT", "AD0")):
+            py = y - 6 + i * 12
+            dwg.add(dwg.line(start=(x+W//2, py), end=(x+W//2+10, py),
+                             stroke=self._PIN_COLOR, stroke_width=1.5))
+            dwg.add(dwg.text(lbl, insert=(x+W//2-3, py+3),
+                             font_size=6.5, fill="#dddddd",
+                             font_family="monospace", text_anchor="end"))
+        dwg.add(dwg.text("MPU6050", insert=(x, y+18),
+                         font_size=9, fill="#ffffff",
+                         font_family="monospace", text_anchor="middle",
+                         font_weight="bold"))
+        dwg.add(dwg.text("IMU 6-DOF", insert=(x, y+29),
+                         font_size=7, fill="#aaaaaa",
+                         font_family="monospace", text_anchor="middle"))
+
+    def _sym_ds18b20(self, dwg, x, y, comp):
+        """DS18B20 TO-92 1-Wire temperature sensor."""
+        body_w, body_h = 34, 30
+        dwg.add(dwg.path(
+            d=f"M {x-body_w//2} {y+8} L {x-body_w//2} {y} "
+              f"A {body_w//2} {body_h//2} 0 0 1 {x+body_w//2} {y} "
+              f"L {x+body_w//2} {y+8} Z",
+            fill="#111111", stroke="#000000", stroke_width=1.8))
+        dwg.add(dwg.text("DS18B20", insert=(x, y-4),
+                         font_size=8, fill="#ffffff",
+                         font_family="monospace", text_anchor="middle",
+                         font_weight="bold"))
+        dwg.add(dwg.text("1-Wire", insert=(x, y+7),
+                         font_size=7, fill="#bbbbbb",
+                         font_family="monospace", text_anchor="middle"))
+        for dx, lbl in [(-12, "GND"), (0, "DATA"), (12, "VCC")]:
+            dwg.add(dwg.line(start=(x+dx, y+8), end=(x+dx, y+28),
+                             stroke="#777777", stroke_width=1.7))
+            dwg.add(dwg.text(lbl, insert=(x+dx, y+37),
+                             font_size=6, fill=self._TEXT_COLOR,
+                             font_family="monospace", text_anchor="middle"))
+
+    def _sym_hc_sr04(self, dwg, x, y, comp):
+        """HC-SR04 ultrasonic module."""
+        W, H = 80, 40
+        dwg.add(dwg.rect(insert=(x-W//2, y-H//2), size=(W, H),
+                         fill="#e8fff4", stroke="#227799", stroke_width=1.8, rx=3))
+        for cx_, lbl in ((x-20, "T"), (x+20, "E")):
+            dwg.add(dwg.circle(center=(cx_, y-1), r=12,
+                               fill="#d9e4ea", stroke="#778899", stroke_width=1.5))
+            dwg.add(dwg.circle(center=(cx_, y-1), r=8,
+                               fill="#b9c6cc", stroke="#778899", stroke_width=1))
+            dwg.add(dwg.text(lbl, insert=(cx_, y+3),
+                             font_size=8, fill="#225566",
+                             font_family="monospace", text_anchor="middle",
+                             font_weight="bold"))
+        dwg.add(dwg.text("HC-SR04", insert=(x, y-14),
+                         font_size=9, fill="#116688",
+                         font_family="monospace", text_anchor="middle",
+                         font_weight="bold"))
+        dwg.add(dwg.text("Ultrasonic", insert=(x, y+17),
+                         font_size=7, fill="#227799",
+                         font_family="monospace", text_anchor="middle"))
+        for i, lbl in enumerate(("VCC", "TRIG", "ECHO", "GND")):
+            px = x - 30 + i * 20
+            dwg.add(dwg.line(start=(px, y+H//2), end=(px, y+H//2+11),
+                             stroke=self._PIN_COLOR, stroke_width=1.5))
+            dwg.add(dwg.text(lbl, insert=(px, y+H//2+19),
+                             font_size=6, fill=self._TEXT_COLOR,
+                             font_family="monospace", text_anchor="middle"))
 
     def _sym_oled(self, dwg, x, y, comp):
         """OLED 128×64 — rectángulo con pantalla interior y pines abajo."""
