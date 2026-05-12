@@ -54,6 +54,7 @@ function connectWS() {
         _updateQueueBadge();
         const area = document.getElementById('messages');
         if (area) area.innerHTML = '';
+        if (_session_id) loadSessionHistory(_session_id);
         addLog('Server reiniciado — chat limpiado', 'warn');
         localStorage.setItem('stratum_server_start', currServerStart);
       } else {

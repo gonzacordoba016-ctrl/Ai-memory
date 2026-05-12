@@ -17,7 +17,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 # Log de diagnóstico: muestra el provider y key en uso al arrancar
 _provider = os.getenv("LLM_PROVIDER", "ollama")
 _key = os.getenv("OPENROUTER_API_KEY", "")
-_log.info(f"[STARTUP] LLM_PROVIDER={_provider} | key prefix={_key[:15]}... | model={os.getenv('OPENROUTER_MODEL', os.getenv('OLLAMA_MODEL', '?'))}")
+_key_status = "API key configurada" if _key else "API key no configurada"
+_log.info(f"[STARTUP] LLM_PROVIDER={_provider} | {_key_status} | model={os.getenv('OPENROUTER_MODEL', os.getenv('OLLAMA_MODEL', '?'))}")
 _log.info(f"[STARTUP] PORT={os.getenv('PORT', '8000')} | MEMORY_DB={get_db_path('memory.db')}")
 _log.info(f"[DEBUG] DATA_DIR={os.environ.get('DATA_DIR', 'NOT_SET')}")
 _log.info(f"[DEBUG] /data exists={os.path.exists('/data')}")
@@ -40,6 +41,7 @@ except Exception as e:
     _startup_errors.append(msg)
 
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import httpx
 import sqlite3
@@ -62,7 +64,16 @@ except Exception as e:
     _startup_errors.append(f"slowapi import failed: {e}")
     _slowapi_ok = False
 
-app = FastAPI(title="Stratum — Hardware Memory Engine")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await startup_event()
+    try:
+        yield
+    finally:
+        await shutdown_event()
+
+
+app = FastAPI(title="Stratum — Hardware Memory Engine", lifespan=lifespan)
 
 # ── Rate limiting ─────────────────────────────────────────────────────
 if _slowapi_ok:
@@ -187,7 +198,6 @@ async def lazy_db_init(request: Request, call_next):
 
 # ── Lifecycle ─────────────────────────────────────────────────────────
 
-@app.on_event("startup")
 async def startup_event():
     _prov = os.getenv("LLM_PROVIDER", "ollama")
     _model = os.getenv("OPENROUTER_MODEL") or os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
@@ -243,7 +253,6 @@ async def _init_agents_background():
         _startup_errors.append(msg)
 
 
-@app.on_event("shutdown")
 async def shutdown_event():
     try:
         from llm.async_client import close
@@ -292,14 +301,19 @@ async def health():
 
     # Qdrant — lazy/opcional: "not_initialized" no es un fallo
     try:
+        from core.config import QDRANT_URL
         from infrastructure.vector_store import vector_store
-        if vector_store.client:
-            vector_store.client.get_collections()
-            checks["qdrant"] = "ok"
+        if QDRANT_URL:
+            vector_store._ensure_connected()
+            if vector_store.client:
+                vector_store.client.get_collections()
+                checks["qdrant"] = "ok"
+            else:
+                checks["qdrant"] = "error"
         else:
-            checks["qdrant"] = "not_initialized"
-    except Exception as e:
-        checks["qdrant"] = f"error: {e}"
+            checks["qdrant"] = "not_configured"
+    except Exception:
+        checks["qdrant"] = "error"
 
     # LLM (solo si provider es ollama — openrouter no tiene endpoint /api/tags)
     provider = os.getenv("LLM_PROVIDER", "ollama")
@@ -320,6 +334,9 @@ async def health():
         status_code=200,
         content={
             "status":         overall,
+            "db":             checks.get("sqlite", "error"),
+            "qdrant":         checks.get("qdrant", "not_configured"),
+            "llm_provider":   provider,
             "services":       checks,
             "startup_errors": _startup_errors,
             "routers_ok":     _routers_loaded,

@@ -1,16 +1,18 @@
 // ── WEB: COMPONENT STOCK ─────────────────────────────────────────────────────
 
 async function webLoadStockSummary() {
+  const summary = document.getElementById('stock-summary');
+  if (!summary) return;
   try {
     const d = await authFetch(`${API}/stock/summary`).then(r => r.json());
-    document.getElementById('web-stock-total').textContent = d.total_components ?? 0;
-    document.getElementById('web-stock-in').textContent    = d.in_stock ?? 0;
-    document.getElementById('web-stock-cats').textContent  = d.categories ?? 0;
-  } catch {}
+    summary.textContent = `${d.total_components ?? 0} componentes | ${d.in_stock ?? 0} en stock | ${d.categories ?? 0} categorias`;
+  } catch {
+    summary.textContent = 'No se pudo cargar el stock';
+  }
 }
 
 async function webSearchStock(q) {
-  const list = document.getElementById('web-stock-list');
+  const list = document.getElementById(q ? 'stock-search-results' : 'stock-list') || document.getElementById('stock-search-results');
   if (!list) return;
   try {
     const url = q ? `${API}/stock?q=${encodeURIComponent(q)}` : `${API}/stock?in_stock_only=true`;
@@ -26,13 +28,16 @@ async function webSearchStock(q) {
 }
 
 function webToggleStockForm() {
-  const f = document.getElementById('web-stock-form');
+  const f = document.getElementById('stock-form');
+  if (!f) return;
   f.classList.toggle('hidden');
-  if (!f.classList.contains('hidden')) document.getElementById('wsf-name').focus();
+  if (!f.classList.contains('hidden')) document.getElementById('wsf-name')?.focus();
 }
 
 async function webSaveComponent() {
-  const name     = document.getElementById('wsf-name').value.trim();
+  const nameEl = document.getElementById('wsf-name');
+  if (!nameEl) return;
+  const name     = nameEl.value.trim();
   if (!name) { addLog('El nombre es obligatorio', 'warn'); return; }
   const qty      = parseInt(document.getElementById('wsf-qty').value) || 1;
   const value    = document.getElementById('wsf-value').value.trim() || null;
@@ -48,7 +53,7 @@ async function webSaveComponent() {
     // Limpiar form y cerrar
     ['wsf-name','wsf-value','wsf-category','wsf-supplier'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('wsf-qty').value = '1';
-    document.getElementById('web-stock-form').classList.add('hidden');
+    document.getElementById('stock-form')?.classList.add('hidden');
     webLoadStockSummary();
     webSearchStock('');
   } catch(e) { addLog('Error agregando componente: ' + e.message, 'error'); }

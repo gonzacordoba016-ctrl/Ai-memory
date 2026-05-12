@@ -80,6 +80,15 @@ def _load_file(path: str) -> str:
     return _load_text(path)
 
 
+def _vector_client_or_none():
+    """Return the lazy Qdrant client, or None while vector search is unavailable."""
+    try:
+        vector_store._ensure_connected()
+    except Exception:
+        return None
+    return getattr(vector_store, "client", None)
+
+
 # ======================
 # INDEXACIÓN
 # ======================
@@ -105,13 +114,16 @@ def index_knowledge_base(force: bool = False) -> dict:
     # Obtener fuentes ya indexadas para no duplicar
     indexed_sources = set()
     if not force:
+        client = _vector_client_or_none()
         try:
-            points, _ = vector_store.client.scroll(
-                collection_name=vector_store.collection,
-                scroll_filter=None,
-                limit=10000,
-                with_payload=True,
-            )
+            points = []
+            if client:
+                points, _ = client.scroll(
+                    collection_name=vector_store.collection,
+                    scroll_filter=None,
+                    limit=10000,
+                    with_payload=True,
+                )
             for point in points:
                 src = (point.payload or {}).get("source", "")
                 ktype = (point.payload or {}).get("type", "")
@@ -185,8 +197,12 @@ def search_knowledge(query: str, top_k: int = 4) -> list[str]:
 
 def list_indexed_documents() -> list[dict]:
     """Lista los documentos actualmente indexados con estadísticas."""
+    client = _vector_client_or_none()
+    if not client:
+        return []
+
     try:
-        points, _ = vector_store.client.scroll(
+        points, _ = client.scroll(
             collection_name=vector_store.collection,
             scroll_filter=None,
             limit=10000,
@@ -203,6 +219,5 @@ def list_indexed_documents() -> list[dict]:
             sources[src]["chunks"] = int(sources[src]["chunks"]) + 1
 
         return list(sources.values())
-    except Exception as e:
-        logger.error(f"[Knowledge] Error listando documentos: {e}")
+    except Exception:
         return []

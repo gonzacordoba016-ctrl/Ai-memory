@@ -52,6 +52,11 @@ const _CALC_PARAMS = {
 
 async function calcCompute() {
   const formula = document.getElementById('calc-selector')?.value;
+  if (!formula) return calcComputeCurrentRc();
+  return calcComputeLegacy(formula);
+}
+
+async function calcComputeLegacy(formula) {
   if (!formula) return;
   const paramsFn = _CALC_PARAMS[formula];
   if (!paramsFn) return;
@@ -120,6 +125,74 @@ function calcShowResult(data) {
 
   el.innerHTML = html;
   document.getElementById('calc-result')?.classList.remove('hidden');
+}
+
+function _calcNumber(id, fallback) {
+  const n = parseFloat(document.getElementById(id)?.value || String(fallback));
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function _calcFmt(n, digits = 3) {
+  if (!Number.isFinite(n)) return '0';
+  if (Math.abs(n) >= 1000 || Math.abs(n) < 0.001) return n.toExponential(3);
+  return n.toFixed(digits).replace(/\.?0+$/, '');
+}
+
+async function calcComputeCurrentRc() {
+  const out = document.getElementById('calc-out');
+  if (!out) return;
+  const r = _calcNumber('calc-R', 10000);
+  const c = _calcNumber('calc-C', 100e-9);
+  if (r <= 0 || c <= 0) {
+    out.innerHTML = '<div class="calc-param"><div class="k">ERROR</div><div class="v">R y C deben ser > 0</div></div>';
+    return;
+  }
+
+  try {
+    const res = await authFetch(`${API}/calc/compute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        formula: 'rc_time_constant',
+        params: { r, c_uf: c * 1e6 },
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Error de calculo');
+    }
+
+    const data = await res.json();
+    const tauS = r * c;
+    const fc = 1 / (2 * Math.PI * tauS);
+    const omega = 2 * Math.PI * fc;
+    const tauMs = data?.result?.value ?? (tauS * 1000);
+    const formula = data?.result?.formula || 'tau = R * C';
+    out.innerHTML = `
+      <div class="calc-param"><div class="k">fc</div><div class="v num">${_calcFmt(fc, 2)}<span class="u">Hz</span></div></div>
+      <div class="calc-param"><div class="k">tau</div><div class="v num">${_calcFmt(tauMs, 3)}<span class="u">ms</span></div></div>
+      <div class="calc-param"><div class="k">omega</div><div class="v num">${_calcFmt(omega, 1)}<span class="u">rad/s</span></div></div>
+      <div class="calc-param"><div class="k">R*C</div><div class="v num">${tauS.toExponential(3)}<span class="u">s</span></div></div>
+      <div class="calc-param"><div class="k">API</div><div class="v">${escHtml(formula)}</div></div>
+    `;
+  } catch (e) {
+    out.innerHTML = `<div class="calc-param"><div class="k">ERROR</div><div class="v">${escHtml(e.message || String(e))}</div></div>`;
+  }
+}
+
+function calcBindCurrentDom() {
+  const r = document.getElementById('calc-R');
+  const c = document.getElementById('calc-C');
+  if (!r || !c || !document.getElementById('calc-out')) return;
+  r.addEventListener('input', calcComputeCurrentRc);
+  c.addEventListener('input', calcComputeCurrentRc);
+  calcComputeCurrentRc();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', calcBindCurrentDom);
+} else {
+  calcBindCurrentDom();
 }
 
 function calcShowError(msg) {

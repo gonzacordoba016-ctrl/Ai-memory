@@ -18,7 +18,7 @@
             --text-muted: #aaaaaa;
             --border: #333333;
         }
-        
+
         body {
             margin: 0;
             padding: 0;
@@ -1072,56 +1072,152 @@
         }
         
         // Exportar PCB (simulación)
-        function exportPCB() {
-            if (!currentCircuit) {
-                alert('No hay circuito para exportar');
-                return;
-            }
-            
-            alert('Exportando archivos Gerber...\n\nEn una implementación real, esto generaría archivos ZIP con:\n- copper_top.gbr\n- copper_bottom.gbr\n- silkscreen_top.gto\n- soldermask_bottom.gbo\n- drills.txt\n- outline.gko');
+        function _currentCircuitId() {
+            return currentCircuit && (currentCircuit.id || currentCircuit.design_id);
         }
-        
-        // Exportar SVG
-        function exportSVG() {
-            if (!currentCircuit) {
-                alert('No hay circuito para exportar');
-                return;
+
+        function _safeFileName(name, fallback) {
+            return String(name || fallback || 'circuit').replace(/[^\w.-]+/g, '_');
+        }
+
+        function _viewerMessage(message, isError = false) {
+            let el = document.getElementById('viewer-status');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'viewer-status';
+                el.style.cssText = 'position:fixed;right:18px;bottom:18px;z-index:90;max-width:420px;padding:10px 12px;border-radius:4px;font:12px monospace;background:#161b22;border:1px solid #30363d;color:#e6edf3;box-shadow:0 8px 28px rgba(0,0,0,.35)';
+                document.body.appendChild(el);
             }
-            
-            // Generar SVG del esquemático
-            const svgContent = schematicView.innerHTML;
-            
-            // Crear blob y descargar
-            const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+            el.style.borderColor = isError ? '#ff7b72' : '#3fb950';
+            el.textContent = message;
+            window.clearTimeout(el._hideTimer);
+            el._hideTimer = window.setTimeout(() => { el.remove(); }, 6500);
+        }
+
+        function _downloadBlob(blob, filename) {
             const url = URL.createObjectURL(blob);
-            
             const a = document.createElement('a');
             a.href = url;
-            a.download = `${currentCircuit.name.replace(/\s+/g, '_')}_schematic.svg`;
+            a.download = filename;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
         }
-        
-        // Generar firmware
-        function generateFirmware() {
-            if (!currentCircuit) {
-                alert('No hay circuito para generar firmware');
-                return;
+
+        function _showTextModal(title, text) {
+            let modal = document.getElementById('viewer-text-modal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'viewer-text-modal';
+                modal.style.cssText = 'display:flex;position:fixed;inset:0;background:#000a;z-index:120;align-items:center;justify-content:center';
+                modal.innerHTML = `
+                    <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;width:min(900px,92vw);height:min(720px,86vh);display:flex;flex-direction:column;color:#e6edf3">
+                        <div style="display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid #30363d">
+                            <strong id="viewer-text-title" style="font:13px monospace"></strong>
+                            <button id="viewer-text-close" style="margin-left:auto;background:#30363d;color:#e6edf3">Cerrar</button>
+                        </div>
+                        <pre id="viewer-text-body" style="margin:0;padding:14px;overflow:auto;white-space:pre-wrap;font:12px/1.45 monospace;flex:1"></pre>
+                    </div>`;
+                document.body.appendChild(modal);
+                modal.querySelector('#viewer-text-close').addEventListener('click', () => modal.style.display = 'none');
             }
-            
-            alert(`Generando firmware para: ${currentCircuit.name}\n\nEn una implementación real, esto crearía un archivo .ino basado en los componentes y conexiones.`);
+            modal.querySelector('#viewer-text-title').textContent = title;
+            modal.querySelector('#viewer-text-body').textContent = text;
+            modal.style.display = 'flex';
         }
-        
-        // Simular circuito
-        function simulateCircuit() {
-            if (!currentCircuit) {
-                alert('No hay circuito para simular');
+
+        async function _viewerErrorMessage(res) {
+            try {
+                const data = await res.json();
+                return data.detail || data.error || `HTTP ${res.status}`;
+            } catch {
+                return `HTTP ${res.status}`;
+            }
+        }
+
+        async function exportPCB() {
+            const circuitId = _currentCircuitId();
+            if (!circuitId) {
+                _viewerMessage('No hay circuito guardado para exportar Gerbers.', true);
                 return;
             }
 
-            alert(`Simulando circuito: ${currentCircuit.name}\n\nComponentes: ${currentCircuit.components.length}\nRedes: ${currentCircuit.nets.length}`);
+            try {
+                const res = await _viewerFetch(`/api/circuits/${circuitId}/gerber`);
+                if (!res.ok) throw new Error(await _viewerErrorMessage(res));
+                const ctype = res.headers.get('content-type') || '';
+                const blob = await res.blob();
+                const ext = ctype.includes('zip') ? 'zip' : 'gerber.json';
+                _downloadBlob(blob, `${_safeFileName(currentCircuit.name, 'circuit')}_${circuitId}.${ext}`);
+                _viewerMessage(ctype.includes('zip') ? 'Gerbers descargados.' : 'Gerbers descargados como JSON.');
+            } catch (e) {
+                _viewerMessage(`No se pudieron exportar los Gerbers: ${e.message}`, true);
+            }
+        }
+
+        // Exportar SVG
+        async function exportSVG() {
+            const circuitId = _currentCircuitId();
+            if (!circuitId) {
+                _viewerMessage('No hay circuito guardado para exportar SVG.', true);
+                return;
+            }
+
+            try {
+                const res = await _viewerFetch(`/api/circuits/${circuitId}/schematic.svg`);
+                if (!res.ok) throw new Error(await _viewerErrorMessage(res));
+                const svgContent = await res.text();
+                _downloadBlob(
+                    new Blob([svgContent], { type: 'image/svg+xml' }),
+                    `${_safeFileName(currentCircuit.name, 'circuit')}_${circuitId}_schematic.svg`
+                );
+                _viewerMessage('SVG descargado.');
+            } catch (e) {
+                _viewerMessage(`No se pudo exportar el SVG: ${e.message}`, true);
+            }
+        }
+        
+        // Generar firmware
+        async function generateFirmware() {
+            const circuitId = _currentCircuitId();
+            if (!circuitId) {
+                _viewerMessage('No hay circuito guardado para generar firmware.', true);
+                return;
+            }
+
+            _viewerMessage('Generando firmware...');
+            try {
+                const res = await _viewerFetch(`/api/circuits/${circuitId}/generate-firmware`);
+                if (!res.ok) throw new Error(await _viewerErrorMessage(res));
+                const data = await res.json();
+                _showTextModal(data.filename || 'Firmware generado', data.code || 'El endpoint no devolvio codigo.');
+                _viewerMessage('Firmware generado.');
+            } catch (e) {
+                _viewerMessage(`No se pudo generar firmware: ${e.message}`, true);
+            }
+        }
+        
+        // Simular circuito
+        async function simulateCircuit() {
+            const circuitId = _currentCircuitId();
+            if (!circuitId) {
+                _viewerMessage('No hay circuito guardado para simular.', true);
+                return;
+            }
+
+            try {
+                const res = await _viewerFetch(`/api/circuits/${circuitId}/diagram.json`);
+                if (!res.ok) throw new Error(await _viewerErrorMessage(res));
+                const diagram = await res.text();
+                _showTextModal(
+                    'Simulacion Wokwi',
+                    `Simulacion proximamente.\n\nAbrir https://wokwi.com/projects/new e importar este diagram.json:\n\n${diagram}`
+                );
+                _viewerMessage('Diagram Wokwi generado.');
+            } catch (e) {
+                _viewerMessage(`No se pudo preparar la simulacion: ${e.message}`, true);
+            }
         }
 
         // ── Auth helper ─────────────────────────────────────────────────────

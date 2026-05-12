@@ -25,7 +25,7 @@ async function loadHealth() {
     const d = await r.json();
     const svc = d.services || {};
     setServiceDot('sqlite', svc.sqlite === 'ok');
-    setServiceDot('qdrant', svc.qdrant === 'ok' || svc.qdrant === 'not_initialized');
+    setServiceDot('qdrant', svc.qdrant === 'ok' || svc.qdrant === 'not_configured');
     setServiceDot('ollama', svc.ollama === 'ok' || !!svc.llm_provider);
   } catch(e) {
     ['sqlite','qdrant','ollama'].forEach(s => setServiceDot(s, false));

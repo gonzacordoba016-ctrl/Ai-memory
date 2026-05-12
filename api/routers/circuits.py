@@ -281,6 +281,61 @@ async def get_gerber_files(circuit_id: int):
     return JSONResponse(content=gerber)
 
 
+def _firmware_platform_for_circuit(circuit_data: dict) -> str:
+    text = " ".join(str(v) for v in [
+        circuit_data.get("mcu", ""),
+        circuit_data.get("platform", ""),
+        circuit_data.get("name", ""),
+    ]).lower()
+    if "esp32" in text:
+        return "esp32:esp32"
+    if "esp8266" in text:
+        return "esp8266:esp8266"
+    if "pico" in text or "rp2040" in text or "micropython" in text:
+        return "micropython"
+    return "arduino:avr"
+
+
+@router.get("/{circuit_id}/generate-firmware")
+async def generate_firmware_for_circuit(circuit_id: int):
+    agent        = _get_circuit_agent()
+    circuit_data = agent.get_circuit_by_id(circuit_id)
+    if not circuit_data:
+        raise HTTPException(status_code=404, detail="Circuito no encontrado")
+
+    platform    = _firmware_platform_for_circuit(circuit_data)
+    device_name = circuit_data.get("mcu") or circuit_data.get("name") or f"circuit_{circuit_id}"
+    description = (
+        "Generar firmware para el siguiente circuito guardado:\n"
+        + _json.dumps({
+            "name": circuit_data.get("name"),
+            "description": circuit_data.get("description"),
+            "mcu": circuit_data.get("mcu"),
+            "components": circuit_data.get("components", []),
+            "nets": circuit_data.get("nets", []),
+        }, ensure_ascii=False)
+    )
+
+    fw = await asyncio.to_thread(
+        generate_firmware,
+        description,
+        platform,
+        str(device_name),
+        components=circuit_data.get("components", []),
+    )
+    if "error" in fw:
+        raise HTTPException(status_code=500, detail=fw["error"])
+
+    return {
+        "ok": True,
+        "circuit_id": circuit_id,
+        "platform": fw.get("platform", platform),
+        "filename": fw.get("filename", "firmware.ino"),
+        "code": fw.get("code", ""),
+        "path": fw.get("path", ""),
+    }
+
+
 @router.post("/{device_name}/generate-firmware")
 @limiter.limit("5/minute")
 async def generate_firmware_for_device(request: Request, device_name: str, body: FirmwareRequest = None):

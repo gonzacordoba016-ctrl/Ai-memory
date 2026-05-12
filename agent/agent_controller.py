@@ -97,11 +97,12 @@ class AgentController:
         # esta tarea (y subtareas) resuelven al AgentState de session_id.
         token = _current_session.set(session_id or "_default")
         try:
-            return await self._process_input_impl(user_input, on_token, on_phase)
+            return await self._process_input_impl(user_input, on_token, on_phase, session_id=session_id)
         finally:
             _current_session.reset(token)
 
-    async def _process_input_impl(self, user_input: str, on_token, on_phase) -> dict:
+    async def _process_input_impl(self, user_input: str, on_token, on_phase,
+                                  session_id: str | None = None) -> dict:
         async def _phase(name: str):
             if on_phase:
                 try:
@@ -129,7 +130,7 @@ class AgentController:
             # bloqueaba la entrega del token hasta completar el upsert.
             if on_token:
                 await on_token(_trivial)
-            asyncio.create_task(asyncio.to_thread(self._store_episode, user_input, _trivial))
+            asyncio.create_task(asyncio.to_thread(self._store_episode, user_input, _trivial, session_id=session_id))
             return {"text": _trivial, "agents_used": ["greeting"]}
 
         _fast = self._maybe_fast_route_response(user_input)
@@ -139,7 +140,7 @@ class AgentController:
             self.state.add_message("assistant", response)
             if on_token:
                 await on_token(response)
-            asyncio.create_task(asyncio.to_thread(self._store_episode, user_input, response))
+            asyncio.create_task(asyncio.to_thread(self._store_episode, user_input, response, session_id=session_id))
             return {"text": response, "agents_used": [route]}
 
         # 2. Extraer hechos y relaciones en paralelo (async, no bloquean)
@@ -229,7 +230,7 @@ class AgentController:
             # F1.3 — Token PRIMERO, persistencia en background
             if on_token:
                 await on_token(hw_md)
-            asyncio.create_task(asyncio.to_thread(self._store_episode, user_input, hw_md))
+            asyncio.create_task(asyncio.to_thread(self._store_episode, user_input, hw_md, session_id=session_id))
             asyncio.create_task(asyncio.to_thread(self.profiler.update_from_interaction, user_input, hw_md))
             return {"text": hw_md, "circuit_design_id": design_id,
                     "circuit_name": cname, "agents_used": agents_used}
@@ -252,7 +253,7 @@ class AgentController:
             # F1.3 — Token PRIMERO, persistencia en background
             if on_token:
                 await on_token(hw_result)
-            asyncio.create_task(asyncio.to_thread(self._store_episode, user_input, hw_result))
+            asyncio.create_task(asyncio.to_thread(self._store_episode, user_input, hw_result, session_id=session_id))
             asyncio.create_task(asyncio.to_thread(self.profiler.update_from_interaction, user_input, hw_result))
             return {"text": hw_result, "agents_used": agents_used}
 
@@ -320,7 +321,7 @@ class AgentController:
 
         # 7. Persistir y actualizar perfil del usuario
         self.state.add_message("assistant", response)
-        self._store_episode(user_input, response)
+        self._store_episode(user_input, response, session_id=session_id)
         self.profiler.update_from_interaction(user_input, response)
 
         # 8. Auto-fetch datasheets en background (no bloquea)
@@ -512,11 +513,12 @@ class AgentController:
 
         return "\n".join(parts)
 
-    def _store_episode(self, user_input: str, response: str):
+    def _store_episode(self, user_input: str, response: str, session_id: str | None = None):
         try:
             memory_text = f"Usuario: {user_input} | Agente: {response}"
+            sid = session_id or "_default"
             store_memory(memory_text)
-            self.sql_memory.store_message("user", user_input)
-            self.sql_memory.store_message("assistant", response)
+            self.sql_memory.store_message("user", user_input, session_id=sid)
+            self.sql_memory.store_message("assistant", response, session_id=sid)
         except Exception as e:
             logger.error(f"Error guardando episodio: {e}")

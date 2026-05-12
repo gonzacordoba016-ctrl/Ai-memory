@@ -1,5 +1,10 @@
 // ── METRICS ───────────────────────────────────────────────────────────────
 async function loadMetrics() {
+  const pluginsEl = document.getElementById('metrics-plugins');
+  const profileEl = document.getElementById('metrics-profile');
+  const proactEl = document.getElementById('metrics-proactive');
+  if (!pluginsEl && !profileEl && !proactEl) return;
+
   try {
     const [pluginsR, profileR, proactiveR] = await Promise.all([
       authFetch(`${API}/plugins`).then(r => r.json()),
@@ -8,8 +13,8 @@ async function loadMetrics() {
     ]);
 
     // Plugins
-    const pluginsEl = document.getElementById('metrics-plugins');
     const plugins   = pluginsR.plugins || [];
+    if (pluginsEl) {
     pluginsEl.innerHTML = plugins.length
       ? plugins.map(p => `
           <div class="bg-[#131313] p-2 border-l-2 border-secondary/40">
@@ -17,10 +22,11 @@ async function loadMetrics() {
             <p class="text-[8px] text-[#494847] mt-0.5">${escHtml(p.description)}</p>
           </div>`).join('')
       : '<p class="text-[10px] text-[#adaaaa]">Sin plugins</p>';
+    }
 
     // Perfil
     const profile  = profileR.profile || {};
-    const profileEl = document.getElementById('metrics-profile');
+    if (profileEl) {
     profileEl.innerHTML = profile.interaction_count > 0
       ? `<div class="bg-[#131313] p-2 space-y-1">
           <div class="flex justify-between text-[9px]"><span>EXPERTISE</span><span class="text-primary">${escHtml(profile.expertise || '—')}</span></div>
@@ -29,14 +35,17 @@ async function loadMetrics() {
         </div>`
       : '<p class="text-[10px] text-[#adaaaa]">Perfil en construcción</p>';
 
+    }
+
     // Proactive
-    const proactEl = document.getElementById('metrics-proactive');
+    if (proactEl) {
     proactEl.innerHTML = `
       <div class="flex items-center gap-2 text-[9px]">
         <span class="w-2 h-2 ${proactiveR.running ? 'bg-primary animate-pulse' : 'bg-error'}"></span>
         <span class="${proactiveR.running ? 'text-primary' : 'text-error'}">${proactiveR.running ? 'RUNNING' : 'STOPPED'}</span>
         <span class="text-[#494847] ml-auto">${proactiveR.clients || 0} client(s)</span>
       </div>`;
+    }
   } catch(e) {}
 }
 
@@ -71,6 +80,7 @@ async function loadFacts() {
 
 function updateFacts(facts) {
   const el      = document.getElementById('facts-list');
+  if (!el) return;
   const entries = Object.entries(facts || {});
   if (!entries.length) { el.innerHTML = '<p class="text-[10px] text-[#adaaaa]">Sin hechos</p>'; return; }
   el.innerHTML = entries.slice(0, 15).map(([k, v]) => `
@@ -85,6 +95,7 @@ async function loadGraph() {
     const r = await authFetch(`${API}/graph`);
     const d = await r.json();
     const el = document.getElementById('graph-list');
+    if (!el) return;
     if (!d.relations?.length) { el.innerHTML = '<p class="text-[10px] text-[#adaaaa]">Sin relaciones</p>'; return; }
     el.innerHTML = d.relations.slice(0, 12).map(rel => `
       <div class="text-[9px] p-1.5 bg-[#131313]">

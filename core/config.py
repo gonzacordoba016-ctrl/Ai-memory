@@ -79,7 +79,7 @@ def get_llm_headers(agent_id: str = None, agent_name: str = "antigravity") -> di
         if not api_key:
             raise ValueError("OPENROUTER_API_KEY no configurada")
         # Diagnóstico: loguear el inicio de la key para verificar cuál se está usando
-        logger.info(f"[Config] LLM -> openrouter | key prefix: {api_key[:12]}...")
+        logger.info("[Config] LLM -> openrouter | API key configurada")
         headers["Authorization"]        = f"Bearer {api_key}"
         headers["HTTP-Referer"]         = "https://stratum.local"
         headers["X-Title"]              = "Stratum AI Memory Engine"
@@ -107,7 +107,10 @@ def validate_config():
 # ==========================
 
 VECTOR_DIMENSION  = 384
-VECTOR_COLLECTION = "agent_memory"
+VECTOR_COLLECTION = os.environ.get(
+    "QDRANT_COLLECTION",
+    os.environ.get("VECTOR_COLLECTION", "agent_memory")
+)
 
 MAX_HISTORY_MESSAGES = 20
 MAX_SHORT_MEMORY     = 10

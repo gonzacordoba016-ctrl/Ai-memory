@@ -13,6 +13,7 @@ async function loadHardware() {
     set('s-flashes',  d.stats?.total_flashes || 0);
 
     const el = document.getElementById('devices-list');
+    if (!el) return;
     const connected  = d.connected  || [];
     const registered = d.registered || [];
     const connNames  = new Set(connected.map(x => x.name));
@@ -39,7 +40,8 @@ async function loadHardware() {
         </div>`;
     }).join('');
   } catch(e) {
-    document.getElementById('devices-list').innerHTML = '<p class="text-[10px] text-error">Error conectando</p>';
+    const el = document.getElementById('devices-list');
+    if (el) el.innerHTML = '<p class="text-[10px] text-error">Error conectando</p>';
   }
 }
 
@@ -125,6 +127,7 @@ async function loadJobs() {
     const activeJobs = (d.jobs || []).filter(j => j.status === 'running' || j.status === 'pending').length;
     if (badge) badge.classList.toggle('hidden', activeJobs === 0);
     if (badgeCount) badgeCount.textContent = activeJobs;
+    if (!el) return;
 
     if (!jobs.length) {
       if (el) el.innerHTML = '<div class="text-[9px] text-[#494847] opacity-40">NO_ACTIVE_JOBS</div>';
@@ -196,6 +199,7 @@ function _initOscChart() {
 }
 
 function connectSignalWS() {
+  if (!document.getElementById('osc-chart')) return;
   wsSignal = new WebSocket(_wsTokenParam(WS_SIGNAL));
   wsSignal.onmessage = (e) => {
     const data = JSON.parse(e.data);
@@ -245,20 +249,26 @@ let visionImageB64 = null;
 
 function openVisionModal() {
   const m = document.getElementById('vision-modal');
+  if (!m) return;
   m.classList.remove('hidden');
   m.classList.add('flex');
   loadDevicesForVision();
 }
 function closeVisionModal() {
   const m = document.getElementById('vision-modal');
+  if (!m) return;
   m.classList.add('hidden');
   m.classList.remove('flex');
   visionImageB64 = null;
-  document.getElementById('vision-preview').classList.add('hidden');
-  document.getElementById('vision-preview').src = '';
-  document.getElementById('vision-placeholder').classList.remove('hidden');
-  document.getElementById('vision-status').classList.add('hidden');
-  document.getElementById('vision-analyze-btn').disabled = true;
+  const preview = document.getElementById('vision-preview');
+  if (preview) {
+    preview.classList.add('hidden');
+    preview.src = '';
+  }
+  document.getElementById('vision-placeholder')?.classList.remove('hidden');
+  document.getElementById('vision-status')?.classList.add('hidden');
+  const btn = document.getElementById('vision-analyze-btn');
+  if (btn) btn.disabled = true;
 }
 function handleVisionFile(event) {
   const file = event.target.files[0];
@@ -275,10 +285,12 @@ function loadVisionImage(file) {
     const dataUrl  = e.target.result;
     visionImageB64 = dataUrl.split(',')[1];
     const preview  = document.getElementById('vision-preview');
+    if (!preview) return;
     preview.src    = dataUrl;
     preview.classList.remove('hidden');
-    document.getElementById('vision-placeholder').classList.add('hidden');
-    document.getElementById('vision-analyze-btn').disabled = false;
+    document.getElementById('vision-placeholder')?.classList.add('hidden');
+    const btn = document.getElementById('vision-analyze-btn');
+    if (btn) btn.disabled = false;
   };
   reader.readAsDataURL(file);
 }
@@ -288,6 +300,7 @@ async function loadDevicesForVision() {
     const d = await r.json();
     const all = [...(d.connected || []), ...(d.registered || [])];
     const el  = document.getElementById('vision-devices-list');
+    if (!el) return;
     el.innerHTML = all.slice(0, 5).map(dev => `
       <button onclick="document.getElementById('vision-device').value='${escHtml(dev.name)}'"
         class="text-[8px] px-2 py-1 bg-[#131313] text-[#adaaaa] hover:text-primary hover:bg-[#201f1f] transition-colors mr-1 mb-1">
@@ -296,12 +309,13 @@ async function loadDevicesForVision() {
 }
 async function analyzeCircuit() {
   if (!visionImageB64) return;
-  const deviceName = document.getElementById('vision-device').value.trim();
+  const deviceName = document.getElementById('vision-device')?.value.trim() || '';
   const btn        = document.getElementById('vision-analyze-btn');
   const statusEl   = document.getElementById('vision-status');
   const progressEl = document.getElementById('vision-progress');
   const statusText = document.getElementById('vision-status-text');
   const statusDot  = document.getElementById('vision-status-dot');
+  if (!btn || !statusEl || !progressEl || !statusText || !statusDot) return;
   btn.disabled = true;
   statusEl.classList.remove('hidden');
   statusDot.className = 'w-2 h-2 bg-secondary animate-pulse';
@@ -342,6 +356,7 @@ function renderVisionResults(circuit) {
   if (!circuit?.project_name) return;
   const panel   = document.getElementById('vision-results-panel');
   const content = document.getElementById('vision-results-content');
+  if (!panel || !content) return;
   panel.classList.remove('hidden');
   const comps = (circuit.components || []).slice(0, 6);
   content.innerHTML = `
