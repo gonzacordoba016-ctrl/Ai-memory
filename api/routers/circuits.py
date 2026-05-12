@@ -181,6 +181,29 @@ async def get_pcb_svg(circuit_id: int):
     return HTMLResponse(content=svg, media_type="image/svg+xml")
 
 
+_GENERIC_PCB_TYPES = {"sensor", "sensor_i2c", "sensor_spi", "module", "ic"}
+_SPECIFIC_PCB_TYPES = (
+    "bmp280", "bme280", "dht22", "dht11", "mpu6050", "ds18b20",
+    "oled", "lcd", "hc_sr04", "ina219", "hx711", "pir", "nrf24l01",
+    "sx1276", "hc05",
+)
+
+
+def _resolve_pcb_component_type(comp: dict) -> str:
+    resolved = str(comp.get("resolved_type") or "").strip().lower()
+    raw = str(comp.get("type") or "").strip().lower()
+    name = str(comp.get("name") or "").strip().lower()
+
+    if resolved and resolved not in _GENERIC_PCB_TYPES:
+        return resolved
+    if raw and raw not in _GENERIC_PCB_TYPES:
+        return raw
+    for specific in _SPECIFIC_PCB_TYPES:
+        if specific in name:
+            return specific
+    return resolved or raw
+
+
 def _build_pcb_json(circuit_data: dict) -> dict:
     components = circuit_data.get("components", [])
     nets = circuit_data.get("nets", [])
@@ -191,12 +214,12 @@ def _build_pcb_json(circuit_data: dict) -> dict:
     board_w, board_h = _board_size(components)
     if placement:
         max_x = max(
-            p[0] + _fp(c.get("resolved_type", c.get("type", "")))[0] / 2
+            p[0] + _fp(_resolve_pcb_component_type(c))[0] / 2
             for c in components
             for p in [placement.get(c["id"], (0, 0))]
         ) + 4.0
         max_y = max(
-            p[1] + _fp(c.get("resolved_type", c.get("type", "")))[1] / 2
+            p[1] + _fp(_resolve_pcb_component_type(c))[1] / 2
             for c in components
             for p in [placement.get(c["id"], (0, 0))]
         ) + 4.0
@@ -212,13 +235,13 @@ def _build_pcb_json(circuit_data: dict) -> dict:
         "components": [
             {
                 "id": c["id"],
-                "type": c.get("resolved_type", c.get("type", "")),
+                "type": _resolve_pcb_component_type(c),
                 "name": c.get("name", ""),
                 "value": c.get("value", ""),
                 "x_mm": placement[c["id"]][0],
                 "y_mm": placement[c["id"]][1],
-                "footprint_w": _fp(c.get("resolved_type", c.get("type", "")))[0],
-                "footprint_h": _fp(c.get("resolved_type", c.get("type", "")))[1],
+                "footprint_w": _fp(_resolve_pcb_component_type(c))[0],
+                "footprint_h": _fp(_resolve_pcb_component_type(c))[1],
             }
             for c in components
             if c.get("id") in placement

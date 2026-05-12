@@ -27,3 +27,26 @@ def test_build_pcb_json_exposes_board_components_and_traces():
     assert all("x_mm" in c and "y_mm" in c for c in payload["components"])
     assert payload["traces"]
     assert {t["layer"] for t in payload["traces"]} <= {"top", "bottom"}
+
+
+def test_build_pcb_json_infers_specific_type_from_generic_sensor_name():
+    circuit = {
+        "name": "Legacy generic sensors",
+        "components": [
+            {"id": "U1", "type": "esp32", "name": "ESP32"},
+            {"id": "U2", "type": "sensor", "name": "BMP280 Sensor"},
+            {"id": "U3", "type": "sensor_i2c", "name": "DHT22 Temp/Humidity"},
+            {"id": "U4", "type": "module", "name": "OLED Sensor"},
+        ],
+        "nets": [
+            {"name": "GND", "nodes": ["U1.GND", "U2.GND", "U3.GND", "U4.GND"]},
+            {"name": "VCC_3V3", "nodes": ["U1.3V3", "U2.VCC", "U3.VCC", "U4.VCC"]},
+        ],
+    }
+
+    payload = _build_pcb_json(circuit)
+    types_by_id = {c["id"]: c["type"] for c in payload["components"]}
+
+    assert types_by_id["U2"] == "bmp280"
+    assert types_by_id["U3"] == "dht22"
+    assert types_by_id["U4"] == "oled"
