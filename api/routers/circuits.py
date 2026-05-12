@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, UploadFile, File
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from api.auth import get_current_user
+from api.cache_busting import render_html_with_cache_busting
 from api.limiter import limiter
 from pydantic import BaseModel
 
@@ -81,7 +82,7 @@ class FirmwareRequest(BaseModel):
 @router.get("/viewer", response_class=HTMLResponse)
 async def get_circuit_viewer():
     with open("api/static/circuit_viewer.html", "r", encoding="utf-8") as f:
-        return HTMLResponse(f.read())
+        return HTMLResponse(render_html_with_cache_busting(f.read()))
 
 
 @router.get("/")
@@ -851,4 +852,4 @@ async def get_shared_viewer(token: str):
         "</head>",
         f'<script>window._SHARED_TOKEN="{token}";window._CIRCUIT_ID={circuit_id};</script>\n</head>',
     )
-    return HTMLResponse(html)
+    return HTMLResponse(render_html_with_cache_busting(html))

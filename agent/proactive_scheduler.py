@@ -10,7 +10,7 @@ from tools.hardware_detector import detect_devices
 async def _push(title: str, body: str):
     try:
         from tools.push_notifier import send_push_to_all
-        await asyncio.to_thread(send_push_to_all, title, body)
+        await send_push_to_all(title, body)
     except Exception:
         pass
 

@@ -46,10 +46,11 @@ import sqlite3
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from api.auth import get_current_user
+from api.cache_busting import render_html_with_cache_busting
 
 try:
     from slowapi import _rate_limit_exceeded_handler
@@ -256,7 +257,8 @@ async def shutdown_event():
 @app.get("/")
 async def root():
     try:
-        return FileResponse("api/static/index.html")
+        with open("api/static/index.html", "r", encoding="utf-8") as f:
+            return HTMLResponse(render_html_with_cache_busting(f.read()))
     except Exception:
         return JSONResponse({"status": "ok", "message": "Stratum running"})
 
