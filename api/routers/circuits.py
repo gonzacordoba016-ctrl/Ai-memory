@@ -22,6 +22,13 @@ from database.hardware_memory import hardware_memory
 from tools.schematic_renderer import SchematicRenderer
 from tools.breadboard_renderer import BreadboardRenderer
 from tools.pcb_renderer import PCBRenderer
+from tools.design_rules import get_sheet_size
+from tools.eda.pcb_draw import (
+    _board_size,
+    _compute_pcb_placement,
+    _compute_pcb_routing,
+    _fp,
+)
 from tools.firmware_generator import generate_firmware
 from core.logger import logger
 
@@ -172,6 +179,72 @@ async def get_pcb_svg(circuit_id: int):
         return JSONResponse(content={"error": "Circuito no encontrado"}, status_code=404)
     svg = PCBRenderer().render_pcb_svg(circuit_data)
     return HTMLResponse(content=svg, media_type="image/svg+xml")
+
+
+def _build_pcb_json(circuit_data: dict) -> dict:
+    components = circuit_data.get("components", [])
+    nets = circuit_data.get("nets", [])
+    sheet = get_sheet_size(len(components))
+    placement = _compute_pcb_placement(components, nets, sheet)
+    routing = _compute_pcb_routing(components, nets, placement, sheet)
+
+    board_w, board_h = _board_size(components)
+    if placement:
+        max_x = max(
+            p[0] + _fp(c.get("resolved_type", c.get("type", "")))[0] / 2
+            for c in components
+            for p in [placement.get(c["id"], (0, 0))]
+        ) + 4.0
+        max_y = max(
+            p[1] + _fp(c.get("resolved_type", c.get("type", "")))[1] / 2
+            for c in components
+            for p in [placement.get(c["id"], (0, 0))]
+        ) + 4.0
+        board_w = max(board_w, max_x)
+        board_h = max(board_h, max_y)
+
+    return {
+        "board": {
+            "width_mm": board_w,
+            "height_mm": board_h,
+            "thickness_mm": 1.6,
+        },
+        "components": [
+            {
+                "id": c["id"],
+                "type": c.get("resolved_type", c.get("type", "")),
+                "name": c.get("name", ""),
+                "value": c.get("value", ""),
+                "x_mm": placement[c["id"]][0],
+                "y_mm": placement[c["id"]][1],
+                "footprint_w": _fp(c.get("resolved_type", c.get("type", "")))[0],
+                "footprint_h": _fp(c.get("resolved_type", c.get("type", "")))[1],
+            }
+            for c in components
+            if c.get("id") in placement
+        ],
+        "traces": [
+            {
+                "net": seg["net"],
+                "x1": seg["x1"],
+                "y1": seg["y1"],
+                "x2": seg["x2"],
+                "y2": seg["y2"],
+                "width_mm": seg["width"],
+                "layer": seg["layer"],
+            }
+            for seg in routing
+        ],
+    }
+
+
+@router.get("/{circuit_id}/pcb.json")
+async def get_pcb_json(circuit_id: int):
+    agent = _get_circuit_agent()
+    circuit_data = agent.get_circuit_by_id(circuit_id)
+    if not circuit_data:
+        return JSONResponse(content={"error": "Circuito no encontrado"}, status_code=404)
+    return JSONResponse(content=_build_pcb_json(circuit_data))
 
 
 @router.get("/{circuit_id}/gerber")

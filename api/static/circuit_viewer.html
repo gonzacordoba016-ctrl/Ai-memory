@@ -204,7 +204,7 @@
             <div class="panel">
                 <div class="tabs">
                     <div class="tab active" data-view="schematic">Esquemático 2D</div>
-                    <div class="tab" data-view="breadboard">Breadboard 3D</div>
+                    <div class="tab" data-view="breadboard">PCB 3D</div>
                     <div class="tab" data-view="pcb">Layout PCB</div>
                 </div>
                 
@@ -716,6 +716,10 @@
         
         // ── Three.js 3D — con OrbitControls y datos reales del circuito ─────────
         let _threeOrbitControls = null;
+        let _pcb3DBoardGroup = null;
+        let _pcb3DCompMeshes = [];
+        let _pcb3DFlipped = false;
+        let _pcb3DTooltip = null;
 
         function _resetThreeJS() {
             if (threeRenderer) {
@@ -725,6 +729,13 @@
             threeScene    = null;
             threeCamera   = null;
             _threeOrbitControls = null;
+            _pcb3DBoardGroup = null;
+            _pcb3DCompMeshes = [];
+            _pcb3DFlipped = false;
+            if (_pcb3DTooltip) {
+                _pcb3DTooltip.remove();
+                _pcb3DTooltip = null;
+            }
         }
 
         async function initThreeJS() {
@@ -800,7 +811,7 @@
             });
         }
 
-        async function _buildThreeScene() {
+        async function _buildLegacyThreeScene() {
             if (!threeScene) return;
 
             // ── Real PCB (FR4, 1.6mm thick, gold edge.cuts + mounting holes) ──
@@ -1730,6 +1741,259 @@
             sprite.position.set(x, y + 4, z);
             sprite.scale.set(10, 3.5, 1);
             threeScene.add(sprite);
+        }
+
+        async function _buildThreeScene() {
+            if (!threeScene || !currentCircuit) return;
+
+            const circuitId = currentCircuit.id || currentCircuit.design_id;
+            let pcbData = null;
+            if (circuitId) {
+                const res = await _viewerFetch(`/api/circuits/${circuitId}/pcb.json`);
+                if (!res.ok) throw new Error(`PCB JSON HTTP ${res.status}`);
+                pcbData = await res.json();
+            } else {
+                pcbData = _buildFallbackPcbData(currentCircuit);
+            }
+
+            _pcb3DCompMeshes = [];
+            _pcb3DBoardGroup = new THREE.Group();
+            threeScene.add(_pcb3DBoardGroup);
+
+            const board = pcbData.board || { width_mm: 120, height_mm: 80, thickness_mm: 1.6 };
+            const bw = board.width_mm || 120;
+            const bh = board.height_mm || 80;
+            const bt = board.thickness_mm || 1.6;
+
+            const boardGeo = new THREE.BoxGeometry(bw, bt, bh);
+            const boardMat = new THREE.MeshStandardMaterial({
+                color: 0x1a5c1a,
+                roughness: 0.8,
+                metalness: 0.0,
+            });
+            const boardMesh = new THREE.Mesh(boardGeo, boardMat);
+            boardMesh.receiveShadow = true;
+            _pcb3DBoardGroup.add(boardMesh);
+
+            const edgeGeo = new THREE.EdgesGeometry(boardGeo);
+            const edgeMesh = new THREE.LineSegments(
+                edgeGeo,
+                new THREE.LineBasicMaterial({ color: 0xd4af37 })
+            );
+            _pcb3DBoardGroup.add(edgeMesh);
+
+            for (const trace of (pcbData.traces || [])) {
+                _pcb3DBoardGroup.add(_makeTraceMesh(trace, board));
+            }
+
+            for (const comp of (pcbData.components || [])) {
+                const x = comp.x_mm - bw / 2;
+                const z = comp.y_mm - bh / 2;
+                const y = bt / 2;
+                const group = _addPcbComponent3D(comp, x, y, z);
+                _pcb3DBoardGroup.add(group);
+                group.traverse(obj => {
+                    obj.userData.comp = comp;
+                    if (obj.isMesh) _pcb3DCompMeshes.push(obj);
+                });
+            }
+
+            _addPcb3DControls();
+            _installPcb3DTooltip();
+
+            const maxDim = Math.max(bw, bh);
+            threeCamera.position.set(0, maxDim * 0.75, maxDim * 0.95);
+            threeCamera.lookAt(0, 0, 0);
+            if (_threeOrbitControls) {
+                _threeOrbitControls.target.set(0, 0, 0);
+                _threeOrbitControls.maxPolarAngle = Math.PI;
+                _threeOrbitControls.update();
+            }
+        }
+
+        function _buildFallbackPcbData(circuit) {
+            const comps = circuit.components || [];
+            const board = { width_mm: 120, height_mm: 80, thickness_mm: 1.6 };
+            return {
+                board,
+                components: comps.map((comp, i) => ({
+                    id: comp.id,
+                    type: comp.resolved_type || comp.type || 'generic',
+                    name: comp.name || '',
+                    value: comp.value || '',
+                    x_mm: 20 + (i % 4) * 25,
+                    y_mm: 20 + Math.floor(i / 4) * 22,
+                    footprint_w: 10,
+                    footprint_h: 8,
+                })),
+                traces: [],
+            };
+        }
+
+        function _makeTraceMesh(trace, board) {
+            const dx = trace.x2 - trace.x1;
+            const dz = trace.y2 - trace.y1;
+            const length = Math.max(0.001, Math.sqrt(dx * dx + dz * dz));
+            const angle = Math.atan2(dz, dx);
+            const traceGeo = new THREE.BoxGeometry(length, 0.035, trace.width_mm || 0.25);
+            const color = trace.layer === 'top' ? 0xd4af37 : 0xb87333;
+            const traceMesh = new THREE.Mesh(traceGeo, new THREE.MeshStandardMaterial({
+                color,
+                metalness: 0.8,
+                roughness: 0.2,
+            }));
+            traceMesh.position.set(
+                trace.x1 + dx / 2 - board.width_mm / 2,
+                trace.layer === 'top'
+                    ? board.thickness_mm / 2 + 0.017
+                    : -board.thickness_mm / 2 - 0.017,
+                trace.y1 + dz / 2 - board.height_mm / 2
+            );
+            traceMesh.rotation.y = -angle;
+            return traceMesh;
+        }
+
+        function _mat(color, extra) {
+            return new THREE.MeshStandardMaterial(Object.assign({
+                color,
+                roughness: 0.65,
+                metalness: 0.05,
+            }, extra || {}));
+        }
+
+        function _addPcbComponent3D(comp, x, y, z) {
+            const group = new THREE.Group();
+            const t = (comp.type || '').toLowerCase();
+            group.position.set(x, y, z);
+
+            function add(mesh, px, py, pz) {
+                mesh.position.set(px || 0, py || 0, pz || 0);
+                mesh.castShadow = true;
+                group.add(mesh);
+                return mesh;
+            }
+
+            if (t === 'esp32' || t === 'esp8266') {
+                add(new THREE.Mesh(new THREE.BoxGeometry(25, 4, 48), _mat(0x0a1f3a)), 0, 2, 0);
+                add(new THREE.Mesh(new THREE.BoxGeometry(18, 1, 24), _mat(0x888888, { metalness: 0.8 })), 0, 4.5, 0);
+                for (const side of [-1, 1]) {
+                    for (let i = 0; i < 19; i++) {
+                        const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 3, 8), _mat(0xd4af37, { metalness: 0.85 }));
+                        add(pin, side * 11.5, 0.2, -22 + i * (44 / 18));
+                    }
+                }
+            } else if (t === 'bmp280' || t === 'bme280' || t === 'bmp180') {
+                add(new THREE.Mesh(new THREE.BoxGeometry(14, 1.6, 14), _mat(0x2d5a27)), 0, 0.8, 0);
+                add(new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.5, 2.5), _mat(0x111111)), 0, 1.85, 0);
+            } else if (t === 'dht22' || t === 'dht11' || t === 'am2302') {
+                add(new THREE.Mesh(new THREE.BoxGeometry(15, 7, 25), _mat(0xeeeeee)), 0, 3.5, 0);
+                for (let i = 0; i < 6; i++) {
+                    add(new THREE.Mesh(new THREE.BoxGeometry(12, 0.5, 1), _mat(0x222222)), 0, 7.1, -10 + i * 3.5);
+                }
+            } else if (t === 'relay' || t === 'relay_module') {
+                add(new THREE.Mesh(new THREE.BoxGeometry(50, 1.6, 26), _mat(0x1a5c1a)), 0, 0.8, 0);
+                add(new THREE.Mesh(new THREE.BoxGeometry(29, 15, 12), _mat(0x111111)), 0, 9.1, 0);
+                add(new THREE.Mesh(new THREE.SphereGeometry(1.5, 8, 8), _mat(0xff0000, { emissive: 0xff0000, emissiveIntensity: 0.4 })), -18, 3, 8);
+            } else if (t === 'oled' || t === 'display' || t === 'ssd1306') {
+                add(new THREE.Mesh(new THREE.BoxGeometry(27, 2, 27), _mat(0x111111)), 0, 1, 0);
+                add(new THREE.Mesh(new THREE.BoxGeometry(25, 0.5, 13), _mat(0x000033, { emissive: 0x0033ff, emissiveIntensity: 0.3 })), 0, 2.25, 0);
+            } else if (t === 'resistor') {
+                const body = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, comp.footprint_w || 6.5, 8), _mat(0xd4b896));
+                body.rotation.z = Math.PI / 2;
+                add(body, 0, 1.5, 0);
+                for (const bx of [-2, 0, 2]) {
+                    const band = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.05, 0.35, 8), _mat(bx === 0 ? 0x111111 : 0x8b4513));
+                    band.rotation.z = Math.PI / 2;
+                    add(band, bx, 1.5, 0);
+                }
+            } else if (t === 'capacitor' || t === 'capacitor_electrolytic') {
+                add(new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 6, 12), _mat(0x1a3a8f)), 0, 3, 0);
+            } else if (t === 'transistor_npn' || t === 'transistor' || t === 'bc547' || t === '2n2222') {
+                add(new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 4.5, 8, 1, false, 0, Math.PI), _mat(0x111111)), 0, 2.25, 0);
+            } else if (t === 'diode' || t === '1n4007' || t === '1n5819' || t === '1n4148') {
+                const body = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 6, 8), _mat(0x888888));
+                body.rotation.z = Math.PI / 2;
+                add(body, 0, 1.5, 0);
+                const band = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 0.8, 8), _mat(0xffffff));
+                band.rotation.z = Math.PI / 2;
+                add(band, 2, 1.5, 0);
+            } else {
+                add(new THREE.Mesh(new THREE.BoxGeometry(comp.footprint_w || 10, 3, comp.footprint_h || 8), _mat(0x222222)), 0, 1.5, 0);
+            }
+
+            _addPcb3DLabel(group, comp.id || '?');
+            return group;
+        }
+
+        function _addPcb3DLabel(group, text) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 32;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 18px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(text, 64, 22);
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+                map: new THREE.CanvasTexture(canvas),
+                transparent: true,
+            }));
+            sprite.position.set(0, 10, 0);
+            sprite.scale.set(9, 2.25, 1);
+            group.add(sprite);
+        }
+
+        function _addPcb3DControls() {
+            let toolbar = document.getElementById('pcb3d-toolbar');
+            if (!toolbar) {
+                toolbar = document.createElement('div');
+                toolbar.id = 'pcb3d-toolbar';
+                toolbar.style.cssText = 'position:absolute;top:10px;right:10px;z-index:5;display:flex;gap:8px;';
+                const btn = document.createElement('button');
+                btn.id = 'flipBoard';
+                btn.textContent = 'Flip';
+                btn.style.cssText = 'background:#21262d;border:1px solid #30363d;color:#e6edf3;padding:6px 10px;border-radius:4px;cursor:pointer';
+                toolbar.appendChild(btn);
+                breadboardView.style.position = 'relative';
+                breadboardView.appendChild(toolbar);
+                btn.addEventListener('click', () => {
+                    _pcb3DFlipped = !_pcb3DFlipped;
+                    if (_pcb3DBoardGroup) {
+                        _pcb3DBoardGroup.rotation.x = _pcb3DFlipped ? Math.PI : 0;
+                    }
+                });
+            }
+        }
+
+        function _installPcb3DTooltip() {
+            if (!_pcb3DTooltip) {
+                _pcb3DTooltip = document.createElement('div');
+                _pcb3DTooltip.style.cssText = 'position:absolute;display:none;pointer-events:none;z-index:6;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:4px;padding:5px 7px;font:12px monospace;box-shadow:0 4px 14px rgba(0,0,0,.35)';
+                breadboardView.appendChild(_pcb3DTooltip);
+            }
+            const raycaster = new THREE.Raycaster();
+            const mouse = new THREE.Vector2();
+            threeRenderer.domElement.addEventListener('mousemove', e => {
+                const rect = threeRenderer.domElement.getBoundingClientRect();
+                mouse.x = ((e.clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1;
+                mouse.y = -((e.clientY - rect.top) / Math.max(rect.height, 1)) * 2 + 1;
+                raycaster.setFromCamera(mouse, threeCamera);
+                const hits = raycaster.intersectObjects(_pcb3DCompMeshes, true);
+                if (hits.length > 0) {
+                    const comp = hits[0].object.userData.comp || {};
+                    _pcb3DTooltip.textContent = `${comp.id || '?'}: ${comp.name || comp.type || ''} ${comp.value || ''}`.trim();
+                    _pcb3DTooltip.style.left = `${e.clientX - rect.left + 12}px`;
+                    _pcb3DTooltip.style.top = `${e.clientY - rect.top + 12}px`;
+                    _pcb3DTooltip.style.display = 'block';
+                } else {
+                    _pcb3DTooltip.style.display = 'none';
+                }
+            });
+            threeRenderer.domElement.addEventListener('mouseleave', () => {
+                if (_pcb3DTooltip) _pcb3DTooltip.style.display = 'none';
+            });
         }
         
         // Exportar PCB (simulación)
