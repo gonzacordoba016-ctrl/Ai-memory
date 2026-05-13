@@ -115,3 +115,13 @@ guide-test.py
 data/*.db
 imagen/
 agent/keywords/
+
+# App móvil (build local, no debe subir al repo)
+stratum-mobile/
+
+# Limpieza local confirmada
+*.pyc
+data/
+stratum-mobile/
+stratum-mobile/node_modules/
+stratum-mobile/android/app/build/

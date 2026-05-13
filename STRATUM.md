@@ -19,8 +19,8 @@ Stratum es un **super-ingeniero de IA** especializado en electrónica, microcont
 | Vector store | Qdrant (cloud o embebido local) |
 | Grafo de memoria | NetworkX → JSON en disco |
 | Frontend | HTML/JS estático + Three.js r128 |
-| Mobile | Capacitor (Android/iOS) en `stratum-mobile/` |
-| Deploy | Docker + Railway (volumen `/data`) |
+| Mobile | Eliminado del repo principal |
+| Deploy | Local (`python run.py serve`) |
 | Tests | pytest 373+ tests |
 
 ---
@@ -92,10 +92,10 @@ OPENROUTER_API_KEY=sk-or-v1-...
 OPENROUTER_MODEL=openai/gpt-4o-mini
 MAX_TOKENS=4096                  # límite explícito por request
 
-# Base de datos (Railway: montar volumen en /data)
-DATA_DIR=/data/database          # todas las DBs van aquí
-GRAPH_DB_PATH=/data/database/graph_memory.json
-VECTOR_DB_PATH=/data/memory_db
+# Base de datos local
+DATA_DIR=./database              # todas las DBs van aqui
+GRAPH_DB_PATH=./database/graph_memory.json
+VECTOR_DB_PATH=./memory_db
 
 # Qdrant (opcional — si no se define usa embebido local)
 QDRANT_URL=https://...qdrant.io
@@ -220,7 +220,7 @@ ai-memory-engine/
 | Generación de firmware Arduino | ✅ Implementado |
 | Knowledge base (upload + búsqueda) | ✅ Parcial (bug Qdrant lazy init) |
 | Auth JWT multi-usuario | ✅ Implementado (MULTI_USER=false por defecto) |
-| Deploy Railway con volumen persistente | ✅ Funcional |
+| Deploy local | Funcional |
 | Cache busting dinámico (git hash) | ✅ Funcional |
 
 ---
@@ -323,24 +323,26 @@ Estado actual: **373 passed**
 
 ---
 
-## Deploy Railway
+## Deploy Local
 
-```toml
-# railway.toml
-[deploy]
-startCommand = "python run.py serve"
-healthcheckPath = "/api/health"
-restartPolicyType = "on_failure"
-restartPolicyMaxRetries = 10
+```bash
+# 1. Crear entorno virtual
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# 2. Instalar dependencias
+pip install -r requirements.txt
+
+# 3. Configurar variables de entorno
+cp .env.example .env
+# Editar .env con tu OPENROUTER_API_KEY
+
+# 4. Correr
+python run.py serve --port 8080
+
+# 5. Tests
+pytest -q
 ```
-
-**Variables requeridas en Railway:**
-- `DATA_DIR=/data/database`
-- `GRAPH_DB_PATH=/data/database/graph_memory.json`
-- `OPENROUTER_API_KEY=...`
-- `JWT_SECRET=...` (si MULTI_USER=true)
-
-**Volumen Railway:** montar en `/data`
 
 ---
 
@@ -385,7 +387,7 @@ restartPolicyMaxRetries = 10
 3. **Tests antes de commits.** 373+ passing antes de cada push.
 4. **Sin LLM theater.** Si se puede hacer con código, no usar LLM.
 5. **Cache busting dinámico.** El JS se versiona con el git hash del commit.
-6. **Lazy DB init.** Las DBs se inicializan en el primer request, no en startup (Railway volume mount race).
+6. **Lazy DB init.** Las DBs se inicializan en el primer request, no en startup.
 
 ---
 
