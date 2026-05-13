@@ -34,6 +34,7 @@ from tools.firmware_generator import generate_firmware
 from core.logger import logger
 
 router = APIRouter(prefix="/api/circuits", tags=["circuits"], dependencies=[Depends(get_current_user)])
+_library_router = APIRouter(prefix="/api", tags=["library"])
 
 # Singleton para CircuitAgent — una sola instancia + conexión SQLite por proceso
 _circuit_agent: CircuitAgent = None
@@ -83,6 +84,26 @@ class FirmwareRequest(BaseModel):
 async def get_circuit_viewer():
     with open("api/static/circuit_viewer.html", "r", encoding="utf-8") as f:
         return HTMLResponse(render_html_with_cache_busting(f.read()))
+
+
+@_library_router.get("/library/{comp_type}")
+@router.get("/library/{comp_type}")
+async def get_component_def(comp_type: str):
+    from tools.eda.library import get_component
+
+    c = get_component(comp_type)
+    if not c:
+        raise HTTPException(status_code=404)
+    return {
+        "type": c.type,
+        "name": c.name,
+        "geometry": c.symbol_3d.geometry,
+        "width_mm": c.symbol_3d.width_mm,
+        "height_mm": c.symbol_3d.height_mm,
+        "depth_mm": c.symbol_3d.depth_mm,
+        "color_hex": c.symbol_3d.color_hex,
+        "details": c.symbol_3d.details,
+    }
 
 
 @router.get("/")
@@ -187,6 +208,9 @@ _SPECIFIC_PCB_TYPES = (
     "bmp280", "bme280", "dht22", "dht11", "mpu6050", "ds18b20",
     "oled", "lcd", "hc_sr04", "ina219", "hx711", "pir", "nrf24l01",
     "sx1276", "hc05",
+    "fc28", "fc-28", "lcd_i2c", "lcd i2c", "oled_ssd1306",
+    "mq2", "mq-2", "mq7", "mq-7", "mq135", "mq-135",
+    "ne555", "555", "neopixel", "a4988", "drv8825", "servo", "l298n",
 )
 
 

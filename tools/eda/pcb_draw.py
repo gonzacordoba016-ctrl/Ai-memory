@@ -18,6 +18,7 @@ from tools.component_types import (
     _ZONE_DISPLAY_TYPES,
 )
 from tools.design_rules import get_sheet_size, PCB_CLEARANCE
+from tools.eda.library import get_component
 
 
 logger = get_logger(__name__)
@@ -38,14 +39,14 @@ _LARGE_TYPES = {"relay", "relay_module", "ssr", "motor_driver", "l298n", "drv882
 _PCB_MODULE_TYPES = _MCU_TYPES | {
     "moisture_sensor", "hc_sr04", "ultrasonic", "ultrasonic_sensor",
     "dht22", "dht11", "am2302",
-    "mq2", "mq135", "gas_sensor", "pir",
+    "fc28", "mq2", "mq7", "mq135", "gas_sensor", "pir",
     "ds3231", "ds1307", "rtc", "pcf8523",
     "mpu6050", "mpu9250", "icm20600", "icm42688", "lsm6ds3",
     "ina219", "ina226", "ina260", "ads1115", "ads1015",
     "bmp280", "bme280", "bmp180", "bmp085",
     "si7021", "htu21d", "sht31", "sht30", "aht20",
     "vl53l0x", "tof", "apds9960",
-    "oled", "lcd", "display", "tft", "ssd1306",
+    "oled", "oled_ssd1306", "lcd", "lcd_i2c", "display", "tft", "ssd1306",
     "wifi_module", "bluetooth", "hc05", "hc_05", "nrf24l01", "lora",
 }
 _PCB_RELAY_TYPES   = {"relay", "relay_module", "ssr"}
@@ -171,8 +172,18 @@ _FOOTPRINT: Dict[str, Tuple[float, float]] = {
 _DEFAULT_FP = (10.0, 8.0)
 
 
+def _get_footprint(comp_type: str) -> Tuple[float, float]:
+    c_def = get_component(comp_type)
+    if c_def:
+        return (
+            c_def.footprint.width_mm,
+            c_def.footprint.height_mm,
+        )
+    return _FOOTPRINT.get((comp_type or "").lower(), _DEFAULT_FP)
+
+
 def _fp(comp_type: str) -> Tuple[float, float]:
-    return _FOOTPRINT.get(comp_type.lower(), _DEFAULT_FP)
+    return _get_footprint(comp_type)
 
 
 def _group(comp_type: str) -> str:

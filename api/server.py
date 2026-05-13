@@ -129,6 +129,7 @@ _include("websockets",       "api.routers.websockets")
 # already protected at router level — redundant dep is harmless
 _include("memory",           "api.routers.memory",          protected=True)
 _include("circuits",         "api.routers.circuits",        protected=True)
+_include("library",          "api.routers.circuits", "_library_router", protected=True)
 _include("knowledge",        "api.routers.knowledge",       protected=True)
 _include("projects",         "api.routers.projects",        protected=True)
 # newly protected

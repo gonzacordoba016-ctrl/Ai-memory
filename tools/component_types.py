@@ -23,7 +23,7 @@ _ZONE_SENSOR_TYPES = {
     # Generic sensor modules
     "sensor", "moisture_sensor", "soil_sensor",
     "pir", "motion_sensor",
-    "gas_sensor", "mq2", "mq135",
+    "gas_sensor", "fc28", "mq2", "mq7", "mq135",
     "ultrasonic", "hc_sr04", "ultrasonic_sensor",
     "ir_sensor", "color_sensor",
     # Generic interface types emitted by CircuitSynthesizer
@@ -32,6 +32,7 @@ _ZONE_SENSOR_TYPES = {
 }
 
 _ZONE_DISPLAY_TYPES = {
-    "oled", "lcd", "display", "tft", "ssd1306",
+    "oled", "lcd", "display", "tft", "ssd1306", "oled_ssd1306", "lcd_i2c",
     "oled_display", "lcd_display",
+    "neopixel",
 }

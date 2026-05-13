@@ -23,6 +23,7 @@ from tools.design_rules import (
     ZONE_COLS,
     ZONE_ROWS,
 )
+from tools.eda.library import get_component
 
 from tools.eda.classifier import classify_zone as _classify_zone
 from tools.eda.layout import (
@@ -655,6 +656,7 @@ class SchematicRenderer:
             "uln2003":               self._sym_ic_generic,
             "buzzer":                self._sym_buzzer,
             "sensor":                self._sym_sensor,
+            "fc28":                  self._sym_from_library,
             "moisture_sensor":       self._sym_moisture,
             "dht22":                 self._sym_dht22,
             "dht11":                 self._sym_dht22,
@@ -669,8 +671,13 @@ class SchematicRenderer:
             "ultrasonic_sensor":     self._sym_ultrasonic,
             "display":               self._sym_display,
             "oled":                  self._sym_oled,
+            "oled_ssd1306":          self._sym_from_library,
             "lcd":                   self._sym_display,
+            "lcd_i2c":               self._sym_from_library,
             "bmp280":                self._sym_bmp280,
+            "mq2":                   self._sym_from_library,
+            "mq7":                   self._sym_from_library,
+            "mq135":                 self._sym_from_library,
             "transistor_npn":        self._sym_transistor,
             "voltage_regulator":     self._sym_regulator,
             "lm7805":                self._sym_regulator,
@@ -725,6 +732,8 @@ class SchematicRenderer:
             "gate_driver":           self._sym_mosfet_driver,
             "uln2003":               self._sym_mosfet_driver,
             "ir2104":                self._sym_mosfet_driver,
+            "ne555":                 self._sym_from_library,
+            "neopixel":              self._sym_from_library,
             "connector_ac":          self._sym_connector_ac,
             "iec_connector":         self._sym_connector_ac,
         }
@@ -1763,6 +1772,65 @@ class SchematicRenderer:
                              font_size=6, fill="#667788",
                              font_family="monospace",
                              text_anchor="start" if sign > 0 else "end"))
+
+    def _sym_from_library(self, dwg, x, y, comp):
+        """Draw a generic body with real pins from ComponentDef.pins."""
+        comp_type = comp.get("resolved_type", comp.get("type", ""))
+        c_def = get_component(comp_type)
+        if not c_def:
+            return self._sym_generic(dwg, x, y, comp)
+
+        w, h = 60, max(40, len(c_def.pins) * 10)
+        dwg.add(dwg.rect(
+            insert=(x - w // 2, y - h // 2),
+            size=(w, h),
+            fill="#1a1a2e",
+            stroke="#00ff88",
+        ))
+
+        left_pins = [p for p in c_def.pins if p.side == "left"]
+        for i, pin in enumerate(left_pins):
+            py = y - h // 2 + 10 + i * 12
+            dwg.add(dwg.line(
+                start=(x - w // 2 - 20, py),
+                end=(x - w // 2, py),
+                stroke="#00ff88",
+            ))
+            dwg.add(dwg.text(
+                pin.name,
+                insert=(x - w // 2 - 22, py + 3),
+                font_size=7,
+                text_anchor="end",
+            ))
+
+        right_pins = [p for p in c_def.pins if p.side == "right"]
+        for i, pin in enumerate(right_pins):
+            py = y - h // 2 + 10 + i * 12
+            dwg.add(dwg.line(
+                start=(x + w // 2, py),
+                end=(x + w // 2 + 20, py),
+                stroke="#00ff88",
+            ))
+            dwg.add(dwg.text(
+                pin.name,
+                insert=(x + w // 2 + 22, py + 3),
+                font_size=7,
+            ))
+
+        dwg.add(dwg.text(
+            c_def.type.upper(),
+            insert=(x, y - 5),
+            font_size=8,
+            text_anchor="middle",
+            fill="#ffffff",
+        ))
+        dwg.add(dwg.text(
+            c_def.name[:12],
+            insert=(x, y + 8),
+            font_size=6,
+            text_anchor="middle",
+            fill="#aaaaaa",
+        ))
 
     def _sym_generic(self, dwg, x, y, comp):
         """Fallback generic IC with named pin stubs from comp data."""
