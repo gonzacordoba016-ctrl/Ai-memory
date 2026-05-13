@@ -84,6 +84,29 @@ BLOCK_TYPE_ALIASES: Dict[str, str] = {
     "modulo lora":                "sx1276",
     "driver motor":               "l298n",
     "puente h":                   "l298n",
+    "sensor de gas":              "mq2",
+    "detector de gas":            "mq2",
+    "sensor humo":                "mq2",
+    "temporizador":               "ne555",
+    "timer":                      "ne555",
+    "555":                        "ne555",
+    "led rgb":                    "neopixel",
+    "led direccionable":          "neopixel",
+    "ws2812":                     "neopixel",
+    "pantalla lcd":               "lcd_i2c",
+    "display lcd":                "lcd_i2c",
+    "lcd 16x2":                   "lcd_i2c",
+    "sensor humedad suelo":       "fc28",
+    "sensor lluvia":              "fc28",
+    "celda de carga":             "hx711",
+    "sensor peso":                "hx711",
+    "detector movimiento":        "pir",
+    "sensor movimiento":          "pir",
+    "corriente i2c":              "ina219",
+    "medidor corriente":          "ina219",
+    "bluetooth":                  "hc05",
+    "2.4ghz":                     "nrf24l01",
+    "radio":                      "nrf24l01",
 }
 
 
@@ -632,23 +655,91 @@ class CircuitSynthesizer:
                     model_raw, alias_target,
                 )
                 return model_map[mapped_model]
+            
+            # Intentar genérico si el alias apuntó a algo en la librería
+            from tools.eda.library import get_component
+            if get_component(alias_target):
+                logger.warning(
+                    "[CircuitSynthesizer] '%s' resuelto via alias → '%s' usando genérico",
+                    model_raw, alias_target,
+                )
+                block["type"] = alias_target # force type for generic
+                return self._add_generic_block
+
             logger.warning(
-                "[CircuitSynthesizer] Alias '%s'→'%s' encontrado pero sin handler. "
+                "[CircuitSynthesizer] Alias '%s'→'%s' encontrado pero sin handler ni librería. "
                 "Sugerencia: implementar _add_%s_block",
                 model_raw, alias_target, alias_target.replace(" ", "_"),
             )
             return None
 
+        # Intentar handler genérico con librería
+        from tools.eda.library import get_component
+        
+        # Priorizar el type original, luego fallback al model si btype_key no sirvió
+        comp_type = block.get("type") or model
+        c_def = get_component(comp_type)
+        if c_def:
+            block["type"] = comp_type
+            return self._add_generic_block
+
         label = block.get("model") or block.get("type") or "desconocido"
         label = str(label)
         logger.warning(
-            "[CircuitSynthesizer] Bloque '%s' sin handler. "
+            "[CircuitSynthesizer] Bloque '%s' sin handler ni librería. "
             "Sugerencia: agregar a BLOCK_TYPE_ALIASES o implementar _add_%s_block",
             label, label.lower().replace(" ", "_"),
         )
         return None
 
     # ── Block handlers ────────────────────────────────────────────────────────
+
+    def _add_generic_block(
+        self,
+        b: CircuitBuilder,
+        block: Dict[str, Any],
+        ctx: _SynthesisContext,
+    ) -> None:
+        from tools.eda.library import get_component
+        
+        comp_type = block.get("type", "unknown")
+        c_def = get_component(comp_type)
+        
+        if not c_def:
+            logger.warning(f"[Synth] Sin handler ni librería: {comp_type}")
+            return
+        
+        u_id = ctx.next_id(comp_type[0].upper() if comp_type else "U")
+        
+        # Agregar componente principal
+        b.add_component(
+            u_id, c_def.name, comp_type,
+            current_ma=2.0
+        )
+        
+        # Conectar VCC y GND según voltaje
+        vcc_net = f"VCC_{c_def.voltage_max:.0f}V".replace(".0", "")
+        b.connect(vcc_net, f"{u_id}.VCC")
+        b.connect("GND", f"{u_id}.GND")
+        
+        # Conectar pines de señal al MCU
+        for pin in c_def.pins:
+            if pin.type in ("signal", "io"):
+                gpio = ctx.pin_allocator.allocate("GPIO_OUTPUT", block.get(f"{pin.name.lower()}_pin"))
+                net_name = f"{comp_type.upper()}_{pin.name}"
+                b.connect(net_name, f"{u_id}.{pin.name}")
+                b.connect(net_name, f"U1.{gpio}")
+        
+        # Cap de desacoplo si tiene pines de power
+        has_power = any(p.type == "power" for p in c_def.pins)
+        if has_power:
+            c_id = ctx.next_id("C")
+            b.add_component(c_id, f"Desacoplo {comp_type} 100nF",
+                              "capacitor", value="100", unit="nF")
+            b.connect(vcc_net, f"{c_id}.1")
+            b.connect("GND", f"{c_id}.2")
+        
+        logger.info(f"[Synth] Generic block: {comp_type} → {u_id}")
 
     def _add_led_block(
         self,
