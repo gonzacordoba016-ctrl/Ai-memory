@@ -132,9 +132,6 @@
           <div id="h-active-profile" class="label label-dim" style="font-size:9px">—</div>
         </div>
       </div>
-      <button class="btn btn-icon btn-ghost hidden" onclick="openVisionModal()" title="Vision">
-        <span class="material-symbols-outlined" style="font-size:16px">photo_camera</span>
-      </button>
       <button id="tweaks-btn" class="btn btn-icon btn-ghost" title="Tweaks">
         <span class="material-symbols-outlined" style="font-size:16px">tune</span>
       </button>
@@ -465,20 +462,6 @@
             Cargando dispositivos…
           </div>
         </div>
-        <!-- legacy containers for other hardware module IDs -->
-        <div class="hidden">
-          <div id="hw-detected"></div>
-          <div id="wokwi-status"></div>
-          <input id="wokwi-url" type="text"/>
-          <div id="wokwi-diff-area"></div>
-          <select id="firmware-selector"></select>
-          <div id="firmware-history"></div>
-          <div id="bridge-dot-web"></div>
-          <span id="bridge-status-web"></span>
-          <div id="svc-sqlite"></div>
-          <div id="svc-qdrant"></div>
-          <div id="svc-ollama"></div>
-        </div>
       </div>
     </section>
 
@@ -622,11 +605,6 @@
               <div id="chart-stock-legend" class="flex-1 self-center space-y-1 label label-dim" style="font-size:9px"></div>
             </div>
           </div>
-          <!-- edges + flashes hidden compat -->
-          <div class="hidden">
-            <span id="s-edges">0</span>
-            <span id="s-flashes">0</span>
-          </div>
         </div>
       </div>
     </section>
@@ -636,19 +614,6 @@
       <div class="max-w-4xl mx-auto px-3 md:px-5 pt-3 pb-24">
         <div class="flex items-center justify-between mb-3">
           <span class="label label-accent">[ SYSTEM / CONFIGURACIÓN ]</span>
-        </div>
-
-        <!-- services status -->
-        <div class="panel panel-cnr mb-3">
-          <div class="ruler" data-coord="SERVICES"></div>
-          <div class="panel-head"><span class="panel-title">ESTADO DE SERVICIOS</span></div>
-          <div id="services-status" class="grid grid-cols-1">
-            <div class="flex items-center px-4 py-2 border-b" style="border-color: var(--rule)">
-              <span class="mono" style="color: var(--fg-3); width:32px; font-size:11px">01</span>
-              <span style="font-size:13px">llm-gateway</span>
-              <span class="ml-auto chip chip-ok"><span class="dot"></span>LOADING</span>
-            </div>
-          </div>
         </div>
 
         <!-- llm model config -->
@@ -667,13 +632,6 @@
           </div>
         </div>
 
-        <!-- auth status -->
-        <div class="panel panel-cnr mb-3">
-          <div class="ruler" data-coord="AUTH"></div>
-          <div class="panel-head"><span class="panel-title">AUTENTICACIÓN</span></div>
-          <div id="auth-status" class="p-4 label label-dim" style="font-size:10.5px">Verificando…</div>
-        </div>
-
         <!-- stock module -->
         <div class="panel panel-cnr mb-3">
           <div class="ruler" data-coord="STOCK"></div>
@@ -684,11 +642,6 @@
             </button>
           </div>
           <div id="stock-summary" class="p-4 label label-dim" style="font-size:10.5px">Cargando…</div>
-          <div class="hidden">
-            <div id="stock-list"></div>
-            <input id="stock-search-input" type="text"/>
-            <div id="stock-search-results"></div>
-          </div>
         </div>
 
         <!-- graph list (hidden, for intel module) -->
